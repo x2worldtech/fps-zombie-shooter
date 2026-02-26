@@ -1,0 +1,73 @@
+{
+  "kind": "implementation_plan",
+  "version": "1.0",
+  "title": "Realistic hands/arms for all 3 weapons + improved shotgun & pistol models",
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "summary": "Add visible first-person hands and arms for all three weapons with anatomically correct grip positioning",
+      "acceptanceCriteria": [
+        "Pistol view model shows a right hand gripping the pistol handle and a partially visible forearm",
+        "Shotgun view model shows both hands on the shotgun (trigger hand and pump hand) with visible forearms",
+        "Assault rifle view model retains existing hands/arms and they remain correctly positioned",
+        "Hand and arm geometry is visible in first-person perspective during idle, aim, fire, and reload states",
+        "Skin-toned mesh is used consistently across all three weapons"
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/components/Game/WeaponViewModel.tsx",
+          "operation": "modify",
+          "description": "Add procedural hand and arm geometry for pistol using Three.js primitives (BoxGeometry, CylinderGeometry) positioned to show a right hand gripping the pistol handle with a visible forearm extending toward the camera. Position hand at approximately [-0.15, -0.3, -0.4] with appropriate rotation to grip the pistol handle, and add a cylindrical forearm extending back toward the camera. Use skin-toned material (#d4a373) for all hand/arm meshes."
+        },
+        {
+          "path": "frontend/src/components/Game/WeaponViewModel.tsx",
+          "operation": "modify",
+          "description": "Add procedural two-handed grip geometry for shotgun using Three.js primitives (BoxGeometry, CylinderGeometry) showing both hands with visible forearms. Position trigger hand at approximately [-0.15, -0.25, -0.35] gripping the stock/trigger area, and pump hand at approximately [-0.1, -0.2, -0.6] gripping the pump forend. Add cylindrical forearms for both hands extending toward the camera. Use skin-toned material (#d4a373) matching the pistol hand color."
+        },
+        {
+          "path": "frontend/src/components/Game/WeaponViewModel.tsx",
+          "operation": "modify",
+          "description": "Verify and ensure assault rifle view model retains existing hand/arm geometry and that hands remain correctly positioned during idle, fire, and reload animation states. Adjust hand positions if needed to maintain consistent anatomical positioning with the two-handed rifle grip style."
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "summary": "Redesign shotgun view model to be significantly more realistic with recognizable pump-action silhouette",
+      "acceptanceCriteria": [
+        "Shotgun has a long cylindrical barrel",
+        "Shotgun has a distinct pump forend (sliding grip section under the barrel)",
+        "Shotgun has a visible receiver/body block",
+        "Shotgun has a stock extending toward the camera",
+        "Shotgun has a trigger guard detail",
+        "Overall proportions match a real-world pump-action shotgun (e.g., Mossberg 500 style)"
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/components/Game/WeaponViewModel.tsx",
+          "operation": "modify",
+          "description": "Replace the existing shotgun geometry in WeaponViewModel.tsx with a realistic pump-action shotgun model built from Three.js primitives. Create a long cylindrical barrel (CylinderGeometry, length ~0.6, radius ~0.03) positioned forward, a distinct pump forend (BoxGeometry or CylinderGeometry, ~0.15 length) under the barrel for the sliding grip section, a rectangular receiver body block (BoxGeometry, ~0.2 x 0.1 x 0.08) behind the barrel, a stock (BoxGeometry or combined boxes, extending ~0.3 toward camera), and a small trigger guard detail (thin BoxGeometry or TorusGeometry). Use metallic dark material for barrel/receiver and wood-toned material (#8B4513) for stock and forend. Ensure overall proportions match Mossberg 500 style and that upgrade tier glow overlays continue to work."
+        }
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "summary": "Redesign pistol view model to be significantly more realistic with recognizable semi-automatic silhouette",
+      "acceptanceCriteria": [
+        "Pistol has a rectangular slide on top",
+        "Pistol has a short barrel protruding from the slide",
+        "Pistol has a frame and grip handle angled downward",
+        "Pistol has a visible trigger guard",
+        "Pistol has a magazine base visible at the bottom of the grip",
+        "Overall proportions match a real-world semi-automatic pistol (e.g., Glock-style)"
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/components/Game/WeaponViewModel.tsx",
+          "operation": "modify",
+          "description": "Replace the existing pistol geometry in WeaponViewModel.tsx with a realistic semi-automatic pistol model built from Three.js primitives. Create a rectangular slide on top (BoxGeometry, ~0.15 x 0.04 x 0.03), a short barrel protruding from the slide front (CylinderGeometry, length ~0.08, radius ~0.008), a frame and grip handle angled downward (BoxGeometry, ~0.12 height, angled ~15 degrees back), a small trigger guard (thin BoxGeometry or TorusGeometry positioned in front of grip), and a magazine base visible at the bottom of the grip (BoxGeometry, ~0.03 x 0.05 x 0.02). Use dark metallic material (#2a2a2a) for slide/barrel and black polymer material (#1a1a1a) for frame/grip. Ensure overall proportions match Glock-style and that upgrade tier glow overlays continue to work."
+        }
+      ]
+    }
+  ]
+}

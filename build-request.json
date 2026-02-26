@@ -1,0 +1,87 @@
+{
+  "kind": "build_request",
+  "title": "Realistic hands/arms for all 3 weapons + improved shotgun & pistol models",
+  "projectName": "FPS Zombie Shooter",
+  "priority": "normal",
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "text": "Ensure visible first-person hands and arms are rendered for all three weapons (pistol, shotgun, and assault rifle) in WeaponViewModel.tsx. The hands and arms must be anatomically positioned to convincingly grip each weapon, matching the weapon's hold style (one-handed grip for pistol, two-handed pump grip for shotgun, two-handed rifle grip for assault rifle).",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-4"
+        ],
+        "quotes": [
+          "bei allen 3 waffen soll man hände und arm sehen die die waffe halten"
+        ]
+      },
+      "acceptanceCriteria": [
+        "Pistol view model shows a right hand gripping the pistol handle and a partially visible forearm",
+        "Shotgun view model shows both hands on the shotgun (trigger hand and pump hand) with visible forearms",
+        "Assault rifle view model retains existing hands/arms and they remain correctly positioned",
+        "Hand and arm geometry is visible in first-person perspective during idle, aim, fire, and reload states",
+        "Skin-toned mesh is used consistently across all three weapons"
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "text": "Redesign the shotgun view model in WeaponViewModel.tsx to be significantly more realistic. The model should include a recognizable pump-action shotgun silhouette with a distinct pump forend, barrel, receiver body, stock, and trigger guard using appropriately shaped and sized Three.js geometries.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-4"
+        ],
+        "quotes": [
+          "modelliere die shotgun und pistole auch realistischer"
+        ]
+      },
+      "acceptanceCriteria": [
+        "Shotgun has a long cylindrical barrel",
+        "Shotgun has a distinct pump forend (sliding grip section under the barrel)",
+        "Shotgun has a visible receiver/body block",
+        "Shotgun has a stock extending toward the camera",
+        "Shotgun has a trigger guard detail",
+        "Overall proportions match a real-world pump-action shotgun (e.g., Mossberg 500 style)"
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "text": "Redesign the pistol view model in WeaponViewModel.tsx to be significantly more realistic. The model should include a recognizable semi-automatic pistol silhouette with a distinct slide, barrel, frame/grip, trigger guard, and magazine base using appropriately shaped Three.js geometries.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-4"
+        ],
+        "quotes": [
+          "modelliere die shotgun und pistole auch realistischer"
+        ]
+      },
+      "acceptanceCriteria": [
+        "Pistol has a rectangular slide on top",
+        "Pistol has a short barrel protruding from the slide",
+        "Pistol has a frame and grip handle angled downward",
+        "Pistol has a visible trigger guard",
+        "Pistol has a magazine base visible at the bottom of the grip",
+        "Overall proportions match a real-world semi-automatic pistol (e.g., Glock-style)"
+      ]
+    }
+  ],
+  "constraints": [
+    "Do not modify any files under frontend/src/hooks/useInternetIdentity.ts, frontend/src/hooks/useActor.ts, frontend/src/main.tsx, or frontend/src/components/ui",
+    "All weapon and hand/arm geometry must remain within WeaponViewModel.tsx using Three.js/React Three Fiber primitives",
+    "Do not alter weapon stat configs in frontend/src/types/weapon.ts or frontend/src/hooks/useWeaponSystem.ts",
+    "Upgrade tier glow overlays and recoil/reload animations must continue to work after model changes"
+  ],
+  "nonGoals": [
+    "Adding new weapons beyond the existing three",
+    "Changing weapon gameplay stats (damage, fire rate, ammo)",
+    "Importing external 3D model files (GLB/GLTF); use procedural Three.js geometry only",
+    "Modifying the backend",
+    "Changing enemy, environment, or HUD components"
+  ],
+  "imageRequirements": {
+    "required": [],
+    "edits": []
+  }
+}

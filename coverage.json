@@ -1,0 +1,64 @@
+{
+  "kind": "coverage_report",
+  "version": "1.0",
+  "generatedAt": "2026-02-25T19:36:11.619Z",
+  "sources": {
+    "buildRequest": true,
+    "implementationPlan": true
+  },
+  "requirements": {
+    "total": 3,
+    "implemented": 3,
+    "items": [
+      {
+        "id": "REQ-1",
+        "summary": "Ensure visible first-person hands and arms are rendered for all three weapons (pistol, shotgun, and assault rifle) in WeaponViewModel.tsx. The hands and arms must be anatomically positioned to convincingly grip each weapon, matching the weapon's hold style (one-handed grip for pistol, two-handed pump grip for shotgun, two-handed rifle grip for assault rifle).",
+        "status": "implemented",
+        "plannedFiles": [
+          "frontend/src/components/Game/WeaponViewModel.tsx",
+          "frontend/src/components/Game/WeaponViewModel.tsx",
+          "frontend/src/components/Game/WeaponViewModel.tsx"
+        ],
+        "matchedFiles": [
+          "frontend/src/components/Game/WeaponViewModel.tsx",
+          "frontend/src/components/Game/WeaponViewModel.tsx",
+          "frontend/src/components/Game/WeaponViewModel.tsx"
+        ]
+      },
+      {
+        "id": "REQ-2",
+        "summary": "Redesign the shotgun view model in WeaponViewModel.tsx to be significantly more realistic. The model should include a recognizable pump-action shotgun silhouette with a distinct pump forend, barrel, receiver body, stock, and trigger guard using appropriately shaped and sized Three.js geometries.",
+        "status": "implemented",
+        "plannedFiles": [
+          "frontend/src/components/Game/WeaponViewModel.tsx"
+        ],
+        "matchedFiles": [
+          "frontend/src/components/Game/WeaponViewModel.tsx"
+        ]
+      },
+      {
+        "id": "REQ-3",
+        "summary": "Redesign the pistol view model in WeaponViewModel.tsx to be significantly more realistic. The model should include a recognizable semi-automatic pistol silhouette with a distinct slide, barrel, frame/grip, trigger guard, and magazine base using appropriately shaped Three.js geometries.",
+        "status": "implemented",
+        "plannedFiles": [
+          "frontend/src/components/Game/WeaponViewModel.tsx"
+        ],
+        "matchedFiles": [
+          "frontend/src/components/Game/WeaponViewModel.tsx"
+        ]
+      }
+    ]
+  },
+  "changedFiles": [
+    "build-request.json",
+    "feature_evidence.json",
+    "frontend-file-summaries.txt",
+    "frontend-implementation-plan.json",
+    "frontend/src/components/Game/GameScene.tsx",
+    "frontend/src/components/Game/WeaponViewModel.tsx",
+    "project_state.json",
+    "scratch/component-selection.json",
+    "spec.md",
+    "spec_vs_diff_report.json"
+  ]
+}

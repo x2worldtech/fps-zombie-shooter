@@ -1,0 +1,61 @@
+{
+  "schemaVersion": "1.0.0",
+  "projectStateVersion": 3,
+  "summary": "First-person shooter game with 3 weapons. Player can see hands and arms holding each weapon. Working on realistic weapon models and hand/arm visibility for all 3 weapons.",
+  "architectural_notes": [
+    "Game is a first-person shooter with 3 weapons (includes rifle, shotgun, pistol)",
+    "Red-dot sight on rifle activated via right-click"
+  ],
+  "known_issues": [],
+  "isFixRequest": false,
+  "existing_features": [
+    {
+      "id": "feature-ensure-visible-first-person-hands-and-arms-are-rendered-for-all-three-weapons-pistol-shotgun-and-assault-rifle-in-weaponviewmodel-tsx-the-hands-and-arms-must-be-anatomically-positioned-to-convincingly-grip-each-weapon-matching-the-weapon-s-hold-style-one-handed-grip-for-pistol-two-handed-pump-grip-for-shotgun-two-handed-rifle-grip-for-assault-rifle",
+      "title": "Ensure visible first-person hands and arms are rendered for all three weapons (pistol, shotgun, and assault rifle) in WeaponViewModel.tsx. The hands and arms must be anatomically positioned to convincingly grip each weapon, matching the weapon's hold style (one-handed grip for pistol, two-handed pump grip for shotgun, two-handed rifle grip for assault rifle).",
+      "reqIds": [
+        "REQ-1"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-redesign-the-shotgun-view-model-in-weaponviewmodel-tsx-to-be-significantly-more-realistic-the-model-should-include-a-recognizable-pump-action-shotgun-silhouette-with-a-distinct-pump-forend-barrel-receiver-body-stock-and-trigger-guard-using-appropriately-shaped-and-sized-three-js-geometries",
+      "title": "Redesign the shotgun view model in WeaponViewModel.tsx to be significantly more realistic. The model should include a recognizable pump-action shotgun silhouette with a distinct pump forend, barrel, receiver body, stock, and trigger guard using appropriately shaped and sized Three.js geometries.",
+      "reqIds": [
+        "REQ-2"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-redesign-the-pistol-view-model-in-weaponviewmodel-tsx-to-be-significantly-more-realistic-the-model-should-include-a-recognizable-semi-automatic-pistol-silhouette-with-a-distinct-slide-barrel-frame-grip-trigger-guard-and-magazine-base-using-appropriately-shaped-three-js-geometries",
+      "title": "Redesign the pistol view model in WeaponViewModel.tsx to be significantly more realistic. The model should include a recognizable semi-automatic pistol silhouette with a distinct slide, barrel, frame/grip, trigger guard, and magazine base using appropriately shaped Three.js geometries.",
+      "reqIds": [
+        "REQ-3"
+      ],
+      "version": 1
+    }
+  ],
+  "new_feature_requests": [
+    {
+      "id": "AR-1",
+      "summary": "Show hands and arms holding the weapon for all 3 weapons",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-2",
+      "summary": "Model the shotgun more realistically",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-3",
+      "summary": "Model the pistol more realistically",
+      "reqIds": [],
+      "status": "pending"
+    }
+  ],
+  "gameProjectType": "3d",
+  "projectName": "FPS Zombie Shooter",
+  "clarification_mode": "instant",
+  "clarification_rounds": 0
+}

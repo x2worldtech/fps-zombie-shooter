@@ -1,0 +1,62 @@
+{
+  "kind": "feature_evidence_report",
+  "features": [
+    {
+      "featureId": "feature-ensure-visible-first-person-hands-and-arms-are-rendered-for-all-three-weapons-pistol-shotgun-and-assault-rifle-in-weaponviewmodel-tsx-the-hands-and-arms-must-be-anatomically-positioned-to-convincingly-grip-each-weapon-matching-the-weapon-s-hold-style-one-handed-grip-for-pistol-two-handed-pump-grip-for-shotgun-two-handed-rifle-grip-for-assault-rifle",
+      "featureTitle": "Ensure visible first-person hands and arms are rendered for all three weapons (pistol, shotgun, and assault rifle) in WeaponViewModel.tsx. The hands and arms must be anatomically positioned to convincingly grip each weapon, matching the weapon's hold style (one-handed grip for pistol, two-handed pump grip for shotgun, two-handed rifle grip for assault rifle).",
+      "files": [
+        "frontend/src/components/Game/WeaponViewModel.tsx"
+      ],
+      "components": [
+        "core-infrastructure@1.0.2",
+        "shadcn-ui@1.0.0",
+        "build-template-react@1.0.0",
+        "initial-app@1.0.0",
+        "github-export-icp-cli@1.0.0",
+        "authorization@4.0.0"
+      ],
+      "testIds": [
+        "REQ-1"
+      ],
+      "confidence": "high"
+    },
+    {
+      "featureId": "feature-redesign-the-shotgun-view-model-in-weaponviewmodel-tsx-to-be-significantly-more-realistic-the-model-should-include-a-recognizable-pump-action-shotgun-silhouette-with-a-distinct-pump-forend-barrel-receiver-body-stock-and-trigger-guard-using-appropriately-shaped-and-sized-three-js-geometries",
+      "featureTitle": "Redesign the shotgun view model in WeaponViewModel.tsx to be significantly more realistic. The model should include a recognizable pump-action shotgun silhouette with a distinct pump forend, barrel, receiver body, stock, and trigger guard using appropriately shaped and sized Three.js geometries.",
+      "files": [
+        "frontend/src/components/Game/WeaponViewModel.tsx"
+      ],
+      "components": [
+        "core-infrastructure@1.0.2",
+        "shadcn-ui@1.0.0",
+        "build-template-react@1.0.0",
+        "initial-app@1.0.0",
+        "github-export-icp-cli@1.0.0",
+        "authorization@4.0.0"
+      ],
+      "testIds": [
+        "REQ-2"
+      ],
+      "confidence": "high"
+    },
+    {
+      "featureId": "feature-redesign-the-pistol-view-model-in-weaponviewmodel-tsx-to-be-significantly-more-realistic-the-model-should-include-a-recognizable-semi-automatic-pistol-silhouette-with-a-distinct-slide-barrel-frame-grip-trigger-guard-and-magazine-base-using-appropriately-shaped-three-js-geometries",
+      "featureTitle": "Redesign the pistol view model in WeaponViewModel.tsx to be significantly more realistic. The model should include a recognizable semi-automatic pistol silhouette with a distinct slide, barrel, frame/grip, trigger guard, and magazine base using appropriately shaped Three.js geometries.",
+      "files": [
+        "frontend/src/components/Game/WeaponViewModel.tsx"
+      ],
+      "components": [
+        "core-infrastructure@1.0.2",
+        "shadcn-ui@1.0.0",
+        "build-template-react@1.0.0",
+        "initial-app@1.0.0",
+        "github-export-icp-cli@1.0.0",
+        "authorization@4.0.0"
+      ],
+      "testIds": [
+        "REQ-3"
+      ],
+      "confidence": "high"
+    }
+  ]
+}

@@ -1,0 +1,142 @@
+@import url('https://fonts.googleapis.com/css2?family=Bangers&family=Oswald:wght@400;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --radius: 0.25rem;
+
+    /* Desert Borderlands Palette */
+    --sand: 0.82 0.09 85;
+    --burnt-orange: 0.62 0.18 48;
+    --blood-red: 0.45 0.22 25;
+    --dark-outline: 0.12 0.02 30;
+    --off-white: 0.95 0.03 90;
+    --acid-yellow: 0.88 0.18 100;
+    --toxic-green: 0.72 0.2 140;
+
+    /* Semantic tokens */
+    --background: 0.12 0.02 30;
+    --foreground: 0.95 0.03 90;
+    --card: 0.18 0.03 35;
+    --card-foreground: 0.95 0.03 90;
+    --popover: 0.18 0.03 35;
+    --popover-foreground: 0.95 0.03 90;
+    --primary: 0.62 0.18 48;
+    --primary-foreground: 0.12 0.02 30;
+    --secondary: 0.45 0.22 25;
+    --secondary-foreground: 0.95 0.03 90;
+    --muted: 0.22 0.03 35;
+    --muted-foreground: 0.65 0.05 60;
+    --accent: 0.88 0.18 100;
+    --accent-foreground: 0.12 0.02 30;
+    --destructive: 0.45 0.22 25;
+    --destructive-foreground: 0.95 0.03 90;
+    --border: 0.35 0.06 45;
+    --input: 0.22 0.03 35;
+    --ring: 0.62 0.18 48;
+    --chart-1: 0.62 0.18 48;
+    --chart-2: 0.45 0.22 25;
+    --chart-3: 0.88 0.18 100;
+    --chart-4: 0.72 0.2 140;
+    --chart-5: 0.82 0.09 85;
+    --sidebar: 0.15 0.02 30;
+    --sidebar-foreground: 0.95 0.03 90;
+    --sidebar-primary: 0.62 0.18 48;
+    --sidebar-primary-foreground: 0.12 0.02 30;
+    --sidebar-accent: 0.22 0.03 35;
+    --sidebar-accent-foreground: 0.95 0.03 90;
+    --sidebar-border: 0.35 0.06 45;
+    --sidebar-ring: 0.62 0.18 48;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Oswald', sans-serif;
+    overflow: hidden;
+  }
+
+  h1, h2, h3, .toon-title {
+    font-family: 'Bangers', cursive;
+    letter-spacing: 0.05em;
+    -webkit-text-stroke: 2px oklch(0.12 0.02 30);
+    text-shadow:
+      3px 3px 0 oklch(0.12 0.02 30),
+      -1px -1px 0 oklch(0.12 0.02 30),
+      1px -1px 0 oklch(0.12 0.02 30),
+      -1px 1px 0 oklch(0.12 0.02 30);
+  }
+}
+
+@layer components {
+  .toon-btn {
+    font-family: 'Bangers', cursive;
+    letter-spacing: 0.08em;
+    font-size: 1.5rem;
+    padding: 0.5rem 2rem;
+    background: oklch(0.62 0.18 48);
+    color: oklch(0.12 0.02 30);
+    border: 3px solid oklch(0.12 0.02 30);
+    box-shadow: 4px 4px 0 oklch(0.12 0.02 30);
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.1s;
+    text-transform: uppercase;
+    display: inline-block;
+    user-select: none;
+  }
+
+  .toon-btn:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0 oklch(0.12 0.02 30);
+    background: oklch(0.72 0.2 55);
+  }
+
+  .toon-btn:active {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0 oklch(0.12 0.02 30);
+  }
+
+  .toon-btn-red {
+    background: oklch(0.45 0.22 25);
+    color: oklch(0.95 0.03 90);
+  }
+
+  .toon-btn-red:hover {
+    background: oklch(0.55 0.22 25);
+  }
+
+  .toon-btn-yellow {
+    background: oklch(0.88 0.18 100);
+    color: oklch(0.12 0.02 30);
+  }
+
+  .toon-btn-yellow:hover {
+    background: oklch(0.92 0.18 100);
+  }
+
+  .toon-panel {
+    background: oklch(0.15 0.03 30 / 0.92);
+    border: 3px solid oklch(0.12 0.02 30);
+    box-shadow: 6px 6px 0 oklch(0.12 0.02 30);
+  }
+
+  .toon-text {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 600;
+    color: oklch(0.95 0.03 90);
+    text-shadow: 1px 1px 0 oklch(0.12 0.02 30), -1px -1px 0 oklch(0.12 0.02 30);
+  }
+
+  .hud-text {
+    font-family: 'Bangers', cursive;
+    letter-spacing: 0.05em;
+    -webkit-text-stroke: 1px oklch(0.12 0.02 30);
+    text-shadow: 2px 2px 0 oklch(0.12 0.02 30);
+  }
+}
