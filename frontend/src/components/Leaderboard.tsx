@@ -8,7 +8,7 @@ const RANK_COLORS = ['#ffd700', '#c0c0c0', '#cd7f32'];
 const RANK_LABELS = ['🥇', '🥈', '🥉'];
 
 export function Leaderboard({ onBack }: LeaderboardProps) {
-  const { leaderboard, isLoading } = useLeaderboard();
+  const { leaderboard, isLoading, isError } = useLeaderboard();
 
   return (
     <div
@@ -74,7 +74,14 @@ export function Leaderboard({ onBack }: LeaderboardProps) {
         <div className="w-full flex flex-col gap-1 max-h-80 overflow-y-auto">
           {isLoading ? (
             <div className="text-center py-8 font-bangers text-2xl" style={{ color: '#cc8844' }}>
-              LOADING...
+              ⏳ LOADING...
+            </div>
+          ) : isError ? (
+            <div className="text-center py-8 font-bangers text-xl" style={{ color: '#ff4444' }}>
+              ✗ COULD NOT LOAD SCORES
+              <div className="font-oswald text-sm mt-2" style={{ color: '#886644' }}>
+                Please try again later.
+              </div>
             </div>
           ) : leaderboard.length === 0 ? (
             <div className="text-center py-8 font-bangers text-2xl" style={{ color: '#cc8844' }}>

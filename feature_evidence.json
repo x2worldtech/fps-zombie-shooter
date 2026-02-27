@@ -2,29 +2,10 @@
   "kind": "feature_evidence_report",
   "features": [
     {
-      "featureId": "feature-redesign-the-standardzombie-3d-mesh-in-enemymesh-tsx-to-resemble-a-call-of-duty-style-zombie-add-a-more-humanoid-body-with-visible-torso-arms-and-legs-as-separate-geometric-segments-give-the-head-a-skull-like-shape-with-sunken-eye-sockets-dark-hollow-eye-geometry-add-torn-ragged-clothing-geometry-overlapping-flat-planes-or-box-segments-with-dark-blood-stained-colors-use-a-desaturated-pale-greenish-grey-skin-tone-for-body-parts-add-protruding-jaw-lower-face-detail-keep-toon-shading-but-shift-colors-to-necrotic-pale-green-grey-skin-dark-red-blood-accents-torn-dark-brown-clothing",
-      "featureTitle": "Redesign the StandardZombie 3D mesh in EnemyMesh.tsx to resemble a Call of Duty-style zombie: add a more humanoid body with visible torso, arms, and legs as separate geometric segments; give the head a skull-like shape with sunken eye sockets (dark hollow eye geometry); add torn/ragged clothing geometry (overlapping flat planes or box segments with dark/blood-stained colors); use a desaturated, pale greenish-grey skin tone for body parts; add protruding jaw/lower-face detail; keep toon-shading but shift colors to necrotic (pale green-grey skin, dark red blood accents, torn dark-brown clothing).",
+      "featureId": "feature-update-the-frontend-level-progression-system-in-frontend-src-utils-levelsystem-ts-to-mirror-the-new-backend-xp-thresholds-exactly-so-that-the-displayed-level-xp-progress-bar-and-xp-boundaries-in-the-playerprofile-screen-remain-consistent-with-backend-calculations",
+      "featureTitle": "Update the frontend level progression system in `frontend/src/utils/levelSystem.ts` to mirror the new backend XP thresholds exactly, so that the displayed level, XP progress bar, and XP boundaries in the PlayerProfile screen remain consistent with backend calculations.",
       "files": [
-        "frontend/src/components/Game/EnemyMesh.tsx"
-      ],
-      "components": [
-        "core-infrastructure@1.0.2",
-        "shadcn-ui@1.0.0",
-        "build-template-react@1.0.0",
-        "initial-app@1.0.0",
-        "github-export-icp-cli@1.0.0",
-        "authorization@4.0.0"
-      ],
-      "testIds": [
-        "REQ-1"
-      ],
-      "confidence": "high"
-    },
-    {
-      "featureId": "feature-redesign-the-bosszombie-3d-mesh-in-enemymesh-tsx-to-look-like-a-heavily-mutated-cod-boss-zombie-larger-bulkier-torso-with-uneven-shoulder-masses-oversized-arms-a-deformed-enlarged-skull-exposed-bone-rib-geometry-on-the-chest-glowing-red-orange-sunken-eyes-emissive-small-sphere-geometry-and-heavily-torn-dark-clothing-use-a-darker-necrotic-skin-tone-than-the-standard-zombie-to-visually-distinguish-it-as-an-elite-threat",
-      "featureTitle": "Redesign the BossZombie 3D mesh in EnemyMesh.tsx to look like a heavily mutated CoD boss zombie: larger bulkier torso with uneven shoulder masses, oversized arms, a deformed enlarged skull, exposed bone/rib geometry on the chest, glowing red/orange sunken eyes (emissive small sphere geometry), and heavily torn dark clothing. Use a darker necrotic skin tone than the standard zombie to visually distinguish it as an elite threat.",
-      "files": [
-        "frontend/src/components/Game/EnemyMesh.tsx"
+        "frontend/src/utils/levelSystem.ts"
       ],
       "components": [
         "core-infrastructure@1.0.2",
@@ -36,25 +17,6 @@
       ],
       "testIds": [
         "REQ-2"
-      ],
-      "confidence": "high"
-    },
-    {
-      "featureId": "feature-add-a-subtle-idle-sway-lurch-animation-to-both-zombie-types-in-enemymesh-tsx-the-torso-should-lean-forward-slightly-and-arms-should-hang-low-with-a-side-to-side-shoulder-sway-mimicking-the-iconic-cod-zombie-lurch-movement-this-should-complement-the-existing-walking-bob-animation",
-      "featureTitle": "Add a subtle idle sway/lurch animation to both zombie types in EnemyMesh.tsx: the torso should lean forward slightly and arms should hang low with a side-to-side shoulder sway, mimicking the iconic CoD zombie lurch movement. This should complement the existing walking bob animation.",
-      "files": [
-        "frontend/src/components/Game/EnemyMesh.tsx"
-      ],
-      "components": [
-        "core-infrastructure@1.0.2",
-        "shadcn-ui@1.0.0",
-        "build-template-react@1.0.0",
-        "initial-app@1.0.0",
-        "github-export-icp-cli@1.0.0",
-        "authorization@4.0.0"
-      ],
-      "testIds": [
-        "REQ-3"
       ],
       "confidence": "high"
     }

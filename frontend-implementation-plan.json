@@ -1,62 +1,26 @@
 {
   "kind": "implementation_plan",
   "version": "1.0",
-  "title": "Improve Zombie Models to Look Like Call of Duty-Style Zombies",
+  "title": "Increase XP required per player level-up",
   "requirements": [
     {
-      "id": "REQ-1",
-      "summary": "Redesign StandardZombie mesh to resemble a Call of Duty-style zombie with humanoid anatomy, torn clothing, skull-like head with sunken eyes, and necrotic color palette",
-      "acceptanceCriteria": [
-        "StandardZombie has a distinct head, torso, two arms, and two legs as separate mesh segments",
-        "Head geometry includes sunken/hollow eye socket detail (dark recessed geometry)",
-        "Body parts use a pale greenish-grey toon-shaded color matching a CoD undead aesthetic",
-        "Torn clothing is represented by overlapping dark-brown/black geometric planes on the torso and arms",
-        "Blood accents (dark red) are present on clothing/body segments",
-        "Walking bob animation still functions correctly on the new mesh",
-        "Hit flash and death fade effects still apply correctly to the new mesh"
-      ],
-      "file_operations": [
-        {
-          "path": "frontend/src/components/Game/EnemyMesh.tsx",
-          "operation": "modify",
-          "description": "Replace the StandardZombie mesh geometry with a multi-segment humanoid structure: create separate BoxGeometry segments for head (with skull-like proportions), torso, upper arms, forearms, thighs, and shins; add dark recessed CylinderGeometry for sunken eye sockets; add overlapping PlaneGeometry segments on torso and arms to represent torn/ragged clothing with dark-brown/black colors; add small dark-red BoxGeometry accents for blood stains on clothing; update toon material colors to pale greenish-grey (#a8b5a0 range) for skin and dark-brown (#3a2f28) for clothing; ensure all segments are grouped correctly and positioned to form a cohesive humanoid silhouette; verify existing walking bob animation, hit flash, and death fade logic apply to the new multi-segment mesh structure"
-        }
-      ]
-    },
-    {
       "id": "REQ-2",
-      "summary": "Redesign BossZombie mesh as a heavily mutated CoD boss zombie with larger bulk, deformed skull, exposed bone geometry, glowing eyes, and darker necrotic tones",
+      "summary": "Update frontend level progression system to mirror new backend XP thresholds with significantly steeper scaling",
       "acceptanceCriteria": [
-        "BossZombie is visually larger and more imposing than StandardZombie",
-        "BossZombie has an oversized deformed skull with emissive glowing red eye geometry",
-        "Chest area includes exposed rib/bone geometry (light-grey protruding planes)",
-        "Shoulders are asymmetric and bulkier than the standard zombie",
-        "Arms are elongated/oversized relative to the body",
-        "BossZombie uses a darker, more decayed skin tone than StandardZombie",
-        "Existing hit flash, wave bob, and death fade animations still function on the new mesh"
+        "The XP thresholds in `levelSystem.ts` match the updated backend thresholds for all 55 levels.",
+        "The PlayerProfile XP progress bar and current level display correctly reflect the new thresholds.",
+        "Level calculation utility functions (current level, XP boundaries, percentage progress) return correct values under the new thresholds."
       ],
       "file_operations": [
         {
-          "path": "frontend/src/components/Game/EnemyMesh.tsx",
+          "path": "frontend/src/utils/levelSystem.ts",
           "operation": "modify",
-          "description": "Replace the BossZombie mesh geometry with a mutated boss structure: scale up the overall size by 1.4–1.6x relative to StandardZombie; create an enlarged deformed skull (wider and taller BoxGeometry with uneven proportions); add two small SphereGeometry elements for glowing red eyes with MeshBasicMaterial (emissive red, no lighting) positioned in sunken sockets; build a bulkier torso with asymmetric shoulder masses (one shoulder larger/higher than the other using BoxGeometry); add exposed rib/bone geometry on the chest using thin light-grey PlaneGeometry segments arranged in rib-cage pattern; create elongated oversized arms (longer forearm and upper-arm segments); use a darker necrotic skin tone (#6a7565 range, darker than StandardZombie); add torn dark clothing similar to StandardZombie but more heavily damaged; ensure all segments are grouped and positioned for cohesive boss silhouette; verify existing hit flash, wave bob, and death fade animations work correctly on the new multi-segment boss mesh"
-        }
-      ]
-    },
-    {
-      "id": "REQ-3",
-      "summary": "Add subtle idle sway/lurch animation to both zombie types with forward torso lean and side-to-side arm swing to mimic CoD zombie movement",
-      "acceptanceCriteria": [
-        "Both zombie types have a forward torso lean of approximately 15–25 degrees",
-        "Arms hang lower and swing side-to-side during the walk animation",
-        "The lurch animation is driven by the existing frame-based animation system (useFrame)",
-        "Animation does not cause performance regression (no new per-frame allocations)"
-      ],
-      "file_operations": [
+          "description": "Replace the existing XP threshold array with significantly higher values that scale much more steeply (at least 2–3× higher overall). Ensure each level requires substantially more XP than the previous configuration, with disproportionately higher costs at higher levels. The new thresholds must match the updated backend progression exactly to keep frontend level calculations, XP progress bars, and boundaries consistent with backend state."
+        },
         {
-          "path": "frontend/src/components/Game/EnemyMesh.tsx",
+          "path": "frontend/src/components/PlayerProfile.tsx",
           "operation": "modify",
-          "description": "Add idle lurch animation to both StandardZombie and BossZombie: apply a static forward rotation of 0.26–0.44 radians (15–25 degrees) to the torso group to create a hunched-forward posture; in the existing useFrame animation loop, add a slow sinusoidal side-to-side shoulder sway (modify arm group rotations based on time with a period of ~2–3 seconds and amplitude of ~0.1 radians); ensure arms hang lower by adjusting their rest position downward; layer this lurch animation on top of the existing walking bob animation without conflicting with hit flash or death fade effects; validate no new object allocations occur per frame (reuse existing time/delta values)"
+          "description": "Verify that the PlayerProfile component correctly displays the player's current level, XP progress bar, and XP boundaries using the updated level system utilities. Ensure the progress bar percentage, current/next level XP display, and level badge all reflect the new steeper thresholds without requiring component logic changes (the updated levelSystem.ts utilities should handle the calculation changes transparently)."
         }
       ]
     }

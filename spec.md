@@ -1,12 +1,10 @@
 # Specification
 
 ## Summary
-**Goal:** Improve the 3D zombie models in the FPS Zombie Shooter to look like Call of Duty-style zombies with more detailed geometry, necrotic aesthetics, and iconic lurching animations.
+**Goal:** Significantly increase the XP thresholds required for each player level-up (levels 1–55) so that progression takes considerably longer, with steeply scaling costs at higher levels.
 
 **Planned changes:**
-- Redesign the `StandardZombie` mesh in `EnemyMesh.tsx` with separate head, torso, arms, and legs segments; skull-like head with sunken/hollow eye sockets; torn dark-brown/black clothing geometry; pale greenish-grey toon-shaded skin; dark red blood accents
-- Redesign the `BossZombie` mesh in `EnemyMesh.tsx` with a bulkier/larger body, asymmetric oversized shoulders and elongated arms, deformed enlarged skull, emissive glowing red eye geometry, exposed rib/bone geometry on the chest, and a darker decayed skin tone
-- Add a forward torso lean (~15–25 degrees) and side-to-side arm sway/lurch animation to both zombie types, driven by the existing `useFrame` animation system
-- Preserve all existing hit flash, death fade, and walking bob animation logic
+- Update the backend XP/level progression system with much higher, steeply scaling XP thresholds for all 55 levels (at least 2–3× higher overall).
+- Update `frontend/src/utils/levelSystem.ts` to mirror the new backend XP thresholds exactly for all 55 levels.
 
-**User-visible outcome:** Both zombie types now look and move like classic Call of Duty-style undead enemies, with detailed necrotic geometry, torn clothing, glowing boss eyes, and an iconic lurching walk animation.
+**User-visible outcome:** Players need substantially more XP to level up, with higher levels requiring disproportionately more XP. The PlayerProfile screen (level display, XP progress bar, XP boundaries) correctly reflects the new thresholds.

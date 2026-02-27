@@ -245,7 +245,7 @@ export function GameScene({ onGameOver }: GameSceneProps) {
         }
         const spent = spendPoints(nextCost);
         if (spent) {
-          const result = upgradeWeapon(points);
+          upgradeWeapon(points);
           const tierNames = ['BLUE STEEL', 'VOID PURPLE', 'GOLDEN FURY'];
           const tierName = tierNames[weaponState.upgradeTier];
           showUpgradeMessage(`⚡ UPGRADED TO ${tierName}! ⚡`);
@@ -350,6 +350,7 @@ export function GameScene({ onGameOver }: GameSceneProps) {
             <EnemyMesh
               enemy={enemy}
               onHitFlashDone={clearHitFlash}
+              playerPositionRef={playerPosRef}
             />
           </group>
         ))}

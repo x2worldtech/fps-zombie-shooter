@@ -1,84 +1,54 @@
 {
   "kind": "build_request",
-  "title": "Improve Zombie Models to Look Like Call of Duty-Style Zombies",
+  "title": "Increase XP required per player level-up",
   "projectName": "FPS Zombie Shooter",
   "priority": "normal",
   "requirements": [
     {
       "id": "REQ-1",
-      "text": "Redesign the StandardZombie 3D mesh in EnemyMesh.tsx to resemble a Call of Duty-style zombie: add a more humanoid body with visible torso, arms, and legs as separate geometric segments; give the head a skull-like shape with sunken eye sockets (dark hollow eye geometry); add torn/ragged clothing geometry (overlapping flat planes or box segments with dark/blood-stained colors); use a desaturated, pale greenish-grey skin tone for body parts; add protruding jaw/lower-face detail; keep toon-shading but shift colors to necrotic (pale green-grey skin, dark red blood accents, torn dark-brown clothing).",
-      "target": "frontend",
+      "text": "Significantly increase the XP thresholds required to advance each player level in the backend XP/level progression system. The XP cost per level should scale much more steeply so players need considerably more accumulated XP to reach higher levels.",
+      "target": "backend",
       "source": {
         "messageIds": [
-          "msg-1"
+          "msg-4"
         ],
         "quotes": [
-          "verbessere die modellierung der zombies , das sie mehr wie richtige zombie in call of duty aussehen"
+          "man braucht deutlich mehr XP bei jedem spieler level aufstieg"
         ]
       },
       "acceptanceCriteria": [
-        "StandardZombie has a distinct head, torso, two arms, and two legs as separate mesh segments",
-        "Head geometry includes sunken/hollow eye socket detail (dark recessed geometry)",
-        "Body parts use a pale greenish-grey toon-shaded color matching a CoD undead aesthetic",
-        "Torn clothing is represented by overlapping dark-brown/black geometric planes on the torso and arms",
-        "Blood accents (dark red) are present on clothing/body segments",
-        "Walking bob animation still functions correctly on the new mesh",
-        "Hit flash and death fade effects still apply correctly to the new mesh"
+        "Each level requires substantially more XP than in the previous configuration (e.g., at least 2–3× higher thresholds overall).",
+        "The XP thresholds increase steeply with each level so higher levels require disproportionately more XP.",
+        "Existing player XP values are preserved; only the thresholds change, so players may find their effective level has changed accordingly."
       ]
     },
     {
       "id": "REQ-2",
-      "text": "Redesign the BossZombie 3D mesh in EnemyMesh.tsx to look like a heavily mutated CoD boss zombie: larger bulkier torso with uneven shoulder masses, oversized arms, a deformed enlarged skull, exposed bone/rib geometry on the chest, glowing red/orange sunken eyes (emissive small sphere geometry), and heavily torn dark clothing. Use a darker necrotic skin tone than the standard zombie to visually distinguish it as an elite threat.",
+      "text": "Update the frontend level progression system in `frontend/src/utils/levelSystem.ts` to mirror the new backend XP thresholds exactly, so that the displayed level, XP progress bar, and XP boundaries in the PlayerProfile screen remain consistent with backend calculations.",
       "target": "frontend",
       "source": {
         "messageIds": [
-          "msg-1"
+          "msg-4"
         ],
         "quotes": [
-          "verbessere die modellierung der zombies , das sie mehr wie richtige zombie in call of duty aussehen"
+          "man braucht deutlich mehr XP bei jedem spieler level aufstieg"
         ]
       },
       "acceptanceCriteria": [
-        "BossZombie is visually larger and more imposing than StandardZombie",
-        "BossZombie has an oversized deformed skull with emissive glowing red eye geometry",
-        "Chest area includes exposed rib/bone geometry (light-grey protruding planes)",
-        "Shoulders are asymmetric and bulkier than the standard zombie",
-        "Arms are elongated/oversized relative to the body",
-        "BossZombie uses a darker, more decayed skin tone than StandardZombie",
-        "Existing hit flash, wave bob, and death fade animations still function on the new mesh"
-      ]
-    },
-    {
-      "id": "REQ-3",
-      "text": "Add a subtle idle sway/lurch animation to both zombie types in EnemyMesh.tsx: the torso should lean forward slightly and arms should hang low with a side-to-side shoulder sway, mimicking the iconic CoD zombie lurch movement. This should complement the existing walking bob animation.",
-      "target": "frontend",
-      "source": {
-        "messageIds": [
-          "msg-1"
-        ],
-        "quotes": [
-          "verbessere die modellierung der zombies , das sie mehr wie richtige zombie in call of duty aussehen"
-        ]
-      },
-      "acceptanceCriteria": [
-        "Both zombie types have a forward torso lean of approximately 15–25 degrees",
-        "Arms hang lower and swing side-to-side during the walk animation",
-        "The lurch animation is driven by the existing frame-based animation system (useFrame)",
-        "Animation does not cause performance regression (no new per-frame allocations)"
+        "The XP thresholds in `levelSystem.ts` match the updated backend thresholds for all 55 levels.",
+        "The PlayerProfile XP progress bar and current level display correctly reflect the new thresholds.",
+        "Level calculation utility functions (current level, XP boundaries, percentage progress) return correct values under the new thresholds."
       ]
     }
   ],
   "constraints": [
-    "All changes must be confined to frontend/src/components/Game/EnemyMesh.tsx",
-    "Do not break existing hit flash, death fade, or wave bob animation logic",
-    "Do not modify backend files",
-    "Do not modify any file under frontend/src/hooks/useInternetIdentity.ts, frontend/src/hooks/useActor.ts, frontend/src/main.tsx, or frontend/src/components/ui"
+    "Do not change the level cap (1–55) or the overall level structure.",
+    "Do not modify any files under frontend/src/hooks/useInternetIdentity.ts, frontend/src/hooks/useActor.ts, frontend/src/main.tsx, or frontend/src/components/ui."
   ],
   "nonGoals": [
-    "Adding new enemy types or changing enemy AI/pathfinding logic",
-    "Modifying enemy health, damage, or spawn logic",
-    "Changing weapon models or any other 3D asset outside of EnemyMesh.tsx",
-    "Importing external 3D model files (GLB/OBJ) — geometry must remain procedural using Three.js primitives"
+    "Changing the amount of XP awarded per kill or per game session.",
+    "Adding new levels beyond the existing cap.",
+    "Resetting or wiping existing player XP data."
   ],
   "imageRequirements": {
     "required": [],

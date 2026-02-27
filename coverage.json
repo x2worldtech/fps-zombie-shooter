@@ -1,56 +1,44 @@
 {
   "kind": "coverage_report",
   "version": "1.0",
-  "generatedAt": "2026-02-27T22:13:51.182Z",
+  "generatedAt": "2026-02-27T23:17:33.629Z",
   "sources": {
     "buildRequest": true,
     "implementationPlan": true
   },
   "requirements": {
-    "total": 3,
-    "implemented": 3,
+    "total": 2,
+    "implemented": 1,
     "items": [
       {
         "id": "REQ-1",
-        "summary": "Redesign the StandardZombie 3D mesh in EnemyMesh.tsx to resemble a Call of Duty-style zombie: add a more humanoid body with visible torso, arms, and legs as separate geometric segments; give the head a skull-like shape with sunken eye sockets (dark hollow eye geometry); add torn/ragged clothing geometry (overlapping flat planes or box segments with dark/blood-stained colors); use a desaturated, pale greenish-grey skin tone for body parts; add protruding jaw/lower-face detail; keep toon-shading but shift colors to necrotic (pale green-grey skin, dark red blood accents, torn dark-brown clothing).",
-        "status": "implemented",
-        "plannedFiles": [
-          "frontend/src/components/Game/EnemyMesh.tsx"
-        ],
-        "matchedFiles": [
-          "frontend/src/components/Game/EnemyMesh.tsx"
-        ]
+        "summary": "Significantly increase the XP thresholds required to advance each player level in the backend XP/level progression system. The XP cost per level should scale much more steeply so players need considerably more accumulated XP to reach higher levels.",
+        "status": "unknown",
+        "plannedFiles": [],
+        "matchedFiles": []
       },
       {
         "id": "REQ-2",
-        "summary": "Redesign the BossZombie 3D mesh in EnemyMesh.tsx to look like a heavily mutated CoD boss zombie: larger bulkier torso with uneven shoulder masses, oversized arms, a deformed enlarged skull, exposed bone/rib geometry on the chest, glowing red/orange sunken eyes (emissive small sphere geometry), and heavily torn dark clothing. Use a darker necrotic skin tone than the standard zombie to visually distinguish it as an elite threat.",
+        "summary": "Update the frontend level progression system in `frontend/src/utils/levelSystem.ts` to mirror the new backend XP thresholds exactly, so that the displayed level, XP progress bar, and XP boundaries in the PlayerProfile screen remain consistent with backend calculations.",
         "status": "implemented",
         "plannedFiles": [
-          "frontend/src/components/Game/EnemyMesh.tsx"
+          "frontend/src/utils/levelSystem.ts",
+          "frontend/src/components/PlayerProfile.tsx"
         ],
         "matchedFiles": [
-          "frontend/src/components/Game/EnemyMesh.tsx"
-        ]
-      },
-      {
-        "id": "REQ-3",
-        "summary": "Add a subtle idle sway/lurch animation to both zombie types in EnemyMesh.tsx: the torso should lean forward slightly and arms should hang low with a side-to-side shoulder sway, mimicking the iconic CoD zombie lurch movement. This should complement the existing walking bob animation.",
-        "status": "implemented",
-        "plannedFiles": [
-          "frontend/src/components/Game/EnemyMesh.tsx"
-        ],
-        "matchedFiles": [
-          "frontend/src/components/Game/EnemyMesh.tsx"
+          "frontend/src/utils/levelSystem.ts"
         ]
       }
     ]
   },
   "changedFiles": [
+    "backend/main.mo",
+    "backend/migration.mo",
     "build-request.json",
     "feature_evidence.json",
     "frontend-file-summaries.txt",
     "frontend-implementation-plan.json",
-    "frontend/src/components/Game/EnemyMesh.tsx",
+    "frontend/src/utils/levelSystem.ts",
     "project_state.json",
     "scratch/component-selection.json",
     "spec.md",
