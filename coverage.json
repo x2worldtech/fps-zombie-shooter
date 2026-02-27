@@ -1,69 +1,56 @@
 {
   "kind": "coverage_report",
   "version": "1.0",
-  "generatedAt": "2026-02-27T21:43:06.604Z",
+  "generatedAt": "2026-02-27T22:13:51.182Z",
   "sources": {
     "buildRequest": true,
     "implementationPlan": true
   },
   "requirements": {
-    "total": 4,
-    "implemented": 4,
+    "total": 3,
+    "implemented": 3,
     "items": [
       {
         "id": "REQ-1",
-        "summary": "Redesign the pistol first-person view model in WeaponViewModel.tsx to closely resemble a real semi-automatic handgun. Include a detailed slide with ejection port cutout, serrated grip texture via geometry segments, a distinct trigger guard with curved profile, a barrel with visible muzzle opening, a hammer or striker indicator, and a magazine well at the base of the grip. Use proportions matching a real 9mm pistol (e.g., Glock or Beretta proportions).",
+        "summary": "Redesign the StandardZombie 3D mesh in EnemyMesh.tsx to resemble a Call of Duty-style zombie: add a more humanoid body with visible torso, arms, and legs as separate geometric segments; give the head a skull-like shape with sunken eye sockets (dark hollow eye geometry); add torn/ragged clothing geometry (overlapping flat planes or box segments with dark/blood-stained colors); use a desaturated, pale greenish-grey skin tone for body parts; add protruding jaw/lower-face detail; keep toon-shading but shift colors to necrotic (pale green-grey skin, dark red blood accents, torn dark-brown clothing).",
         "status": "implemented",
         "plannedFiles": [
-          "frontend/src/components/Game/WeaponViewModel.tsx"
+          "frontend/src/components/Game/EnemyMesh.tsx"
         ],
         "matchedFiles": [
-          "frontend/src/components/Game/WeaponViewModel.tsx"
+          "frontend/src/components/Game/EnemyMesh.tsx"
         ]
       },
       {
         "id": "REQ-2",
-        "summary": "Redesign the shotgun first-person view model in WeaponViewModel.tsx to closely resemble a real pump-action shotgun. Include a long cylindrical barrel with a ventilated rib on top, a distinct pump/forend piece that slides along the magazine tube, a wooden or textured stock with butt plate, a receiver body with visible loading port, a trigger guard, and a side ejection port. Use proportions matching a real 12-gauge pump-action (e.g., Mossberg 500 or Remington 870).",
+        "summary": "Redesign the BossZombie 3D mesh in EnemyMesh.tsx to look like a heavily mutated CoD boss zombie: larger bulkier torso with uneven shoulder masses, oversized arms, a deformed enlarged skull, exposed bone/rib geometry on the chest, glowing red/orange sunken eyes (emissive small sphere geometry), and heavily torn dark clothing. Use a darker necrotic skin tone than the standard zombie to visually distinguish it as an elite threat.",
         "status": "implemented",
         "plannedFiles": [
-          "frontend/src/components/Game/WeaponViewModel.tsx"
+          "frontend/src/components/Game/EnemyMesh.tsx"
         ],
         "matchedFiles": [
-          "frontend/src/components/Game/WeaponViewModel.tsx"
+          "frontend/src/components/Game/EnemyMesh.tsx"
         ]
       },
       {
         "id": "REQ-3",
-        "summary": "Redesign the machine gun (assault rifle) first-person view model in WeaponViewModel.tsx to closely resemble a real assault rifle. Include a rectangular receiver body, a detachable box magazine angled slightly forward, a pistol grip with finger-groove geometry, a handguard with rail geometry segments, a flash hider or muzzle device at the barrel tip, a charging handle on the rear of the receiver, a dust cover, and a stock (visible on the right side in first-person view). Use proportions matching a real assault rifle (e.g., AK-47 or M4/AR-15 proportions).",
+        "summary": "Add a subtle idle sway/lurch animation to both zombie types in EnemyMesh.tsx: the torso should lean forward slightly and arms should hang low with a side-to-side shoulder sway, mimicking the iconic CoD zombie lurch movement. This should complement the existing walking bob animation.",
         "status": "implemented",
         "plannedFiles": [
-          "frontend/src/components/Game/WeaponViewModel.tsx"
+          "frontend/src/components/Game/EnemyMesh.tsx"
         ],
         "matchedFiles": [
-          "frontend/src/components/Game/WeaponViewModel.tsx"
-        ]
-      },
-      {
-        "id": "REQ-4",
-        "summary": "Apply consistent toon-shading and Borderlands-style dark outlines to all three redesigned weapon models using the existing ToonMaterial hooks, ensuring the added geometry details (ports, rails, guards) all receive proper shading with distinct dark edges to make the details pop in the existing art style.",
-        "status": "implemented",
-        "plannedFiles": [
-          "frontend/src/components/Game/WeaponViewModel.tsx"
-        ],
-        "matchedFiles": [
-          "frontend/src/components/Game/WeaponViewModel.tsx"
+          "frontend/src/components/Game/EnemyMesh.tsx"
         ]
       }
     ]
   },
   "changedFiles": [
     "build-request.json",
-    "build-template/README.md",
-    "caffeine.lock.json",
     "feature_evidence.json",
     "frontend-file-summaries.txt",
     "frontend-implementation-plan.json",
-    "frontend/src/components/Game/WeaponViewModel.tsx",
+    "frontend/src/components/Game/EnemyMesh.tsx",
     "project_state.json",
     "scratch/component-selection.json",
     "spec.md",

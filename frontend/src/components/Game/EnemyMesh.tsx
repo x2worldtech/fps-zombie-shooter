@@ -9,29 +9,68 @@ interface EnemyMeshProps {
   onHitFlashDone: (id: string) => void;
 }
 
+// ─── Standard Zombie ──────────────────────────────────────────────────────────
 function StandardZombie({ enemy, onHitFlashDone }: EnemyMeshProps) {
   const groupRef = useRef<THREE.Group>(null);
+  const torsoRef = useRef<THREE.Group>(null);
+  const leftArmRef = useRef<THREE.Group>(null);
+  const rightArmRef = useRef<THREE.Group>(null);
+  const leftLegRef = useRef<THREE.Group>(null);
+  const rightLegRef = useRef<THREE.Group>(null);
   const hitFlashRef = useRef(0);
-  const toonMat = useToonMaterial('#4a8a3a', hitFlashRef.current);
-  const skinMat = useToonMaterial('#8a6a3a', hitFlashRef.current);
-  const outlineMat = useOutlineMaterial(0.06);
+
+  // Skin: pale greenish-grey necrotic tone
+  const skinMat = useToonMaterial('#8fa88a', hitFlashRef.current);
+  // Clothing: dark brown/black torn rags
+  const clothMat = useToonMaterial('#2e2318', hitFlashRef.current);
+  // Blood accents: dark red
+  const bloodMat = useToonMaterial('#5a0a0a', hitFlashRef.current);
+  // Eye sockets: very dark recessed
+  const eyeMat = useToonMaterial('#0d0d0d', hitFlashRef.current);
+  // Outline
+  const outlineMat = useOutlineMaterial(0.055);
+  const outlineThickMat = useOutlineMaterial(0.07);
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
 
-    // Smooth position
     const [tx, ty, tz] = enemy.position;
     groupRef.current.position.lerp(new THREE.Vector3(tx, ty, tz), Math.min(delta * 12, 1));
 
-    // Face player direction (simple bob animation)
     if (!enemy.isDead) {
+      // Face movement direction
       groupRef.current.rotation.y = Math.atan2(
         -enemy.velocity[0] || 0,
         -enemy.velocity[1] || 1
       );
-      // Walk bob
-      const bob = Math.sin(Date.now() * 0.008) * 0.05;
+
+      const t = Date.now() * 0.001;
+      // Walking bob
+      const bob = Math.sin(t * 8) * 0.04;
       groupRef.current.position.y = ty + bob;
+
+      // Torso forward lean (hunched CoD zombie posture)
+      if (torsoRef.current) {
+        torsoRef.current.rotation.x = 0.32 + Math.sin(t * 4) * 0.04;
+      }
+
+      // Arm swing — outstretched reaching forward like CoD zombie
+      if (leftArmRef.current) {
+        leftArmRef.current.rotation.x = -1.1 + Math.sin(t * 8) * 0.18;
+        leftArmRef.current.rotation.z = 0.15 + Math.sin(t * 4) * 0.06;
+      }
+      if (rightArmRef.current) {
+        rightArmRef.current.rotation.x = -1.1 - Math.sin(t * 8) * 0.18;
+        rightArmRef.current.rotation.z = -0.15 - Math.sin(t * 4) * 0.06;
+      }
+
+      // Leg walk cycle
+      if (leftLegRef.current) {
+        leftLegRef.current.rotation.x = Math.sin(t * 8) * 0.35;
+      }
+      if (rightLegRef.current) {
+        rightLegRef.current.rotation.x = -Math.sin(t * 8) * 0.35;
+      }
     }
 
     // Hit flash
@@ -50,7 +89,7 @@ function StandardZombie({ enemy, onHitFlashDone }: EnemyMeshProps) {
       const elapsed = (Date.now() - enemy.deathTime) / 1000;
       const opacity = Math.max(0, 1 - elapsed * 1.5);
       groupRef.current.scale.y = Math.max(0.01, 1 - elapsed * 1.2);
-      groupRef.current.children.forEach(child => {
+      groupRef.current.traverse(child => {
         if (child instanceof THREE.Mesh) {
           (child.material as THREE.Material).opacity = opacity;
           (child.material as THREE.Material).transparent = true;
@@ -61,55 +100,250 @@ function StandardZombie({ enemy, onHitFlashDone }: EnemyMeshProps) {
 
   return (
     <group ref={groupRef} position={enemy.position}>
-      {/* Body */}
-      <mesh material={toonMat} position={[0, 0, 0]}>
-        <boxGeometry args={[0.7, 1.0, 0.4]} />
+
+      {/* ── TORSO GROUP (hunched forward) ── */}
+      <group ref={torsoRef} position={[0, 0.1, 0]} rotation={[0.32, 0, 0]}>
+
+        {/* Main torso */}
+        <mesh material={skinMat} position={[0, 0, 0]}>
+          <boxGeometry args={[0.62, 0.82, 0.34]} />
+        </mesh>
+        <mesh material={outlineMat} position={[0, 0, 0]}>
+          <boxGeometry args={[0.62, 0.82, 0.34]} />
+        </mesh>
+
+        {/* Torn shirt — dark cloth layer over torso */}
+        <mesh material={clothMat} position={[0, 0.05, 0.18]}>
+          <boxGeometry args={[0.58, 0.72, 0.02]} />
+        </mesh>
+        {/* Torn shirt side strips */}
+        <mesh material={clothMat} position={[-0.32, -0.1, 0]}>
+          <boxGeometry args={[0.02, 0.5, 0.36]} />
+        </mesh>
+        <mesh material={clothMat} position={[0.32, -0.1, 0]}>
+          <boxGeometry args={[0.02, 0.5, 0.36]} />
+        </mesh>
+        {/* Blood stain on torso */}
+        <mesh material={bloodMat} position={[0.1, 0.1, 0.19]}>
+          <boxGeometry args={[0.18, 0.22, 0.01]} />
+        </mesh>
+        <mesh material={bloodMat} position={[-0.08, -0.15, 0.19]}>
+          <boxGeometry args={[0.12, 0.14, 0.01]} />
+        </mesh>
+
+        {/* ── NECK ── */}
+        <mesh material={skinMat} position={[0, 0.5, -0.04]}>
+          <boxGeometry args={[0.2, 0.18, 0.2]} />
+        </mesh>
+
+        {/* ── HEAD GROUP ── */}
+        <group position={[0, 0.72, -0.06]}>
+          {/* Skull — slightly elongated, gaunt */}
+          <mesh material={skinMat} position={[0, 0, 0]} userData={{ isHead: true }}>
+            <boxGeometry args={[0.46, 0.52, 0.44]} />
+          </mesh>
+          <mesh material={outlineThickMat} position={[0, 0, 0]} userData={{ isHead: true }}>
+            <boxGeometry args={[0.46, 0.52, 0.44]} />
+          </mesh>
+
+          {/* Jaw — slightly protruding lower jaw */}
+          <mesh material={skinMat} position={[0, -0.2, 0.04]}>
+            <boxGeometry args={[0.38, 0.16, 0.38]} />
+          </mesh>
+
+          {/* Left eye socket — sunken dark recess */}
+          <mesh material={eyeMat} position={[-0.13, 0.06, 0.22]}>
+            <boxGeometry args={[0.12, 0.1, 0.04]} />
+          </mesh>
+          {/* Right eye socket */}
+          <mesh material={eyeMat} position={[0.13, 0.06, 0.22]}>
+            <boxGeometry args={[0.12, 0.1, 0.04]} />
+          </mesh>
+
+          {/* Brow ridge — protruding bone */}
+          <mesh material={skinMat} position={[0, 0.14, 0.22]}>
+            <boxGeometry args={[0.42, 0.06, 0.04]} />
+          </mesh>
+
+          {/* Cheekbones — gaunt sunken cheeks */}
+          <mesh material={skinMat} position={[-0.22, -0.02, 0.18]}>
+            <boxGeometry args={[0.06, 0.1, 0.06]} />
+          </mesh>
+          <mesh material={skinMat} position={[0.22, -0.02, 0.18]}>
+            <boxGeometry args={[0.06, 0.1, 0.06]} />
+          </mesh>
+
+          {/* Blood on face */}
+          <mesh material={bloodMat} position={[-0.05, -0.1, 0.23]}>
+            <boxGeometry args={[0.1, 0.12, 0.01]} />
+          </mesh>
+        </group>
+
+        {/* ── LEFT ARM GROUP (outstretched reaching) ── */}
+        <group ref={leftArmRef} position={[-0.38, 0.28, 0]} rotation={[-1.1, 0, 0.15]}>
+          {/* Upper arm */}
+          <mesh material={clothMat} position={[0, -0.2, 0]}>
+            <boxGeometry args={[0.2, 0.38, 0.2]} />
+          </mesh>
+          {/* Forearm */}
+          <mesh material={skinMat} position={[0, -0.52, 0]}>
+            <boxGeometry args={[0.17, 0.34, 0.17]} />
+          </mesh>
+          {/* Hand */}
+          <mesh material={skinMat} position={[0, -0.74, 0]}>
+            <boxGeometry args={[0.16, 0.16, 0.1]} />
+          </mesh>
+          {/* Torn sleeve */}
+          <mesh material={clothMat} position={[0.1, -0.38, 0.1]}>
+            <boxGeometry args={[0.04, 0.18, 0.04]} />
+          </mesh>
+          <mesh material={outlineMat} position={[0, -0.35, 0]}>
+            <boxGeometry args={[0.22, 0.72, 0.22]} />
+          </mesh>
+        </group>
+
+        {/* ── RIGHT ARM GROUP (outstretched reaching) ── */}
+        <group ref={rightArmRef} position={[0.38, 0.28, 0]} rotation={[-1.1, 0, -0.15]}>
+          {/* Upper arm */}
+          <mesh material={clothMat} position={[0, -0.2, 0]}>
+            <boxGeometry args={[0.2, 0.38, 0.2]} />
+          </mesh>
+          {/* Forearm */}
+          <mesh material={skinMat} position={[0, -0.52, 0]}>
+            <boxGeometry args={[0.17, 0.34, 0.17]} />
+          </mesh>
+          {/* Hand */}
+          <mesh material={skinMat} position={[0, -0.74, 0]}>
+            <boxGeometry args={[0.16, 0.16, 0.1]} />
+          </mesh>
+          {/* Torn sleeve */}
+          <mesh material={clothMat} position={[-0.1, -0.38, 0.1]}>
+            <boxGeometry args={[0.04, 0.18, 0.04]} />
+          </mesh>
+          <mesh material={outlineMat} position={[0, -0.35, 0]}>
+            <boxGeometry args={[0.22, 0.72, 0.22]} />
+          </mesh>
+        </group>
+      </group>
+
+      {/* ── PELVIS / WAIST ── */}
+      <mesh material={clothMat} position={[0, -0.42, 0]}>
+        <boxGeometry args={[0.58, 0.22, 0.32]} />
       </mesh>
-      <mesh material={outlineMat} position={[0, 0, 0]}>
-        <boxGeometry args={[0.7, 1.0, 0.4]} />
-      </mesh>
-      {/* Head — tagged with isHead for precise headshot detection */}
-      <mesh material={skinMat} position={[0, 0.75, 0]} userData={{ isHead: true }}>
-        <boxGeometry args={[0.5, 0.5, 0.5]} />
-      </mesh>
-      <mesh material={outlineMat} position={[0, 0.75, 0]} userData={{ isHead: true }}>
-        <boxGeometry args={[0.5, 0.5, 0.5]} />
-      </mesh>
-      {/* Arms */}
-      <mesh material={toonMat} position={[-0.55, 0.1, 0.1]} rotation={[0.5, 0, 0]}>
-        <boxGeometry args={[0.2, 0.7, 0.2]} />
-      </mesh>
-      <mesh material={toonMat} position={[0.55, 0.1, 0.1]} rotation={[0.5, 0, 0]}>
-        <boxGeometry args={[0.2, 0.7, 0.2]} />
-      </mesh>
-      {/* Legs */}
-      <mesh material={toonMat} position={[-0.2, -0.7, 0]}>
-        <boxGeometry args={[0.25, 0.6, 0.25]} />
-      </mesh>
-      <mesh material={toonMat} position={[0.2, -0.7, 0]}>
-        <boxGeometry args={[0.25, 0.6, 0.25]} />
-      </mesh>
+
+      {/* ── LEFT LEG GROUP ── */}
+      <group ref={leftLegRef} position={[-0.18, -0.62, 0]}>
+        {/* Thigh */}
+        <mesh material={clothMat} position={[0, -0.2, 0]}>
+          <boxGeometry args={[0.24, 0.38, 0.24]} />
+        </mesh>
+        {/* Shin */}
+        <mesh material={clothMat} position={[0, -0.52, 0]}>
+          <boxGeometry args={[0.2, 0.34, 0.2]} />
+        </mesh>
+        {/* Boot/foot */}
+        <mesh material={eyeMat} position={[0, -0.74, 0.04]}>
+          <boxGeometry args={[0.22, 0.14, 0.28]} />
+        </mesh>
+        <mesh material={outlineMat} position={[0, -0.44, 0]}>
+          <boxGeometry args={[0.26, 0.76, 0.26]} />
+        </mesh>
+      </group>
+
+      {/* ── RIGHT LEG GROUP ── */}
+      <group ref={rightLegRef} position={[0.18, -0.62, 0]}>
+        {/* Thigh */}
+        <mesh material={clothMat} position={[0, -0.2, 0]}>
+          <boxGeometry args={[0.24, 0.38, 0.24]} />
+        </mesh>
+        {/* Shin */}
+        <mesh material={clothMat} position={[0, -0.52, 0]}>
+          <boxGeometry args={[0.2, 0.34, 0.2]} />
+        </mesh>
+        {/* Boot/foot */}
+        <mesh material={eyeMat} position={[0, -0.74, 0.04]}>
+          <boxGeometry args={[0.22, 0.14, 0.28]} />
+        </mesh>
+        <mesh material={outlineMat} position={[0, -0.44, 0]}>
+          <boxGeometry args={[0.26, 0.76, 0.26]} />
+        </mesh>
+      </group>
+
     </group>
   );
 }
 
+// ─── Boss Zombie ──────────────────────────────────────────────────────────────
 function BossZombie({ enemy, onHitFlashDone }: EnemyMeshProps) {
   const groupRef = useRef<THREE.Group>(null);
+  const torsoRef = useRef<THREE.Group>(null);
+  const leftArmRef = useRef<THREE.Group>(null);
+  const rightArmRef = useRef<THREE.Group>(null);
+  const leftLegRef = useRef<THREE.Group>(null);
+  const rightLegRef = useRef<THREE.Group>(null);
   const hitFlashRef = useRef(0);
-  const toonMat = useToonMaterial('#8a1a1a', hitFlashRef.current);
-  const darkMat = useToonMaterial('#4a0a0a', hitFlashRef.current);
-  const outlineMat = useOutlineMaterial(0.1);
+
+  // Boss skin: darker, more decayed necrotic tone
+  const skinMat = useToonMaterial('#5a6b55', hitFlashRef.current);
+  // Darker necrotic patches
+  const necroMat = useToonMaterial('#3a4535', hitFlashRef.current);
+  // Clothing: very dark, heavily damaged
+  const clothMat = useToonMaterial('#1a1208', hitFlashRef.current);
+  // Blood: dark red
+  const bloodMat = useToonMaterial('#6a0808', hitFlashRef.current);
+  // Bone/rib: light grey exposed bone
+  const boneMat = useToonMaterial('#c8c0b0', hitFlashRef.current);
+  // Outline
+  const outlineMat = useOutlineMaterial(0.09);
+  const outlineThickMat = useOutlineMaterial(0.12);
+
+  // Glowing red eye material (emissive, no lighting)
+  const eyeGlowMat = useRef<THREE.MeshBasicMaterial | null>(null);
+  if (!eyeGlowMat.current) {
+    eyeGlowMat.current = new THREE.MeshBasicMaterial({ color: new THREE.Color('#ff1a00') });
+  }
+  const eyeSocketMat = useRef<THREE.MeshBasicMaterial | null>(null);
+  if (!eyeSocketMat.current) {
+    eyeSocketMat.current = new THREE.MeshBasicMaterial({ color: new THREE.Color('#0a0000') });
+  }
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
+
     const [tx, ty, tz] = enemy.position;
     groupRef.current.position.lerp(new THREE.Vector3(tx, ty, tz), Math.min(delta * 8, 1));
 
     if (!enemy.isDead) {
-      const bob = Math.sin(Date.now() * 0.004) * 0.08;
+      const t = Date.now() * 0.001;
+      // Slower, heavier bob
+      const bob = Math.sin(t * 4) * 0.1;
       groupRef.current.position.y = ty + bob;
+
+      // Heavy forward lean
+      if (torsoRef.current) {
+        torsoRef.current.rotation.x = 0.28 + Math.sin(t * 2) * 0.05;
+      }
+
+      // Massive arms reaching forward
+      if (leftArmRef.current) {
+        leftArmRef.current.rotation.x = -0.9 + Math.sin(t * 4) * 0.15;
+        leftArmRef.current.rotation.z = 0.2 + Math.sin(t * 2) * 0.05;
+      }
+      if (rightArmRef.current) {
+        rightArmRef.current.rotation.x = -0.9 - Math.sin(t * 4) * 0.15;
+        rightArmRef.current.rotation.z = -0.2 - Math.sin(t * 2) * 0.05;
+      }
+
+      // Heavy leg stomp
+      if (leftLegRef.current) {
+        leftLegRef.current.rotation.x = Math.sin(t * 4) * 0.3;
+      }
+      if (rightLegRef.current) {
+        rightLegRef.current.rotation.x = -Math.sin(t * 4) * 0.3;
+      }
     }
 
+    // Hit flash
     if (enemy.isHit) {
       hitFlashRef.current = Math.min(hitFlashRef.current + delta * 8, 1);
       if (hitFlashRef.current >= 0.9) {
@@ -120,9 +354,16 @@ function BossZombie({ enemy, onHitFlashDone }: EnemyMeshProps) {
       hitFlashRef.current = Math.max(hitFlashRef.current - delta * 8, 0);
     }
 
+    // Death fade
     if (enemy.isDead) {
       const elapsed = (Date.now() - enemy.deathTime) / 1000;
       groupRef.current.scale.y = Math.max(0.01, 1 - elapsed * 0.8);
+      groupRef.current.traverse(child => {
+        if (child instanceof THREE.Mesh) {
+          (child.material as THREE.Material).opacity = Math.max(0, 1 - elapsed * 1.0);
+          (child.material as THREE.Material).transparent = true;
+        }
+      });
     }
   });
 
@@ -130,46 +371,274 @@ function BossZombie({ enemy, onHitFlashDone }: EnemyMeshProps) {
 
   return (
     <group ref={groupRef} position={enemy.position}>
-      {/* Body */}
-      <mesh material={toonMat} position={[0, 0, 0]}>
-        <boxGeometry args={[1.4, 2.0, 0.8]} />
+
+      {/* ── TORSO GROUP ── */}
+      <group ref={torsoRef} position={[0, 0.2, 0]} rotation={[0.28, 0, 0]}>
+
+        {/* Main torso — wide and bulky */}
+        <mesh material={skinMat} position={[0, 0, 0]}>
+          <boxGeometry args={[1.3, 1.4, 0.7]} />
+        </mesh>
+        <mesh material={outlineMat} position={[0, 0, 0]}>
+          <boxGeometry args={[1.3, 1.4, 0.7]} />
+        </mesh>
+
+        {/* Torn clothing on torso */}
+        <mesh material={clothMat} position={[0, 0.1, 0.36]}>
+          <boxGeometry args={[1.1, 1.1, 0.02]} />
+        </mesh>
+        {/* Torn cloth strips */}
+        <mesh material={clothMat} position={[-0.6, -0.3, 0]}>
+          <boxGeometry args={[0.08, 0.6, 0.72]} />
+        </mesh>
+        <mesh material={clothMat} position={[0.6, -0.3, 0]}>
+          <boxGeometry args={[0.08, 0.6, 0.72]} />
+        </mesh>
+
+        {/* ── EXPOSED RIBS on chest ── */}
+        {[-0.28, -0.1, 0.08, 0.26, 0.44].map((yOff, i) => (
+          <group key={i}>
+            {/* Left rib */}
+            <mesh material={boneMat} position={[-0.38, yOff, 0.36]} rotation={[0, 0, 0.3]}>
+              <boxGeometry args={[0.32, 0.06, 0.04]} />
+            </mesh>
+            {/* Right rib */}
+            <mesh material={boneMat} position={[0.38, yOff, 0.36]} rotation={[0, 0, -0.3]}>
+              <boxGeometry args={[0.32, 0.06, 0.04]} />
+            </mesh>
+          </group>
+        ))}
+        {/* Sternum bone */}
+        <mesh material={boneMat} position={[0, 0.08, 0.38]}>
+          <boxGeometry args={[0.08, 0.7, 0.04]} />
+        </mesh>
+
+        {/* Blood on chest */}
+        <mesh material={bloodMat} position={[0.2, 0.2, 0.38]}>
+          <boxGeometry args={[0.3, 0.4, 0.01]} />
+        </mesh>
+        <mesh material={bloodMat} position={[-0.3, -0.1, 0.38]}>
+          <boxGeometry args={[0.22, 0.28, 0.01]} />
+        </mesh>
+
+        {/* ── ASYMMETRIC SHOULDERS ── */}
+        {/* Left shoulder — larger/higher (mutated) */}
+        <mesh material={necroMat} position={[-0.78, 0.5, 0]}>
+          <boxGeometry args={[0.42, 0.38, 0.6]} />
+        </mesh>
+        <mesh material={outlineMat} position={[-0.78, 0.5, 0]}>
+          <boxGeometry args={[0.42, 0.38, 0.6]} />
+        </mesh>
+        {/* Shoulder spike/bone protrusion */}
+        <mesh material={boneMat} position={[-0.9, 0.72, 0]}>
+          <boxGeometry args={[0.1, 0.22, 0.1]} />
+        </mesh>
+
+        {/* Right shoulder — normal but still bulky */}
+        <mesh material={necroMat} position={[0.72, 0.38, 0]}>
+          <boxGeometry args={[0.36, 0.3, 0.56]} />
+        </mesh>
+        <mesh material={outlineMat} position={[0.72, 0.38, 0]}>
+          <boxGeometry args={[0.36, 0.3, 0.56]} />
+        </mesh>
+
+        {/* ── NECK ── */}
+        <mesh material={skinMat} position={[0, 0.82, -0.05]}>
+          <boxGeometry args={[0.38, 0.28, 0.36]} />
+        </mesh>
+
+        {/* ── HEAD GROUP — deformed oversized skull ── */}
+        <group position={[0, 1.22, -0.08]}>
+          {/* Main skull — wider and taller, deformed */}
+          <mesh material={skinMat} position={[0, 0, 0]} userData={{ isHead: true }}>
+            <boxGeometry args={[0.92, 0.96, 0.82]} />
+          </mesh>
+          <mesh material={outlineThickMat} position={[0, 0, 0]} userData={{ isHead: true }}>
+            <boxGeometry args={[0.92, 0.96, 0.82]} />
+          </mesh>
+
+          {/* Deformed skull bump — asymmetric protrusion */}
+          <mesh material={necroMat} position={[-0.3, 0.42, 0]}>
+            <boxGeometry args={[0.38, 0.28, 0.7]} />
+          </mesh>
+
+          {/* Jaw — massive protruding jaw */}
+          <mesh material={skinMat} position={[0, -0.42, 0.08]}>
+            <boxGeometry args={[0.78, 0.28, 0.7]} />
+          </mesh>
+
+          {/* Brow ridge — heavy protruding bone */}
+          <mesh material={necroMat} position={[0, 0.22, 0.42]}>
+            <boxGeometry args={[0.86, 0.1, 0.08]} />
+          </mesh>
+
+          {/* Left eye socket — deep sunken */}
+          <mesh material={eyeSocketMat.current!} position={[-0.24, 0.1, 0.42]}>
+            <boxGeometry args={[0.22, 0.2, 0.06]} />
+          </mesh>
+          {/* Left glowing eye */}
+          <mesh material={eyeGlowMat.current!} position={[-0.24, 0.1, 0.44]}>
+            <sphereGeometry args={[0.08, 6, 6]} />
+          </mesh>
+
+          {/* Right eye socket — deep sunken */}
+          <mesh material={eyeSocketMat.current!} position={[0.24, 0.1, 0.42]}>
+            <boxGeometry args={[0.22, 0.2, 0.06]} />
+          </mesh>
+          {/* Right glowing eye */}
+          <mesh material={eyeGlowMat.current!} position={[0.24, 0.1, 0.44]}>
+            <sphereGeometry args={[0.08, 6, 6]} />
+          </mesh>
+
+          {/* Cheekbones — gaunt protruding */}
+          <mesh material={necroMat} position={[-0.44, -0.06, 0.36]}>
+            <boxGeometry args={[0.1, 0.16, 0.1]} />
+          </mesh>
+          <mesh material={necroMat} position={[0.44, -0.06, 0.36]}>
+            <boxGeometry args={[0.1, 0.16, 0.1]} />
+          </mesh>
+
+          {/* Blood on face */}
+          <mesh material={bloodMat} position={[0.1, -0.2, 0.42]}>
+            <boxGeometry args={[0.28, 0.3, 0.01]} />
+          </mesh>
+          <mesh material={bloodMat} position={[-0.15, 0.05, 0.42]}>
+            <boxGeometry args={[0.18, 0.22, 0.01]} />
+          </mesh>
+        </group>
+
+        {/* ── LEFT ARM GROUP — elongated, mutated (larger shoulder side) ── */}
+        <group ref={leftArmRef} position={[-0.82, 0.3, 0]} rotation={[-0.9, 0, 0.2]}>
+          {/* Upper arm — thick */}
+          <mesh material={necroMat} position={[0, -0.3, 0]}>
+            <boxGeometry args={[0.38, 0.58, 0.38]} />
+          </mesh>
+          {/* Elbow joint */}
+          <mesh material={skinMat} position={[0, -0.64, 0]}>
+            <boxGeometry args={[0.32, 0.18, 0.32]} />
+          </mesh>
+          {/* Forearm — elongated */}
+          <mesh material={skinMat} position={[0, -0.96, 0]}>
+            <boxGeometry args={[0.28, 0.58, 0.28]} />
+          </mesh>
+          {/* Hand — large clawed */}
+          <mesh material={skinMat} position={[0, -1.32, 0]}>
+            <boxGeometry args={[0.3, 0.22, 0.2]} />
+          </mesh>
+          {/* Claw fingers */}
+          <mesh material={necroMat} position={[-0.08, -1.48, 0.06]}>
+            <boxGeometry args={[0.06, 0.18, 0.06]} />
+          </mesh>
+          <mesh material={necroMat} position={[0.08, -1.48, 0.06]}>
+            <boxGeometry args={[0.06, 0.18, 0.06]} />
+          </mesh>
+          {/* Torn sleeve */}
+          <mesh material={clothMat} position={[0, -0.28, 0]}>
+            <boxGeometry args={[0.4, 0.5, 0.4]} />
+          </mesh>
+          <mesh material={outlineMat} position={[0, -0.7, 0]}>
+            <boxGeometry args={[0.4, 1.3, 0.4]} />
+          </mesh>
+        </group>
+
+        {/* ── RIGHT ARM GROUP — elongated ── */}
+        <group ref={rightArmRef} position={[0.76, 0.22, 0]} rotation={[-0.9, 0, -0.2]}>
+          {/* Upper arm */}
+          <mesh material={necroMat} position={[0, -0.28, 0]}>
+            <boxGeometry args={[0.34, 0.52, 0.34]} />
+          </mesh>
+          {/* Elbow joint */}
+          <mesh material={skinMat} position={[0, -0.6, 0]}>
+            <boxGeometry args={[0.28, 0.16, 0.28]} />
+          </mesh>
+          {/* Forearm — elongated */}
+          <mesh material={skinMat} position={[0, -0.9, 0]}>
+            <boxGeometry args={[0.25, 0.54, 0.25]} />
+          </mesh>
+          {/* Hand */}
+          <mesh material={skinMat} position={[0, -1.24, 0]}>
+            <boxGeometry args={[0.28, 0.2, 0.18]} />
+          </mesh>
+          {/* Claw fingers */}
+          <mesh material={necroMat} position={[-0.07, -1.38, 0.06]}>
+            <boxGeometry args={[0.06, 0.16, 0.06]} />
+          </mesh>
+          <mesh material={necroMat} position={[0.07, -1.38, 0.06]}>
+            <boxGeometry args={[0.06, 0.16, 0.06]} />
+          </mesh>
+          {/* Torn sleeve */}
+          <mesh material={clothMat} position={[0, -0.26, 0]}>
+            <boxGeometry args={[0.36, 0.46, 0.36]} />
+          </mesh>
+          <mesh material={outlineMat} position={[0, -0.65, 0]}>
+            <boxGeometry args={[0.36, 1.2, 0.36]} />
+          </mesh>
+        </group>
+      </group>
+
+      {/* ── PELVIS / WAIST ── */}
+      <mesh material={clothMat} position={[0, -0.62, 0]}>
+        <boxGeometry args={[1.1, 0.36, 0.62]} />
       </mesh>
-      <mesh material={outlineMat} position={[0, 0, 0]}>
-        <boxGeometry args={[1.4, 2.0, 0.8]} />
-      </mesh>
-      {/* Head — tagged with isHead for precise headshot detection */}
-      <mesh material={darkMat} position={[0, 1.4, 0]} userData={{ isHead: true }}>
-        <boxGeometry args={[1.0, 0.9, 0.9]} />
-      </mesh>
-      <mesh material={outlineMat} position={[0, 1.4, 0]} userData={{ isHead: true }}>
-        <boxGeometry args={[1.0, 0.9, 0.9]} />
-      </mesh>
-      {/* Arms */}
-      <mesh material={toonMat} position={[-1.1, 0.2, 0.2]} rotation={[0.4, 0, 0]}>
-        <boxGeometry args={[0.4, 1.4, 0.4]} />
-      </mesh>
-      <mesh material={toonMat} position={[1.1, 0.2, 0.2]} rotation={[0.4, 0, 0]}>
-        <boxGeometry args={[0.4, 1.4, 0.4]} />
-      </mesh>
-      {/* Legs */}
-      <mesh material={darkMat} position={[-0.4, -1.4, 0]}>
-        <boxGeometry args={[0.5, 1.0, 0.5]} />
-      </mesh>
-      <mesh material={darkMat} position={[0.4, -1.4, 0]}>
-        <boxGeometry args={[0.5, 1.0, 0.5]} />
+      <mesh material={outlineMat} position={[0, -0.62, 0]}>
+        <boxGeometry args={[1.1, 0.36, 0.62]} />
       </mesh>
 
-      {/* Health bar (floating above) */}
+      {/* ── LEFT LEG GROUP ── */}
+      <group ref={leftLegRef} position={[-0.32, -0.96, 0]}>
+        {/* Thigh */}
+        <mesh material={necroMat} position={[0, -0.28, 0]}>
+          <boxGeometry args={[0.44, 0.54, 0.44]} />
+        </mesh>
+        {/* Knee */}
+        <mesh material={skinMat} position={[0, -0.6, 0]}>
+          <boxGeometry args={[0.38, 0.18, 0.38]} />
+        </mesh>
+        {/* Shin */}
+        <mesh material={clothMat} position={[0, -0.9, 0]}>
+          <boxGeometry args={[0.38, 0.52, 0.38]} />
+        </mesh>
+        {/* Boot */}
+        <mesh material={clothMat} position={[0, -1.22, 0.06]}>
+          <boxGeometry args={[0.42, 0.22, 0.5]} />
+        </mesh>
+        <mesh material={outlineMat} position={[0, -0.72, 0]}>
+          <boxGeometry args={[0.46, 1.3, 0.46]} />
+        </mesh>
+      </group>
+
+      {/* ── RIGHT LEG GROUP ── */}
+      <group ref={rightLegRef} position={[0.32, -0.96, 0]}>
+        {/* Thigh */}
+        <mesh material={necroMat} position={[0, -0.28, 0]}>
+          <boxGeometry args={[0.44, 0.54, 0.44]} />
+        </mesh>
+        {/* Knee */}
+        <mesh material={skinMat} position={[0, -0.6, 0]}>
+          <boxGeometry args={[0.38, 0.18, 0.38]} />
+        </mesh>
+        {/* Shin */}
+        <mesh material={clothMat} position={[0, -0.9, 0]}>
+          <boxGeometry args={[0.38, 0.52, 0.38]} />
+        </mesh>
+        {/* Boot */}
+        <mesh material={clothMat} position={[0, -1.22, 0.06]}>
+          <boxGeometry args={[0.42, 0.22, 0.5]} />
+        </mesh>
+        <mesh material={outlineMat} position={[0, -0.72, 0]}>
+          <boxGeometry args={[0.46, 1.3, 0.46]} />
+        </mesh>
+      </group>
+
+      {/* ── HEALTH BAR (floating above) ── */}
       {!enemy.isDead && (
-        <group position={[0, 2.8, 0]}>
-          {/* Background */}
+        <group position={[0, 3.6, 0]}>
           <mesh position={[0, 0, 0]}>
-            <planeGeometry args={[2.0, 0.2]} />
+            <planeGeometry args={[2.4, 0.24]} />
             <meshBasicMaterial color="#330000" />
           </mesh>
-          {/* Fill */}
-          <mesh position={[-(1.0 - healthPct), 0, 0.01]} scale={[healthPct, 1, 1]}>
-            <planeGeometry args={[2.0, 0.18]} />
+          <mesh position={[-(1.2 - healthPct * 1.2), 0, 0.01]} scale={[healthPct, 1, 1]}>
+            <planeGeometry args={[2.4, 0.22]} />
             <meshBasicMaterial color={healthPct > 0.5 ? '#cc2222' : '#ff4400'} />
           </mesh>
         </group>
@@ -178,6 +647,7 @@ function BossZombie({ enemy, onHitFlashDone }: EnemyMeshProps) {
   );
 }
 
+// ─── Export ───────────────────────────────────────────────────────────────────
 export function EnemyMesh({ enemy, onHitFlashDone }: EnemyMeshProps) {
   if (enemy.type === 'boss') {
     return <BossZombie enemy={enemy} onHitFlashDone={onHitFlashDone} />;

@@ -1,14 +1,39 @@
 {
   "kind": "spec_vs_diff_report",
   "version": "1.0",
-  "generatedAt": "2026-02-27T21:43:06.599Z",
-  "summary": "The diff shows WeaponViewModel.tsx was redesigned with detailed weapon models for pistol (Glock-style), shotgun (Mossberg/Remington pump-action), and assault rifle (AK-47). The file summary confirms all major features described in REQ-1 through REQ-4 are present. The diff is truncated so full verification of every acceptance criterion is limited, but the summary text is comprehensive and aligns well with requirements. No hallucinated features were identified.",
-  "missing_requirements": [],
+  "generatedAt": "2026-02-27T22:13:51.178Z",
+  "summary": "EnemyMesh.tsx was modified with a StandardZombie redesign that includes separate body segments, necrotic color palette, preserved animations, forward torso lean, and arm swing. However, the diff is truncated and the complete head geometry (eye socket/jaw detail), torn clothing planes, and the entire BossZombie redesign (REQ-2) are not visible in the truncated output. REQ-3 lurch animation appears implemented for StandardZombie in the visible portion.",
+  "missing_requirements": [
+    {
+      "id": "REQ-1",
+      "requirement": "Head geometry includes sunken/hollow eye socket detail (dark recessed geometry) and protruding jaw/lower-face detail",
+      "reason": "The diff is truncated before the head mesh JSX is rendered; eye socket geometry and jaw geometry cannot be confirmed as implemented",
+      "evidence": [
+        "frontend/src/components/Game/EnemyMesh.tsx"
+      ]
+    },
+    {
+      "id": "REQ-1",
+      "requirement": "Torn clothing represented by overlapping dark-brown/black geometric planes on the torso and arms",
+      "reason": "The diff truncates inside the torso group JSX with only a comment visible for torn shirt; the actual torn clothing plane meshes are not visible in the truncated output",
+      "evidence": [
+        "frontend/src/components/Game/EnemyMesh.tsx"
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "requirement": "Redesign BossZombie with bulkier torso, asymmetric shoulders, oversized arms, deformed skull, emissive glowing red/orange eye geometry, exposed rib/bone geometry, darker necrotic skin tone, and preserved animations",
+      "reason": "The entire BossZombie component is beyond the 4000-char truncation limit and cannot be verified as implemented",
+      "evidence": [
+        "frontend/src/components/Game/EnemyMesh.tsx"
+      ]
+    }
+  ],
   "hallucinated_features": [],
-  "confidence": 0.82,
+  "confidence": 0.42,
   "changed_files": [
     "frontend-file-summaries.txt",
-    "frontend/src/components/Game/WeaponViewModel.tsx",
+    "frontend/src/components/Game/EnemyMesh.tsx",
     "project_state.json"
   ]
 }

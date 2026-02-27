@@ -1,80 +1,62 @@
 {
   "kind": "implementation_plan",
   "version": "1.0",
-  "title": "Improve machine gun, shotgun, and pistol weapon models with realistic detail",
+  "title": "Improve Zombie Models to Look Like Call of Duty-Style Zombies",
   "requirements": [
     {
       "id": "REQ-1",
-      "summary": "Redesign the pistol first-person view model to closely resemble a real semi-automatic handgun with detailed geometry including slide, ejection port, serrated grip, trigger guard, barrel, hammer indicator, and magazine well using proportions matching a 9mm pistol",
+      "summary": "Redesign StandardZombie mesh to resemble a Call of Duty-style zombie with humanoid anatomy, torn clothing, skull-like head with sunken eyes, and necrotic color palette",
       "acceptanceCriteria": [
-        "Pistol model has a clearly defined slide separate from the frame",
-        "Ejection port is visible as a cutout on the slide geometry",
-        "Trigger guard is a rounded rectangular loop with correct proportions",
-        "Grip has segmented geometry suggesting texture/checkering",
-        "Barrel tip has a distinct muzzle opening",
-        "Overall proportions match a real compact semi-automatic pistol"
+        "StandardZombie has a distinct head, torso, two arms, and two legs as separate mesh segments",
+        "Head geometry includes sunken/hollow eye socket detail (dark recessed geometry)",
+        "Body parts use a pale greenish-grey toon-shaded color matching a CoD undead aesthetic",
+        "Torn clothing is represented by overlapping dark-brown/black geometric planes on the torso and arms",
+        "Blood accents (dark red) are present on clothing/body segments",
+        "Walking bob animation still functions correctly on the new mesh",
+        "Hit flash and death fade effects still apply correctly to the new mesh"
       ],
       "file_operations": [
         {
-          "path": "frontend/src/components/Game/WeaponViewModel.tsx",
+          "path": "frontend/src/components/Game/EnemyMesh.tsx",
           "operation": "modify",
-          "description": "Replace the pistol view model geometry with a detailed realistic semi-automatic handgun model. Add a separate slide mesh with ejection port cutout using subtracted geometry, implement a segmented grip with multiple box geometries to suggest checkering texture, create a curved trigger guard loop using torus segment or cylindrical geometry, model a distinct barrel with visible muzzle opening at the tip, add a hammer or striker indicator protrusion on the rear of the slide, and include a magazine well cavity at the base of the grip. Use proportions matching a real 9mm pistol (e.g., Glock or Beretta dimensions). Preserve existing recoil and reload animation logic, tier-based glow effects, and ensure all new geometry uses the toon material via useToonMaterial hook."
+          "description": "Replace the StandardZombie mesh geometry with a multi-segment humanoid structure: create separate BoxGeometry segments for head (with skull-like proportions), torso, upper arms, forearms, thighs, and shins; add dark recessed CylinderGeometry for sunken eye sockets; add overlapping PlaneGeometry segments on torso and arms to represent torn/ragged clothing with dark-brown/black colors; add small dark-red BoxGeometry accents for blood stains on clothing; update toon material colors to pale greenish-grey (#a8b5a0 range) for skin and dark-brown (#3a2f28) for clothing; ensure all segments are grouped correctly and positioned to form a cohesive humanoid silhouette; verify existing walking bob animation, hit flash, and death fade logic apply to the new multi-segment mesh structure"
         }
       ]
     },
     {
       "id": "REQ-2",
-      "summary": "Redesign the shotgun first-person view model to closely resemble a real pump-action shotgun with long barrel, ventilated rib, pump forend, textured stock, receiver with loading port, trigger guard, and side ejection port using 12-gauge proportions",
+      "summary": "Redesign BossZombie mesh as a heavily mutated CoD boss zombie with larger bulk, deformed skull, exposed bone geometry, glowing eyes, and darker necrotic tones",
       "acceptanceCriteria": [
-        "Barrel is long, cylindrical, and clearly wider than a pistol barrel",
-        "Ventilated rib is visible as segmented geometry along the top of the barrel",
-        "Forend/pump grip is a distinct separate piece on the magazine tube",
-        "Receiver body is boxy with a visible loading/ejection port cutout",
-        "Stock has a tapered shape with a butt plate at the end",
-        "Overall proportions match a real pump-action shotgun"
+        "BossZombie is visually larger and more imposing than StandardZombie",
+        "BossZombie has an oversized deformed skull with emissive glowing red eye geometry",
+        "Chest area includes exposed rib/bone geometry (light-grey protruding planes)",
+        "Shoulders are asymmetric and bulkier than the standard zombie",
+        "Arms are elongated/oversized relative to the body",
+        "BossZombie uses a darker, more decayed skin tone than StandardZombie",
+        "Existing hit flash, wave bob, and death fade animations still function on the new mesh"
       ],
       "file_operations": [
         {
-          "path": "frontend/src/components/Game/WeaponViewModel.tsx",
+          "path": "frontend/src/components/Game/EnemyMesh.tsx",
           "operation": "modify",
-          "description": "Replace the shotgun view model geometry with a detailed realistic pump-action shotgun model. Create a long cylindrical barrel mesh with appropriate gauge diameter, add a ventilated rib on top using a series of small box segments spaced along the barrel length, model a distinct pump/forend piece as a separate cylindrical grip that visually sits on the magazine tube, implement a boxy receiver body with a visible loading/ejection port cutout on the side, create a tapered stock with segmented geometry to suggest wood grain or texture and include a butt plate at the end, add a trigger guard loop below the receiver. Use proportions matching a real 12-gauge pump-action shotgun (e.g., Mossberg 500 or Remington 870 dimensions). Preserve existing recoil and reload animation logic, tier-based glow effects, and ensure all new geometry uses the toon material via useToonMaterial hook."
+          "description": "Replace the BossZombie mesh geometry with a mutated boss structure: scale up the overall size by 1.4–1.6x relative to StandardZombie; create an enlarged deformed skull (wider and taller BoxGeometry with uneven proportions); add two small SphereGeometry elements for glowing red eyes with MeshBasicMaterial (emissive red, no lighting) positioned in sunken sockets; build a bulkier torso with asymmetric shoulder masses (one shoulder larger/higher than the other using BoxGeometry); add exposed rib/bone geometry on the chest using thin light-grey PlaneGeometry segments arranged in rib-cage pattern; create elongated oversized arms (longer forearm and upper-arm segments); use a darker necrotic skin tone (#6a7565 range, darker than StandardZombie); add torn dark clothing similar to StandardZombie but more heavily damaged; ensure all segments are grouped and positioned for cohesive boss silhouette; verify existing hit flash, wave bob, and death fade animations work correctly on the new multi-segment boss mesh"
         }
       ]
     },
     {
       "id": "REQ-3",
-      "summary": "Redesign the machine gun (assault rifle) first-person view model to closely resemble a real assault rifle with rectangular receiver, detachable box magazine, pistol grip with finger grooves, handguard with rail segments, flash hider, charging handle, dust cover, and visible stock using AK-47 or M4/AR-15 proportions",
+      "summary": "Add subtle idle sway/lurch animation to both zombie types with forward torso lean and side-to-side arm swing to mimic CoD zombie movement",
       "acceptanceCriteria": [
-        "Receiver is a distinct rectangular body separate from the handguard",
-        "Detachable box magazine is clearly visible and angled, with correct curvature (AK-style) or straight (AR-style)",
-        "Handguard has segmented rail geometry along the barrel",
-        "Flash hider or compensator is visible at the muzzle",
-        "Pistol grip is a distinct angled grip with segmented geometry",
-        "Charging handle is modeled as a small protrusion on the receiver",
-        "Overall proportions match a real assault rifle"
+        "Both zombie types have a forward torso lean of approximately 15–25 degrees",
+        "Arms hang lower and swing side-to-side during the walk animation",
+        "The lurch animation is driven by the existing frame-based animation system (useFrame)",
+        "Animation does not cause performance regression (no new per-frame allocations)"
       ],
       "file_operations": [
         {
-          "path": "frontend/src/components/Game/WeaponViewModel.tsx",
+          "path": "frontend/src/components/Game/EnemyMesh.tsx",
           "operation": "modify",
-          "description": "Replace the machine gun (assault rifle) view model geometry with a detailed realistic assault rifle model. Create a rectangular receiver body as a distinct box mesh separate from the barrel and handguard, model a detachable box magazine with appropriate curvature (curved for AK-style or straight for AR-style) positioned at an angle below the receiver, implement a pistol grip with segmented geometry to suggest finger grooves, add a handguard with rail segments using small box geometries along the barrel length, create a flash hider or compensator device at the muzzle tip, model a charging handle as a small protrusion on the rear of the receiver, add a dust cover detail on top of the receiver, and include a visible stock on the right side in first-person view. Use proportions matching a real assault rifle (e.g., AK-47 or M4/AR-15 dimensions). Preserve existing recoil and reload animation logic, tier-based glow effects, and ensure all new geometry uses the toon material via useToonMaterial hook."
-        }
-      ]
-    },
-    {
-      "id": "REQ-4",
-      "summary": "Apply consistent toon-shading and Borderlands-style dark outlines to all three redesigned weapon models ensuring added detail geometry receives proper shading with distinct dark edges to make details pop in the existing art style",
-      "acceptanceCriteria": [
-        "All weapon sub-parts use toon shading consistent with the rest of the scene",
-        "Dark outline pass is applied to all weapon mesh parts",
-        "Small detail geometry (trigger guard, ejection ports, rails) are visible and clearly outlined",
-        "Weapon color palette matches the existing Borderlands desert theme"
-      ],
-      "file_operations": [
-        {
-          "path": "frontend/src/components/Game/WeaponViewModel.tsx",
-          "operation": "modify",
-          "description": "Ensure all new weapon geometry components (slides, ejection ports, trigger guards, rails, stocks, receivers, magazines, etc.) are rendered with the existing toon material from useToonMaterial hook. Verify that each mesh part includes both the toon-shaded material and the outline material pass to ensure dark edges are visible on all detail geometry. Use color values consistent with the existing Borderlands desert theme palette (desert tan, gunmetal, dark brown, matte black). Ensure the tier-based glow overlay logic continues to apply correctly to all weapon parts when upgraded."
+          "description": "Add idle lurch animation to both StandardZombie and BossZombie: apply a static forward rotation of 0.26–0.44 radians (15–25 degrees) to the torso group to create a hunched-forward posture; in the existing useFrame animation loop, add a slow sinusoidal side-to-side shoulder sway (modify arm group rotations based on time with a period of ~2–3 seconds and amplitude of ~0.1 radians); ensure arms hang lower by adjusting their rest position downward; layer this lurch animation on top of the existing walking bob animation without conflicting with hit flash or death fade effects; validate no new object allocations occur per frame (reuse existing time/delta values)"
         }
       ]
     }

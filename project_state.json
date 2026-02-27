@@ -1,40 +1,32 @@
 {
   "schemaVersion": "1.0.0",
   "projectStateVersion": 3,
-  "summary": "3D RPG/shooter game with weapon models (machine gun, shotgun, pistol), house destruction mechanics, and RPG launcher. User wants improved, more realistic weapon models.",
+  "summary": "3D zombie shooter game (Call of Duty-style) with realistic sand terrain and zombie enemies. Working on improving zombie models to look more like CoD-style zombies.",
   "architectural_notes": [],
   "known_issues": [],
   "isFixRequest": false,
   "existing_features": [
     {
-      "id": "feature-redesign-the-pistol-first-person-view-model-in-weaponviewmodel-tsx-to-closely-resemble-a-real-semi-automatic-handgun-include-a-detailed-slide-with-ejection-port-cutout-serrated-grip-texture-via-geometry-segments-a-distinct-trigger-guard-with-curved-profile-a-barrel-with-visible-muzzle-opening-a-hammer-or-striker-indicator-and-a-magazine-well-at-the-base-of-the-grip-use-proportions-matching-a-real-9mm-pistol-e-g-glock-or-beretta-proportions",
-      "title": "Redesign the pistol first-person view model in WeaponViewModel.tsx to closely resemble a real semi-automatic handgun. Include a detailed slide with ejection port cutout, serrated grip texture via geometry segments, a distinct trigger guard with curved profile, a barrel with visible muzzle opening, a hammer or striker indicator, and a magazine well at the base of the grip. Use proportions matching a real 9mm pistol (e.g., Glock or Beretta proportions).",
+      "id": "feature-redesign-the-standardzombie-3d-mesh-in-enemymesh-tsx-to-resemble-a-call-of-duty-style-zombie-add-a-more-humanoid-body-with-visible-torso-arms-and-legs-as-separate-geometric-segments-give-the-head-a-skull-like-shape-with-sunken-eye-sockets-dark-hollow-eye-geometry-add-torn-ragged-clothing-geometry-overlapping-flat-planes-or-box-segments-with-dark-blood-stained-colors-use-a-desaturated-pale-greenish-grey-skin-tone-for-body-parts-add-protruding-jaw-lower-face-detail-keep-toon-shading-but-shift-colors-to-necrotic-pale-green-grey-skin-dark-red-blood-accents-torn-dark-brown-clothing",
+      "title": "Redesign the StandardZombie 3D mesh in EnemyMesh.tsx to resemble a Call of Duty-style zombie: add a more humanoid body with visible torso, arms, and legs as separate geometric segments; give the head a skull-like shape with sunken eye sockets (dark hollow eye geometry); add torn/ragged clothing geometry (overlapping flat planes or box segments with dark/blood-stained colors); use a desaturated, pale greenish-grey skin tone for body parts; add protruding jaw/lower-face detail; keep toon-shading but shift colors to necrotic (pale green-grey skin, dark red blood accents, torn dark-brown clothing).",
       "reqIds": [
         "REQ-1"
       ],
       "version": 1
     },
     {
-      "id": "feature-redesign-the-shotgun-first-person-view-model-in-weaponviewmodel-tsx-to-closely-resemble-a-real-pump-action-shotgun-include-a-long-cylindrical-barrel-with-a-ventilated-rib-on-top-a-distinct-pump-forend-piece-that-slides-along-the-magazine-tube-a-wooden-or-textured-stock-with-butt-plate-a-receiver-body-with-visible-loading-port-a-trigger-guard-and-a-side-ejection-port-use-proportions-matching-a-real-12-gauge-pump-action-e-g-mossberg-500-or-remington-870",
-      "title": "Redesign the shotgun first-person view model in WeaponViewModel.tsx to closely resemble a real pump-action shotgun. Include a long cylindrical barrel with a ventilated rib on top, a distinct pump/forend piece that slides along the magazine tube, a wooden or textured stock with butt plate, a receiver body with visible loading port, a trigger guard, and a side ejection port. Use proportions matching a real 12-gauge pump-action (e.g., Mossberg 500 or Remington 870).",
+      "id": "feature-redesign-the-bosszombie-3d-mesh-in-enemymesh-tsx-to-look-like-a-heavily-mutated-cod-boss-zombie-larger-bulkier-torso-with-uneven-shoulder-masses-oversized-arms-a-deformed-enlarged-skull-exposed-bone-rib-geometry-on-the-chest-glowing-red-orange-sunken-eyes-emissive-small-sphere-geometry-and-heavily-torn-dark-clothing-use-a-darker-necrotic-skin-tone-than-the-standard-zombie-to-visually-distinguish-it-as-an-elite-threat",
+      "title": "Redesign the BossZombie 3D mesh in EnemyMesh.tsx to look like a heavily mutated CoD boss zombie: larger bulkier torso with uneven shoulder masses, oversized arms, a deformed enlarged skull, exposed bone/rib geometry on the chest, glowing red/orange sunken eyes (emissive small sphere geometry), and heavily torn dark clothing. Use a darker necrotic skin tone than the standard zombie to visually distinguish it as an elite threat.",
       "reqIds": [
         "REQ-2"
       ],
       "version": 1
     },
     {
-      "id": "feature-redesign-the-machine-gun-assault-rifle-first-person-view-model-in-weaponviewmodel-tsx-to-closely-resemble-a-real-assault-rifle-include-a-rectangular-receiver-body-a-detachable-box-magazine-angled-slightly-forward-a-pistol-grip-with-finger-groove-geometry-a-handguard-with-rail-geometry-segments-a-flash-hider-or-muzzle-device-at-the-barrel-tip-a-charging-handle-on-the-rear-of-the-receiver-a-dust-cover-and-a-stock-visible-on-the-right-side-in-first-person-view-use-proportions-matching-a-real-assault-rifle-e-g-ak-47-or-m4-ar-15-proportions",
-      "title": "Redesign the machine gun (assault rifle) first-person view model in WeaponViewModel.tsx to closely resemble a real assault rifle. Include a rectangular receiver body, a detachable box magazine angled slightly forward, a pistol grip with finger-groove geometry, a handguard with rail geometry segments, a flash hider or muzzle device at the barrel tip, a charging handle on the rear of the receiver, a dust cover, and a stock (visible on the right side in first-person view). Use proportions matching a real assault rifle (e.g., AK-47 or M4/AR-15 proportions).",
+      "id": "feature-add-a-subtle-idle-sway-lurch-animation-to-both-zombie-types-in-enemymesh-tsx-the-torso-should-lean-forward-slightly-and-arms-should-hang-low-with-a-side-to-side-shoulder-sway-mimicking-the-iconic-cod-zombie-lurch-movement-this-should-complement-the-existing-walking-bob-animation",
+      "title": "Add a subtle idle sway/lurch animation to both zombie types in EnemyMesh.tsx: the torso should lean forward slightly and arms should hang low with a side-to-side shoulder sway, mimicking the iconic CoD zombie lurch movement. This should complement the existing walking bob animation.",
       "reqIds": [
         "REQ-3"
-      ],
-      "version": 1
-    },
-    {
-      "id": "feature-apply-consistent-toon-shading-and-borderlands-style-dark-outlines-to-all-three-redesigned-weapon-models-using-the-existing-toonmaterial-hooks-ensuring-the-added-geometry-details-ports-rails-guards-all-receive-proper-shading-with-distinct-dark-edges-to-make-the-details-pop-in-the-existing-art-style",
-      "title": "Apply consistent toon-shading and Borderlands-style dark outlines to all three redesigned weapon models using the existing ToonMaterial hooks, ensuring the added geometry details (ports, rails, guards) all receive proper shading with distinct dark edges to make the details pop in the existing art style.",
-      "reqIds": [
-        "REQ-4"
       ],
       "version": 1
     }
@@ -42,7 +34,7 @@
   "new_feature_requests": [
     {
       "id": "AR-1",
-      "summary": "Improve machine gun, shotgun, and pistol models to be closer to real weapons with attention to detail",
+      "summary": "Improve zombie models to look more like Call of Duty-style zombies",
       "reqIds": [],
       "status": "pending"
     }

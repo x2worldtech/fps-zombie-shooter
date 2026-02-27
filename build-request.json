@@ -1,105 +1,84 @@
 {
   "kind": "build_request",
-  "title": "Improve machine gun, shotgun, and pistol weapon models with realistic detail",
+  "title": "Improve Zombie Models to Look Like Call of Duty-Style Zombies",
   "projectName": "FPS Zombie Shooter",
   "priority": "normal",
   "requirements": [
     {
       "id": "REQ-1",
-      "text": "Redesign the pistol first-person view model in WeaponViewModel.tsx to closely resemble a real semi-automatic handgun. Include a detailed slide with ejection port cutout, serrated grip texture via geometry segments, a distinct trigger guard with curved profile, a barrel with visible muzzle opening, a hammer or striker indicator, and a magazine well at the base of the grip. Use proportions matching a real 9mm pistol (e.g., Glock or Beretta proportions).",
+      "text": "Redesign the StandardZombie 3D mesh in EnemyMesh.tsx to resemble a Call of Duty-style zombie: add a more humanoid body with visible torso, arms, and legs as separate geometric segments; give the head a skull-like shape with sunken eye sockets (dark hollow eye geometry); add torn/ragged clothing geometry (overlapping flat planes or box segments with dark/blood-stained colors); use a desaturated, pale greenish-grey skin tone for body parts; add protruding jaw/lower-face detail; keep toon-shading but shift colors to necrotic (pale green-grey skin, dark red blood accents, torn dark-brown clothing).",
       "target": "frontend",
       "source": {
         "messageIds": [
-          "msg-6"
+          "msg-1"
         ],
         "quotes": [
-          "modlliere das maschinengewehr , shotgun und pistole besser , das es näher an original waffen rankommt . achte auf detaills"
+          "verbessere die modellierung der zombies , das sie mehr wie richtige zombie in call of duty aussehen"
         ]
       },
       "acceptanceCriteria": [
-        "Pistol model has a clearly defined slide separate from the frame",
-        "Ejection port is visible as a cutout on the slide geometry",
-        "Trigger guard is a rounded rectangular loop with correct proportions",
-        "Grip has segmented geometry suggesting texture/checkering",
-        "Barrel tip has a distinct muzzle opening",
-        "Overall proportions match a real compact semi-automatic pistol"
+        "StandardZombie has a distinct head, torso, two arms, and two legs as separate mesh segments",
+        "Head geometry includes sunken/hollow eye socket detail (dark recessed geometry)",
+        "Body parts use a pale greenish-grey toon-shaded color matching a CoD undead aesthetic",
+        "Torn clothing is represented by overlapping dark-brown/black geometric planes on the torso and arms",
+        "Blood accents (dark red) are present on clothing/body segments",
+        "Walking bob animation still functions correctly on the new mesh",
+        "Hit flash and death fade effects still apply correctly to the new mesh"
       ]
     },
     {
       "id": "REQ-2",
-      "text": "Redesign the shotgun first-person view model in WeaponViewModel.tsx to closely resemble a real pump-action shotgun. Include a long cylindrical barrel with a ventilated rib on top, a distinct pump/forend piece that slides along the magazine tube, a wooden or textured stock with butt plate, a receiver body with visible loading port, a trigger guard, and a side ejection port. Use proportions matching a real 12-gauge pump-action (e.g., Mossberg 500 or Remington 870).",
+      "text": "Redesign the BossZombie 3D mesh in EnemyMesh.tsx to look like a heavily mutated CoD boss zombie: larger bulkier torso with uneven shoulder masses, oversized arms, a deformed enlarged skull, exposed bone/rib geometry on the chest, glowing red/orange sunken eyes (emissive small sphere geometry), and heavily torn dark clothing. Use a darker necrotic skin tone than the standard zombie to visually distinguish it as an elite threat.",
       "target": "frontend",
       "source": {
         "messageIds": [
-          "msg-6"
+          "msg-1"
         ],
         "quotes": [
-          "modlliere das maschinengewehr , shotgun und pistole besser , das es näher an original waffen rankommt . achte auf detaills"
+          "verbessere die modellierung der zombies , das sie mehr wie richtige zombie in call of duty aussehen"
         ]
       },
       "acceptanceCriteria": [
-        "Barrel is long, cylindrical, and clearly wider than a pistol barrel",
-        "Ventilated rib is visible as segmented geometry along the top of the barrel",
-        "Forend/pump grip is a distinct separate piece on the magazine tube",
-        "Receiver body is boxy with a visible loading/ejection port cutout",
-        "Stock has a tapered shape with a butt plate at the end",
-        "Overall proportions match a real pump-action shotgun"
+        "BossZombie is visually larger and more imposing than StandardZombie",
+        "BossZombie has an oversized deformed skull with emissive glowing red eye geometry",
+        "Chest area includes exposed rib/bone geometry (light-grey protruding planes)",
+        "Shoulders are asymmetric and bulkier than the standard zombie",
+        "Arms are elongated/oversized relative to the body",
+        "BossZombie uses a darker, more decayed skin tone than StandardZombie",
+        "Existing hit flash, wave bob, and death fade animations still function on the new mesh"
       ]
     },
     {
       "id": "REQ-3",
-      "text": "Redesign the machine gun (assault rifle) first-person view model in WeaponViewModel.tsx to closely resemble a real assault rifle. Include a rectangular receiver body, a detachable box magazine angled slightly forward, a pistol grip with finger-groove geometry, a handguard with rail geometry segments, a flash hider or muzzle device at the barrel tip, a charging handle on the rear of the receiver, a dust cover, and a stock (visible on the right side in first-person view). Use proportions matching a real assault rifle (e.g., AK-47 or M4/AR-15 proportions).",
+      "text": "Add a subtle idle sway/lurch animation to both zombie types in EnemyMesh.tsx: the torso should lean forward slightly and arms should hang low with a side-to-side shoulder sway, mimicking the iconic CoD zombie lurch movement. This should complement the existing walking bob animation.",
       "target": "frontend",
       "source": {
         "messageIds": [
-          "msg-6"
+          "msg-1"
         ],
         "quotes": [
-          "modlliere das maschinengewehr , shotgun und pistole besser , das es näher an original waffen rankommt . achte auf detaills"
+          "verbessere die modellierung der zombies , das sie mehr wie richtige zombie in call of duty aussehen"
         ]
       },
       "acceptanceCriteria": [
-        "Receiver is a distinct rectangular body separate from the handguard",
-        "Detachable box magazine is clearly visible and angled, with correct curvature (AK-style) or straight (AR-style)",
-        "Handguard has segmented rail geometry along the barrel",
-        "Flash hider or compensator is visible at the muzzle",
-        "Pistol grip is a distinct angled grip with segmented geometry",
-        "Charging handle is modeled as a small protrusion on the receiver",
-        "Overall proportions match a real assault rifle"
-      ]
-    },
-    {
-      "id": "REQ-4",
-      "text": "Apply consistent toon-shading and Borderlands-style dark outlines to all three redesigned weapon models using the existing ToonMaterial hooks, ensuring the added geometry details (ports, rails, guards) all receive proper shading with distinct dark edges to make the details pop in the existing art style.",
-      "target": "frontend",
-      "source": {
-        "messageIds": [
-          "msg-6"
-        ],
-        "quotes": [
-          "achte auf detaills"
-        ]
-      },
-      "acceptanceCriteria": [
-        "All weapon sub-parts use toon shading consistent with the rest of the scene",
-        "Dark outline pass is applied to all weapon mesh parts",
-        "Small detail geometry (trigger guard, ejection ports, rails) are visible and clearly outlined",
-        "Weapon color palette matches the existing Borderlands desert theme"
+        "Both zombie types have a forward torso lean of approximately 15–25 degrees",
+        "Arms hang lower and swing side-to-side during the walk animation",
+        "The lurch animation is driven by the existing frame-based animation system (useFrame)",
+        "Animation does not cause performance regression (no new per-frame allocations)"
       ]
     }
   ],
   "constraints": [
-    "Do not modify any files under frontend/src/hooks/useInternetIdentity.ts, frontend/src/hooks/useActor.ts, frontend/src/main.tsx, or frontend/src/components/ui",
-    "Weapon models must remain as Three.js procedural geometry (React Three Fiber) — do not import external 3D model files",
-    "Existing weapon animation logic (recoil, reload, tier glow) must be preserved and compatible with the new geometries",
-    "Do not change weapon stats, fire rate, damage, or game logic in useWeaponSystem.ts"
+    "All changes must be confined to frontend/src/components/Game/EnemyMesh.tsx",
+    "Do not break existing hit flash, death fade, or wave bob animation logic",
+    "Do not modify backend files",
+    "Do not modify any file under frontend/src/hooks/useInternetIdentity.ts, frontend/src/hooks/useActor.ts, frontend/src/main.tsx, or frontend/src/components/ui"
   ],
   "nonGoals": [
-    "Adding new weapons or weapon types",
-    "Changing weapon audio or sound synthesis",
-    "Modifying enemy models or game mechanics",
-    "Adding physical-based rendering (PBR) materials — toon shading only",
-    "Importing or using external 3D model assets (GLTF, OBJ, etc.)"
+    "Adding new enemy types or changing enemy AI/pathfinding logic",
+    "Modifying enemy health, damage, or spawn logic",
+    "Changing weapon models or any other 3D asset outside of EnemyMesh.tsx",
+    "Importing external 3D model files (GLB/OBJ) — geometry must remain procedural using Three.js primitives"
   ],
   "imageRequirements": {
     "required": [],
