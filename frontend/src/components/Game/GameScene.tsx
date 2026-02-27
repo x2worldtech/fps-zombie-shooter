@@ -4,7 +4,7 @@ import { PointerLockControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { DesertEnvironment } from './DesertEnvironment';
 import { FirstPersonCamera } from './FirstPersonCamera';
-import WeaponViewModel from './WeaponViewModel';
+import { WeaponViewModel } from './WeaponViewModel';
 import { EnemyMesh } from './EnemyMesh';
 import { PickupMesh } from './PickupMesh';
 import { HUD } from './HUD';

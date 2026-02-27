@@ -1,84 +1,105 @@
 {
   "kind": "build_request",
-  "title": "Realistic hands/arms for all 3 weapons + improved shotgun & pistol models",
+  "title": "Improve machine gun, shotgun, and pistol weapon models with realistic detail",
   "projectName": "FPS Zombie Shooter",
   "priority": "normal",
   "requirements": [
     {
       "id": "REQ-1",
-      "text": "Ensure visible first-person hands and arms are rendered for all three weapons (pistol, shotgun, and assault rifle) in WeaponViewModel.tsx. The hands and arms must be anatomically positioned to convincingly grip each weapon, matching the weapon's hold style (one-handed grip for pistol, two-handed pump grip for shotgun, two-handed rifle grip for assault rifle).",
+      "text": "Redesign the pistol first-person view model in WeaponViewModel.tsx to closely resemble a real semi-automatic handgun. Include a detailed slide with ejection port cutout, serrated grip texture via geometry segments, a distinct trigger guard with curved profile, a barrel with visible muzzle opening, a hammer or striker indicator, and a magazine well at the base of the grip. Use proportions matching a real 9mm pistol (e.g., Glock or Beretta proportions).",
       "target": "frontend",
       "source": {
         "messageIds": [
-          "msg-4"
+          "msg-6"
         ],
         "quotes": [
-          "bei allen 3 waffen soll man hände und arm sehen die die waffe halten"
+          "modlliere das maschinengewehr , shotgun und pistole besser , das es näher an original waffen rankommt . achte auf detaills"
         ]
       },
       "acceptanceCriteria": [
-        "Pistol view model shows a right hand gripping the pistol handle and a partially visible forearm",
-        "Shotgun view model shows both hands on the shotgun (trigger hand and pump hand) with visible forearms",
-        "Assault rifle view model retains existing hands/arms and they remain correctly positioned",
-        "Hand and arm geometry is visible in first-person perspective during idle, aim, fire, and reload states",
-        "Skin-toned mesh is used consistently across all three weapons"
+        "Pistol model has a clearly defined slide separate from the frame",
+        "Ejection port is visible as a cutout on the slide geometry",
+        "Trigger guard is a rounded rectangular loop with correct proportions",
+        "Grip has segmented geometry suggesting texture/checkering",
+        "Barrel tip has a distinct muzzle opening",
+        "Overall proportions match a real compact semi-automatic pistol"
       ]
     },
     {
       "id": "REQ-2",
-      "text": "Redesign the shotgun view model in WeaponViewModel.tsx to be significantly more realistic. The model should include a recognizable pump-action shotgun silhouette with a distinct pump forend, barrel, receiver body, stock, and trigger guard using appropriately shaped and sized Three.js geometries.",
+      "text": "Redesign the shotgun first-person view model in WeaponViewModel.tsx to closely resemble a real pump-action shotgun. Include a long cylindrical barrel with a ventilated rib on top, a distinct pump/forend piece that slides along the magazine tube, a wooden or textured stock with butt plate, a receiver body with visible loading port, a trigger guard, and a side ejection port. Use proportions matching a real 12-gauge pump-action (e.g., Mossberg 500 or Remington 870).",
       "target": "frontend",
       "source": {
         "messageIds": [
-          "msg-4"
+          "msg-6"
         ],
         "quotes": [
-          "modelliere die shotgun und pistole auch realistischer"
+          "modlliere das maschinengewehr , shotgun und pistole besser , das es näher an original waffen rankommt . achte auf detaills"
         ]
       },
       "acceptanceCriteria": [
-        "Shotgun has a long cylindrical barrel",
-        "Shotgun has a distinct pump forend (sliding grip section under the barrel)",
-        "Shotgun has a visible receiver/body block",
-        "Shotgun has a stock extending toward the camera",
-        "Shotgun has a trigger guard detail",
-        "Overall proportions match a real-world pump-action shotgun (e.g., Mossberg 500 style)"
+        "Barrel is long, cylindrical, and clearly wider than a pistol barrel",
+        "Ventilated rib is visible as segmented geometry along the top of the barrel",
+        "Forend/pump grip is a distinct separate piece on the magazine tube",
+        "Receiver body is boxy with a visible loading/ejection port cutout",
+        "Stock has a tapered shape with a butt plate at the end",
+        "Overall proportions match a real pump-action shotgun"
       ]
     },
     {
       "id": "REQ-3",
-      "text": "Redesign the pistol view model in WeaponViewModel.tsx to be significantly more realistic. The model should include a recognizable semi-automatic pistol silhouette with a distinct slide, barrel, frame/grip, trigger guard, and magazine base using appropriately shaped Three.js geometries.",
+      "text": "Redesign the machine gun (assault rifle) first-person view model in WeaponViewModel.tsx to closely resemble a real assault rifle. Include a rectangular receiver body, a detachable box magazine angled slightly forward, a pistol grip with finger-groove geometry, a handguard with rail geometry segments, a flash hider or muzzle device at the barrel tip, a charging handle on the rear of the receiver, a dust cover, and a stock (visible on the right side in first-person view). Use proportions matching a real assault rifle (e.g., AK-47 or M4/AR-15 proportions).",
       "target": "frontend",
       "source": {
         "messageIds": [
-          "msg-4"
+          "msg-6"
         ],
         "quotes": [
-          "modelliere die shotgun und pistole auch realistischer"
+          "modlliere das maschinengewehr , shotgun und pistole besser , das es näher an original waffen rankommt . achte auf detaills"
         ]
       },
       "acceptanceCriteria": [
-        "Pistol has a rectangular slide on top",
-        "Pistol has a short barrel protruding from the slide",
-        "Pistol has a frame and grip handle angled downward",
-        "Pistol has a visible trigger guard",
-        "Pistol has a magazine base visible at the bottom of the grip",
-        "Overall proportions match a real-world semi-automatic pistol (e.g., Glock-style)"
+        "Receiver is a distinct rectangular body separate from the handguard",
+        "Detachable box magazine is clearly visible and angled, with correct curvature (AK-style) or straight (AR-style)",
+        "Handguard has segmented rail geometry along the barrel",
+        "Flash hider or compensator is visible at the muzzle",
+        "Pistol grip is a distinct angled grip with segmented geometry",
+        "Charging handle is modeled as a small protrusion on the receiver",
+        "Overall proportions match a real assault rifle"
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "text": "Apply consistent toon-shading and Borderlands-style dark outlines to all three redesigned weapon models using the existing ToonMaterial hooks, ensuring the added geometry details (ports, rails, guards) all receive proper shading with distinct dark edges to make the details pop in the existing art style.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-6"
+        ],
+        "quotes": [
+          "achte auf detaills"
+        ]
+      },
+      "acceptanceCriteria": [
+        "All weapon sub-parts use toon shading consistent with the rest of the scene",
+        "Dark outline pass is applied to all weapon mesh parts",
+        "Small detail geometry (trigger guard, ejection ports, rails) are visible and clearly outlined",
+        "Weapon color palette matches the existing Borderlands desert theme"
       ]
     }
   ],
   "constraints": [
     "Do not modify any files under frontend/src/hooks/useInternetIdentity.ts, frontend/src/hooks/useActor.ts, frontend/src/main.tsx, or frontend/src/components/ui",
-    "All weapon and hand/arm geometry must remain within WeaponViewModel.tsx using Three.js/React Three Fiber primitives",
-    "Do not alter weapon stat configs in frontend/src/types/weapon.ts or frontend/src/hooks/useWeaponSystem.ts",
-    "Upgrade tier glow overlays and recoil/reload animations must continue to work after model changes"
+    "Weapon models must remain as Three.js procedural geometry (React Three Fiber) — do not import external 3D model files",
+    "Existing weapon animation logic (recoil, reload, tier glow) must be preserved and compatible with the new geometries",
+    "Do not change weapon stats, fire rate, damage, or game logic in useWeaponSystem.ts"
   ],
   "nonGoals": [
-    "Adding new weapons beyond the existing three",
-    "Changing weapon gameplay stats (damage, fire rate, ammo)",
-    "Importing external 3D model files (GLB/GLTF); use procedural Three.js geometry only",
-    "Modifying the backend",
-    "Changing enemy, environment, or HUD components"
+    "Adding new weapons or weapon types",
+    "Changing weapon audio or sound synthesis",
+    "Modifying enemy models or game mechanics",
+    "Adding physical-based rendering (PBR) materials — toon shading only",
+    "Importing or using external 3D model assets (GLTF, OBJ, etc.)"
   ],
   "imageRequirements": {
     "required": [],

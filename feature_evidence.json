@@ -2,8 +2,8 @@
   "kind": "feature_evidence_report",
   "features": [
     {
-      "featureId": "feature-ensure-visible-first-person-hands-and-arms-are-rendered-for-all-three-weapons-pistol-shotgun-and-assault-rifle-in-weaponviewmodel-tsx-the-hands-and-arms-must-be-anatomically-positioned-to-convincingly-grip-each-weapon-matching-the-weapon-s-hold-style-one-handed-grip-for-pistol-two-handed-pump-grip-for-shotgun-two-handed-rifle-grip-for-assault-rifle",
-      "featureTitle": "Ensure visible first-person hands and arms are rendered for all three weapons (pistol, shotgun, and assault rifle) in WeaponViewModel.tsx. The hands and arms must be anatomically positioned to convincingly grip each weapon, matching the weapon's hold style (one-handed grip for pistol, two-handed pump grip for shotgun, two-handed rifle grip for assault rifle).",
+      "featureId": "feature-redesign-the-pistol-first-person-view-model-in-weaponviewmodel-tsx-to-closely-resemble-a-real-semi-automatic-handgun-include-a-detailed-slide-with-ejection-port-cutout-serrated-grip-texture-via-geometry-segments-a-distinct-trigger-guard-with-curved-profile-a-barrel-with-visible-muzzle-opening-a-hammer-or-striker-indicator-and-a-magazine-well-at-the-base-of-the-grip-use-proportions-matching-a-real-9mm-pistol-e-g-glock-or-beretta-proportions",
+      "featureTitle": "Redesign the pistol first-person view model in WeaponViewModel.tsx to closely resemble a real semi-automatic handgun. Include a detailed slide with ejection port cutout, serrated grip texture via geometry segments, a distinct trigger guard with curved profile, a barrel with visible muzzle opening, a hammer or striker indicator, and a magazine well at the base of the grip. Use proportions matching a real 9mm pistol (e.g., Glock or Beretta proportions).",
       "files": [
         "frontend/src/components/Game/WeaponViewModel.tsx"
       ],
@@ -21,8 +21,8 @@
       "confidence": "high"
     },
     {
-      "featureId": "feature-redesign-the-shotgun-view-model-in-weaponviewmodel-tsx-to-be-significantly-more-realistic-the-model-should-include-a-recognizable-pump-action-shotgun-silhouette-with-a-distinct-pump-forend-barrel-receiver-body-stock-and-trigger-guard-using-appropriately-shaped-and-sized-three-js-geometries",
-      "featureTitle": "Redesign the shotgun view model in WeaponViewModel.tsx to be significantly more realistic. The model should include a recognizable pump-action shotgun silhouette with a distinct pump forend, barrel, receiver body, stock, and trigger guard using appropriately shaped and sized Three.js geometries.",
+      "featureId": "feature-redesign-the-shotgun-first-person-view-model-in-weaponviewmodel-tsx-to-closely-resemble-a-real-pump-action-shotgun-include-a-long-cylindrical-barrel-with-a-ventilated-rib-on-top-a-distinct-pump-forend-piece-that-slides-along-the-magazine-tube-a-wooden-or-textured-stock-with-butt-plate-a-receiver-body-with-visible-loading-port-a-trigger-guard-and-a-side-ejection-port-use-proportions-matching-a-real-12-gauge-pump-action-e-g-mossberg-500-or-remington-870",
+      "featureTitle": "Redesign the shotgun first-person view model in WeaponViewModel.tsx to closely resemble a real pump-action shotgun. Include a long cylindrical barrel with a ventilated rib on top, a distinct pump/forend piece that slides along the magazine tube, a wooden or textured stock with butt plate, a receiver body with visible loading port, a trigger guard, and a side ejection port. Use proportions matching a real 12-gauge pump-action (e.g., Mossberg 500 or Remington 870).",
       "files": [
         "frontend/src/components/Game/WeaponViewModel.tsx"
       ],
@@ -40,8 +40,8 @@
       "confidence": "high"
     },
     {
-      "featureId": "feature-redesign-the-pistol-view-model-in-weaponviewmodel-tsx-to-be-significantly-more-realistic-the-model-should-include-a-recognizable-semi-automatic-pistol-silhouette-with-a-distinct-slide-barrel-frame-grip-trigger-guard-and-magazine-base-using-appropriately-shaped-three-js-geometries",
-      "featureTitle": "Redesign the pistol view model in WeaponViewModel.tsx to be significantly more realistic. The model should include a recognizable semi-automatic pistol silhouette with a distinct slide, barrel, frame/grip, trigger guard, and magazine base using appropriately shaped Three.js geometries.",
+      "featureId": "feature-redesign-the-machine-gun-assault-rifle-first-person-view-model-in-weaponviewmodel-tsx-to-closely-resemble-a-real-assault-rifle-include-a-rectangular-receiver-body-a-detachable-box-magazine-angled-slightly-forward-a-pistol-grip-with-finger-groove-geometry-a-handguard-with-rail-geometry-segments-a-flash-hider-or-muzzle-device-at-the-barrel-tip-a-charging-handle-on-the-rear-of-the-receiver-a-dust-cover-and-a-stock-visible-on-the-right-side-in-first-person-view-use-proportions-matching-a-real-assault-rifle-e-g-ak-47-or-m4-ar-15-proportions",
+      "featureTitle": "Redesign the machine gun (assault rifle) first-person view model in WeaponViewModel.tsx to closely resemble a real assault rifle. Include a rectangular receiver body, a detachable box magazine angled slightly forward, a pistol grip with finger-groove geometry, a handguard with rail geometry segments, a flash hider or muzzle device at the barrel tip, a charging handle on the rear of the receiver, a dust cover, and a stock (visible on the right side in first-person view). Use proportions matching a real assault rifle (e.g., AK-47 or M4/AR-15 proportions).",
       "files": [
         "frontend/src/components/Game/WeaponViewModel.tsx"
       ],
@@ -55,6 +55,25 @@
       ],
       "testIds": [
         "REQ-3"
+      ],
+      "confidence": "high"
+    },
+    {
+      "featureId": "feature-apply-consistent-toon-shading-and-borderlands-style-dark-outlines-to-all-three-redesigned-weapon-models-using-the-existing-toonmaterial-hooks-ensuring-the-added-geometry-details-ports-rails-guards-all-receive-proper-shading-with-distinct-dark-edges-to-make-the-details-pop-in-the-existing-art-style",
+      "featureTitle": "Apply consistent toon-shading and Borderlands-style dark outlines to all three redesigned weapon models using the existing ToonMaterial hooks, ensuring the added geometry details (ports, rails, guards) all receive proper shading with distinct dark edges to make the details pop in the existing art style.",
+      "files": [
+        "frontend/src/components/Game/WeaponViewModel.tsx"
+      ],
+      "components": [
+        "core-infrastructure@1.0.2",
+        "shadcn-ui@1.0.0",
+        "build-template-react@1.0.0",
+        "initial-app@1.0.0",
+        "github-export-icp-cli@1.0.0",
+        "authorization@4.0.0"
+      ],
+      "testIds": [
+        "REQ-4"
       ],
       "confidence": "high"
     }
