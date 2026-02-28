@@ -9,6 +9,7 @@ import {
   pickupChime,
   waveStart,
   waveClear,
+  unlockAudio,
 } from '../utils/audioSynthesis';
 import { WeaponName } from '../types/weapon';
 
@@ -45,6 +46,10 @@ export function useGameAudio() {
     waveClear();
   }, []);
 
+  const resumeAudio = useCallback(async () => {
+    await unlockAudio();
+  }, []);
+
   return {
     playGunshot,
     playZombieGrowl,
@@ -53,5 +58,6 @@ export function useGameAudio() {
     playPickup,
     playWaveStart,
     playWaveClear,
+    resumeAudio,
   };
 }

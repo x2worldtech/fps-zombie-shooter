@@ -2,14 +2,16 @@ import { useMemo } from 'react';
 import * as THREE from 'three';
 import { sandVertexShader, sandFragmentShader } from '../../shaders/sandShader';
 import { skyVertexShader, skyFragmentShader } from '../../shaders/skyShader';
-import { generateBuildingData, BuildingData, PALM_TREE_POSITIONS } from '../../utils/proceduralGeometry';
+import { generateBuildingData, BuildingData, PALM_TREE_POSITIONS, JUGGERNOG_POSITION } from '../../utils/proceduralGeometry';
 import { useToonMaterial, useOutlineMaterial } from './ToonMaterial';
 import { PackAPunchMachine } from './PackAPunchMachine';
 import { MountainBarrier } from './MountainBarrier';
 import { PalmTree } from './PalmTree';
+import JuggernogMachine from './JuggernogMachine';
 
 interface DesertEnvironmentProps {
   upgradeTier?: number;
+  juggernogPurchaseCount?: number;
 }
 
 // ─── Realistic intact building ───────────────────────────────────────────────
@@ -353,7 +355,7 @@ function BuildingDispatcher({ b }: { b: BuildingData }) {
   return <RubblePile position={[bx, 0, bz]} />;
 }
 
-export function DesertEnvironment({ upgradeTier = 0 }: DesertEnvironmentProps) {
+export function DesertEnvironment({ upgradeTier = 0, juggernogPurchaseCount = 0 }: DesertEnvironmentProps) {
   const buildings = useMemo(() => generateBuildingData(), []);
 
   // Decorative rubble positions (no collision needed — purely cosmetic)
@@ -387,6 +389,9 @@ export function DesertEnvironment({ upgradeTier = 0 }: DesertEnvironmentProps) {
 
       {/* Pack-a-Punch Machine */}
       <PackAPunchMachine upgradeTier={upgradeTier} />
+
+      {/* Juggernog Machine — placed at validated outdoor position */}
+      <JuggernogMachine position={JUGGERNOG_POSITION} purchaseCount={juggernogPurchaseCount} />
 
       {/* Mountain ring barrier surrounding the map perimeter */}
       <MountainBarrier />

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { WeaponState, WEAPON_CONFIGS, UPGRADE_COSTS } from '../../types/weapon';
 import { WaveState } from '../../hooks/useWaveSystem';
 import { PointsNotification } from '../../hooks/useEnemySystem';
+import { JUGGERNOG_COSTS } from '../../hooks/useJuggernogSystem';
 
 interface HUDProps {
   health: number;
@@ -14,7 +15,9 @@ interface HUDProps {
   isDamaged: boolean;
   pointsNotifications: PointsNotification[];
   nearPackAPunch: boolean;
+  nearJuggernog?: boolean;
   upgradeMessage: string | null;
+  juggernogPurchaseCount?: number;
 }
 
 function HealthBar({ health, maxHealth }: { health: number; maxHealth: number }) {
@@ -201,9 +204,119 @@ function PackAPunchPrompt({ nearMachine, upgradeTier, points }: {
   );
 }
 
+function JuggernogPrompt({ nearMachine, purchaseCount, points }: {
+  nearMachine: boolean;
+  purchaseCount: number;
+  points: number;
+}) {
+  if (!nearMachine) return null;
+
+  if (purchaseCount >= 2) {
+    return (
+      <div
+        className="absolute bottom-20 left-1/2 -translate-x-1/2"
+        style={{ zIndex: 20 }}
+      >
+        <div
+          className="hud-text text-lg px-5 py-2 text-center"
+          style={{
+            background: 'rgba(20,0,0,0.92)',
+            border: '2px solid #440000',
+            boxShadow: '3px 3px 0 #000',
+            color: '#664444',
+          }}
+        >
+          <div style={{ color: '#cc2222', fontSize: '0.85rem', marginBottom: '2px' }}>
+            🍺 JUGGERNOG
+          </div>
+          <div>Bereits maximal aufgewertet!</div>
+        </div>
+      </div>
+    );
+  }
+
+  const cost = JUGGERNOG_COSTS[purchaseCount];
+  const canAfford = points >= cost;
+  const nextMaxHp = purchaseCount === 0 ? 150 : 200;
+
+  return (
+    <div
+      className="absolute bottom-20 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2"
+      style={{ zIndex: 20 }}
+    >
+      <div
+        className="hud-text text-lg px-5 py-2 text-center"
+        style={{
+          background: 'rgba(40,0,0,0.92)',
+          border: `2px solid ${canAfford ? '#ff4444' : '#660000'}`,
+          boxShadow: `0 0 16px ${canAfford ? '#ff444488' : '#33000088'}, 3px 3px 0 #000`,
+          color: canAfford ? '#ff8888' : '#886666',
+        }}
+      >
+        <div style={{ color: '#ff2222', fontSize: '0.85rem', marginBottom: '2px' }}>
+          🍺 JUGGERNOG
+        </div>
+        <div>
+          Press <span style={{ color: '#ffee00' }}>F</span> to buy →{' '}
+          <span style={{ color: '#ff6666' }}>Max HP: {nextMaxHp}</span>
+        </div>
+        <div style={{ fontSize: '0.85rem', marginTop: '2px' }}>
+          Cost:{' '}
+          <span style={{ color: canAfford ? '#ffee00' : '#ff4444' }}>
+            {cost.toLocaleString()} pts
+          </span>
+          {' '}| You have:{' '}
+          <span style={{ color: '#ffee00' }}>{points.toLocaleString()} pts</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function JuggernogPerkIndicator({ purchaseCount }: { purchaseCount: number }) {
+  if (purchaseCount === 0) return null;
+
+  return (
+    <div
+      className="flex flex-col items-center gap-0.5"
+      title={`Juggernog Stufe ${purchaseCount}/2`}
+    >
+      <div
+        className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-base border-2"
+        style={{
+          background: purchaseCount >= 2
+            ? 'linear-gradient(135deg, #cc0000, #880000)'
+            : 'linear-gradient(135deg, #ff2222, #cc0000)',
+          borderColor: purchaseCount >= 2 ? '#ff4444' : '#ff6666',
+          boxShadow: purchaseCount >= 2 ? '0 0 10px #ff0000' : '0 0 5px #ff4444',
+          color: '#fff',
+          fontSize: '1.1rem',
+        }}
+      >
+        🍺
+      </div>
+      <div className="flex gap-0.5">
+        {[0, 1].map(i => (
+          <div
+            key={i}
+            className="w-2 h-2 rounded-full"
+            style={{
+              backgroundColor: i < purchaseCount ? '#ff2222' : '#333333',
+              border: '1px solid #555',
+            }}
+          />
+        ))}
+      </div>
+      <div className="hud-text text-xs" style={{ color: '#ff8888', fontSize: '0.6rem' }}>
+        JUGGERNOG
+      </div>
+    </div>
+  );
+}
+
 function UpgradeMessage({ message }: { message: string | null }) {
   if (!message) return null;
-  const isError = message.includes('enough');
+  const isError = message.includes('enough') || message.includes('✗');
   return (
     <div
       className="absolute top-1/3 left-1/2 -translate-x-1/2 hud-text text-xl px-6 py-3 text-center"
@@ -232,7 +345,9 @@ export function HUD({
   isDamaged,
   pointsNotifications,
   nearPackAPunch,
+  nearJuggernog = false,
   upgradeMessage,
+  juggernogPurchaseCount = 0,
 }: HUDProps) {
   // Re-render notifications every frame for smooth animation
   const [, forceUpdate] = useState(0);
@@ -322,16 +437,32 @@ export function HUD({
         )}
       </div>
 
-      {/* Bottom left - Health */}
-      <div
-        className="absolute bottom-6 left-6 p-3"
-        style={{
-          background: 'rgba(10,5,0,0.8)',
-          border: '2px solid #0a0505',
-          boxShadow: '3px 3px 0 #0a0505',
-        }}
-      >
-        <HealthBar health={health} maxHealth={maxHealth} />
+      {/* Bottom left - Health + Perks */}
+      <div className="absolute bottom-6 left-6 flex flex-col gap-2">
+        <div
+          className="p-3"
+          style={{
+            background: 'rgba(10,5,0,0.8)',
+            border: '2px solid #0a0505',
+            boxShadow: '3px 3px 0 #0a0505',
+          }}
+        >
+          <HealthBar health={health} maxHealth={maxHealth} />
+        </div>
+
+        {/* Perk indicators */}
+        {juggernogPurchaseCount > 0 && (
+          <div
+            className="p-2 flex gap-2 items-center"
+            style={{
+              background: 'rgba(10,5,0,0.8)',
+              border: '2px solid #0a0505',
+              boxShadow: '3px 3px 0 #0a0505',
+            }}
+          >
+            <JuggernogPerkIndicator purchaseCount={juggernogPurchaseCount} />
+          </div>
+        )}
       </div>
 
       {/* Bottom right - Ammo */}
@@ -359,7 +490,14 @@ export function HUD({
         points={points}
       />
 
-      {/* Upgrade success/failure message */}
+      {/* Juggernog interaction prompt */}
+      <JuggernogPrompt
+        nearMachine={nearJuggernog}
+        purchaseCount={juggernogPurchaseCount}
+        points={points}
+      />
+
+      {/* Upgrade / purchase message */}
       <UpgradeMessage message={upgradeMessage} />
     </div>
   );

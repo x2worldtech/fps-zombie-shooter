@@ -1,44 +1,43 @@
 {
   "kind": "coverage_report",
   "version": "1.0",
-  "generatedAt": "2026-02-27T23:17:33.629Z",
+  "generatedAt": "2026-02-28T10:36:06.448Z",
   "sources": {
     "buildRequest": true,
     "implementationPlan": true
   },
   "requirements": {
-    "total": 2,
+    "total": 1,
     "implemented": 1,
     "items": [
       {
         "id": "REQ-1",
-        "summary": "Significantly increase the XP thresholds required to advance each player level in the backend XP/level progression system. The XP cost per level should scale much more steeply so players need considerably more accumulated XP to reach higher levels.",
-        "status": "unknown",
-        "plannedFiles": [],
-        "matchedFiles": []
-      },
-      {
-        "id": "REQ-2",
-        "summary": "Update the frontend level progression system in `frontend/src/utils/levelSystem.ts` to mirror the new backend XP thresholds exactly, so that the displayed level, XP progress bar, and XP boundaries in the PlayerProfile screen remain consistent with backend calculations.",
+        "summary": "Diagnose and fix the audio system so that all in-game sound effects (gunshots for pistol, shotgun, and assault rifle; zombie growls; player hit sounds; pickup sounds; wave start/clear events) play correctly during gameplay. The root cause is likely in audioSynthesis.ts or useGameAudio.ts – ensure the Web Audio API AudioContext is properly created, resumed after a user gesture (browsers require a user interaction before audio can play), and that all synthesized sound callbacks are wired up and invoked at the correct game events in GameScene.tsx.",
         "status": "implemented",
         "plannedFiles": [
-          "frontend/src/utils/levelSystem.ts",
-          "frontend/src/components/PlayerProfile.tsx"
+          "frontend/src/utils/audioSynthesis.ts",
+          "frontend/src/hooks/useGameAudio.ts",
+          "frontend/src/components/Game/GameScene.tsx",
+          "frontend/src/components/Game/FirstPersonCamera.tsx",
+          "frontend/src/hooks/useEnemySystem.ts",
+          "frontend/src/hooks/useWaveSystem.ts"
         ],
         "matchedFiles": [
-          "frontend/src/utils/levelSystem.ts"
+          "frontend/src/utils/audioSynthesis.ts",
+          "frontend/src/hooks/useGameAudio.ts",
+          "frontend/src/components/Game/GameScene.tsx"
         ]
       }
     ]
   },
   "changedFiles": [
-    "backend/main.mo",
-    "backend/migration.mo",
     "build-request.json",
     "feature_evidence.json",
     "frontend-file-summaries.txt",
     "frontend-implementation-plan.json",
-    "frontend/src/utils/levelSystem.ts",
+    "frontend/src/components/Game/GameScene.tsx",
+    "frontend/src/hooks/useGameAudio.ts",
+    "frontend/src/utils/audioSynthesis.ts",
     "project_state.json",
     "scratch/component-selection.json",
     "spec.md",

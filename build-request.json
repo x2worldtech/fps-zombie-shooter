@@ -1,54 +1,39 @@
 {
   "kind": "build_request",
-  "title": "Increase XP required per player level-up",
-  "projectName": "FPS Zombie Shooter",
+  "title": "Fix game audio / sound effects not working",
   "priority": "normal",
   "requirements": [
     {
       "id": "REQ-1",
-      "text": "Significantly increase the XP thresholds required to advance each player level in the backend XP/level progression system. The XP cost per level should scale much more steeply so players need considerably more accumulated XP to reach higher levels.",
-      "target": "backend",
-      "source": {
-        "messageIds": [
-          "msg-4"
-        ],
-        "quotes": [
-          "man braucht deutlich mehr XP bei jedem spieler level aufstieg"
-        ]
-      },
-      "acceptanceCriteria": [
-        "Each level requires substantially more XP than in the previous configuration (e.g., at least 2–3× higher thresholds overall).",
-        "The XP thresholds increase steeply with each level so higher levels require disproportionately more XP.",
-        "Existing player XP values are preserved; only the thresholds change, so players may find their effective level has changed accordingly."
-      ]
-    },
-    {
-      "id": "REQ-2",
-      "text": "Update the frontend level progression system in `frontend/src/utils/levelSystem.ts` to mirror the new backend XP thresholds exactly, so that the displayed level, XP progress bar, and XP boundaries in the PlayerProfile screen remain consistent with backend calculations.",
+      "text": "Diagnose and fix the audio system so that all in-game sound effects (gunshots for pistol, shotgun, and assault rifle; zombie growls; player hit sounds; pickup sounds; wave start/clear events) play correctly during gameplay. The root cause is likely in audioSynthesis.ts or useGameAudio.ts – ensure the Web Audio API AudioContext is properly created, resumed after a user gesture (browsers require a user interaction before audio can play), and that all synthesized sound callbacks are wired up and invoked at the correct game events in GameScene.tsx.",
       "target": "frontend",
       "source": {
         "messageIds": [
           "msg-4"
         ],
         "quotes": [
-          "man braucht deutlich mehr XP bei jedem spieler level aufstieg"
+          "die sounds funktionieren aktuell nicht"
         ]
       },
       "acceptanceCriteria": [
-        "The XP thresholds in `levelSystem.ts` match the updated backend thresholds for all 55 levels.",
-        "The PlayerProfile XP progress bar and current level display correctly reflect the new thresholds.",
-        "Level calculation utility functions (current level, XP boundaries, percentage progress) return correct values under the new thresholds."
+        "Gunshot sound plays each time the player fires any weapon (pistol, shotgun, assault rifle).",
+        "Zombie growl/noise plays when enemies are active.",
+        "Player hit sound plays when the player takes damage.",
+        "Pickup sound plays when a health or ammo pickup is collected.",
+        "Wave start and wave cleared audio cues play at the correct wave phase transitions.",
+        "No browser console errors related to AudioContext or suspended audio state.",
+        "Audio works after the first user interaction (click/keypress) without requiring a page reload."
       ]
     }
   ],
   "constraints": [
-    "Do not change the level cap (1–55) or the overall level structure.",
-    "Do not modify any files under frontend/src/hooks/useInternetIdentity.ts, frontend/src/hooks/useActor.ts, frontend/src/main.tsx, or frontend/src/components/ui."
+    "Do not modify any file listed under frontend.immutablePaths.",
+    "Keep all audio synthesis logic inside frontend/src/utils/audioSynthesis.ts and frontend/src/hooks/useGameAudio.ts; do not introduce external audio libraries or audio asset files."
   ],
   "nonGoals": [
-    "Changing the amount of XP awarded per kill or per game session.",
-    "Adding new levels beyond the existing cap.",
-    "Resetting or wiping existing player XP data."
+    "Adding new sound effects not already designed in the system.",
+    "Backend changes.",
+    "Visual or gameplay changes unrelated to audio."
   ],
   "imageRequirements": {
     "required": [],

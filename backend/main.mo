@@ -7,9 +7,9 @@ import Order "mo:core/Order";
 import Runtime "mo:core/Runtime";
 import Principal "mo:core/Principal";
 import Map "mo:core/Map";
-import Migration "migration";
 
-(with migration = Migration.run)
+
+
 actor {
   type ScoreEntry = {
     playerName : Text;

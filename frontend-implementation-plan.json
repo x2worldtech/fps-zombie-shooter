@@ -1,26 +1,50 @@
 {
   "kind": "implementation_plan",
   "version": "1.0",
-  "title": "Increase XP required per player level-up",
+  "title": "Fix game audio / sound effects not working",
   "requirements": [
     {
-      "id": "REQ-2",
-      "summary": "Update frontend level progression system to mirror new backend XP thresholds with significantly steeper scaling",
+      "id": "REQ-1",
+      "summary": "Diagnose and fix the audio system so that all in-game sound effects play correctly during gameplay",
       "acceptanceCriteria": [
-        "The XP thresholds in `levelSystem.ts` match the updated backend thresholds for all 55 levels.",
-        "The PlayerProfile XP progress bar and current level display correctly reflect the new thresholds.",
-        "Level calculation utility functions (current level, XP boundaries, percentage progress) return correct values under the new thresholds."
+        "Gunshot sound plays each time the player fires any weapon (pistol, shotgun, assault rifle).",
+        "Zombie growl/noise plays when enemies are active.",
+        "Player hit sound plays when the player takes damage.",
+        "Pickup sound plays when a health or ammo pickup is collected.",
+        "Wave start and wave cleared audio cues play at the correct wave phase transitions.",
+        "No browser console errors related to AudioContext or suspended audio state.",
+        "Audio works after the first user interaction (click/keypress) without requiring a page reload."
       ],
       "file_operations": [
         {
-          "path": "frontend/src/utils/levelSystem.ts",
+          "path": "frontend/src/utils/audioSynthesis.ts",
           "operation": "modify",
-          "description": "Replace the existing XP threshold array with significantly higher values that scale much more steeply (at least 2–3× higher overall). Ensure each level requires substantially more XP than the previous configuration, with disproportionately higher costs at higher levels. The new thresholds must match the updated backend progression exactly to keep frontend level calculations, XP progress bars, and boundaries consistent with backend state."
+          "description": "Fix Web Audio API AudioContext initialization and state management. Ensure AudioContext is created lazily and properly resumed after a user gesture (browsers require user interaction before audio can play). Add error handling for suspended AudioContext states and implement a resume mechanism triggered by the first user interaction. Verify all synthesizer functions (createGunshot, createZombieGrowl, etc.) properly connect to the AudioContext destination and handle edge cases where the context might be suspended."
         },
         {
-          "path": "frontend/src/components/PlayerProfile.tsx",
+          "path": "frontend/src/hooks/useGameAudio.ts",
           "operation": "modify",
-          "description": "Verify that the PlayerProfile component correctly displays the player's current level, XP progress bar, and XP boundaries using the updated level system utilities. Ensure the progress bar percentage, current/next level XP display, and level badge all reflect the new steeper thresholds without requiring component logic changes (the updated levelSystem.ts utilities should handle the calculation changes transparently)."
+          "description": "Ensure all audio callback functions are properly wired and memoized. Verify that playGunshot, playZombieGrowl, playPlayerHit, playPickup, playWaveStart, and playWaveCleared callbacks correctly invoke the corresponding audioSynthesis functions. Add AudioContext resumption logic if needed when any sound is triggered. Ensure callbacks handle cases where AudioContext is not yet initialized or is in a suspended state."
+        },
+        {
+          "path": "frontend/src/components/Game/GameScene.tsx",
+          "operation": "modify",
+          "description": "Wire up all game event audio triggers to ensure sound effects play at the correct moments. Connect gunshot audio to weapon fire events from FirstPersonCamera and WeaponViewModel. Ensure zombie growl audio plays when enemies spawn or are active. Connect player hit audio to damage events. Verify pickup audio triggers when PickupMesh collection callbacks fire. Ensure wave start and wave cleared audio play during the appropriate wave phase transitions from useWaveSystem. Add an early user interaction listener (click or keypress) to resume the AudioContext if it is suspended on first load."
+        },
+        {
+          "path": "frontend/src/components/Game/FirstPersonCamera.tsx",
+          "operation": "modify",
+          "description": "Ensure the 'game:fire' custom event is properly dispatched when the player fires a weapon, and that this event is being listened to in GameScene.tsx to trigger gunshot audio. Verify the event includes necessary metadata (weapon type) if required for selecting the correct gunshot sound variant (pistol, shotgun, assault rifle)."
+        },
+        {
+          "path": "frontend/src/hooks/useEnemySystem.ts",
+          "operation": "modify",
+          "description": "Ensure enemy spawning, damage, and death events emit or trigger callbacks that can be consumed by GameScene.tsx to play zombie growl and player hit sounds. Verify that pickup spawning on enemy death triggers the pickup audio callback when collected."
+        },
+        {
+          "path": "frontend/src/hooks/useWaveSystem.ts",
+          "operation": "modify",
+          "description": "Ensure wave phase transitions (entering countdown, starting wave, clearing wave) provide callbacks or state changes that GameScene.tsx can observe to trigger wave start and wave cleared audio cues at the correct times."
         }
       ]
     }

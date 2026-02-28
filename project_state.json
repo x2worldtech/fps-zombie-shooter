@@ -1,37 +1,24 @@
 {
   "schemaVersion": "1.0.0",
   "projectStateVersion": 3,
-  "summary": "Game project with player leveling system. User wants significantly more XP required per player level-up.",
+  "summary": "New project",
   "architectural_notes": [],
-  "known_issues": [],
-  "isFixRequest": false,
+  "known_issues": [
+    "Sounds are currently not working"
+  ],
+  "isFixRequest": true,
   "existing_features": [
     {
-      "id": "feature-update-the-frontend-level-progression-system-in-frontend-src-utils-levelsystem-ts-to-mirror-the-new-backend-xp-thresholds-exactly-so-that-the-displayed-level-xp-progress-bar-and-xp-boundaries-in-the-playerprofile-screen-remain-consistent-with-backend-calculations",
-      "title": "Update the frontend level progression system in `frontend/src/utils/levelSystem.ts` to mirror the new backend XP thresholds exactly, so that the displayed level, XP progress bar, and XP boundaries in the PlayerProfile screen remain consistent with backend calculations.",
+      "id": "feature-diagnose-and-fix-the-audio-system-so-that-all-in-game-sound-effects-gunshots-for-pistol-shotgun-and-assault-rifle-zombie-growls-player-hit-sounds-pickup-sounds-wave-start-clear-events-play-correctly-during-gameplay-the-root-cause-is-likely-in-audiosynthesis-ts-or-usegameaudio-ts-ensure-the-web-audio-api-audiocontext-is-properly-created-resumed-after-a-user-gesture-browsers-require-a-user-interaction-before-audio-can-play-and-that-all-synthesized-sound-callbacks-are-wired-up-and-invoked-at-the-correct-game-events-in-gamescene-tsx",
+      "title": "Diagnose and fix the audio system so that all in-game sound effects (gunshots for pistol, shotgun, and assault rifle; zombie growls; player hit sounds; pickup sounds; wave start/clear events) play correctly during gameplay. The root cause is likely in audioSynthesis.ts or useGameAudio.ts – ensure the Web Audio API AudioContext is properly created, resumed after a user gesture (browsers require a user interaction before audio can play), and that all synthesized sound callbacks are wired up and invoked at the correct game events in GameScene.tsx.",
       "reqIds": [
-        "REQ-2"
+        "REQ-1"
       ],
       "version": 1
     }
   ],
-  "new_feature_requests": [
-    {
-      "id": "AR-1",
-      "summary": "Increase XP required for each player level-up significantly",
-      "reqIds": [],
-      "status": "pending"
-    },
-    {
-      "id": "AR-2",
-      "summary": "Significantly increase the XP thresholds required to advance each player level in the backend XP/level progression system. The XP cost per level should scale much more steeply so players need considerably more accumulated XP to reach higher levels.",
-      "reqIds": [
-        "REQ-1"
-      ],
-      "status": "pending"
-    }
-  ],
-  "projectName": "FPS Zombie Shooter",
+  "new_feature_requests": [],
+  "projectName": "Fix game audio / sound effects not working",
   "clarification_mode": "instant",
   "clarification_rounds": 0
 }

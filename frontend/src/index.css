@@ -85,7 +85,7 @@
     border: 3px solid oklch(0.12 0.02 30);
     box-shadow: 4px 4px 0 oklch(0.12 0.02 30);
     cursor: pointer;
-    transition: transform 0.1s, box-shadow 0.1s;
+    transition: transform 0.1s, box-shadow 0.1s, background 0.1s;
     text-transform: uppercase;
     display: inline-block;
     user-select: none;
@@ -93,7 +93,7 @@
 
   .toon-btn:hover {
     transform: translate(-2px, -2px);
-    box-shadow: 6px 6px 0 oklch(0.12 0.02 30);
+    box-shadow: 6px 6px 0 oklch(0.12 0.02 30), 0 0 18px rgba(255,140,0,0.45);
     background: oklch(0.72 0.2 55);
   }
 
@@ -138,5 +138,152 @@
     letter-spacing: 0.05em;
     -webkit-text-stroke: 1px oklch(0.12 0.02 30);
     text-shadow: 2px 2px 0 oklch(0.12 0.02 30);
+  }
+
+  /* ── MAIN MENU BUTTON HOVER STATES ── */
+  .menu-btn-play:hover {
+    transform: translate(-3px, -3px) scale(1.03);
+    box-shadow: 8px 8px 0 #0a0505, 0 0 35px rgba(255,140,0,0.7), 0 0 60px rgba(255,80,0,0.35) !important;
+    background: linear-gradient(135deg, rgba(255,120,0,0.98) 0%, rgba(210,70,0,0.98) 100%) !important;
+  }
+
+  .menu-btn-play:active {
+    transform: translate(2px, 2px) scale(0.98);
+    box-shadow: 3px 3px 0 #0a0505 !important;
+  }
+
+  .menu-btn-secondary:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0 #0a0505, 0 0 18px rgba(255,120,0,0.35) !important;
+    border-color: rgba(255,140,0,0.9) !important;
+    color: #ffdd88 !important;
+  }
+
+  .menu-btn-secondary:active {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0 #0a0505 !important;
+  }
+
+  .menu-auth-btn:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 4px 4px 0 rgba(0,0,0,0.8), 0 0 14px rgba(255,120,0,0.4) !important;
+  }
+}
+
+/* ── MENU ANIMATIONS ── */
+
+/* Title pulsing glow */
+@keyframes menu-title-pulse {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(1.0);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+.menu-title-glow {
+  animation: menu-title-pulse 3s ease-in-out infinite;
+}
+
+/* Floating dust motes */
+@keyframes menu-dust-float {
+  0% {
+    transform: translateY(0) translateX(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(-100vh) translateX(30px);
+    opacity: 0;
+  }
+}
+
+.menu-dust {
+  animation: menu-dust-float linear infinite;
+}
+
+/* Parallax dune layers */
+@keyframes menu-parallax-slow {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@keyframes menu-parallax-medium {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.menu-parallax-slow {
+  animation: menu-parallax-slow 40s linear infinite;
+  will-change: transform;
+}
+
+.menu-parallax-medium {
+  animation: menu-parallax-medium 22s linear infinite;
+  will-change: transform;
+}
+
+/* Zombie silhouette walk */
+@keyframes menu-zombie-walk {
+  0% { transform: translateX(-80px); }
+  100% { transform: translateX(110vw); }
+}
+
+@keyframes menu-zombie-walk-slow {
+  0% { transform: translateX(-60px); }
+  100% { transform: translateX(110vw); }
+}
+
+.menu-zombie-walk {
+  animation: menu-zombie-walk 28s linear infinite;
+  will-change: transform;
+}
+
+.menu-zombie-walk-slow {
+  animation: menu-zombie-walk-slow 45s linear infinite;
+  will-change: transform;
+}
+
+/* Screen flicker */
+@keyframes menu-flicker {
+  0%, 97%, 100% { opacity: 0; }
+  98% { opacity: 1; }
+  99% { opacity: 0.3; }
+}
+
+.menu-flicker {
+  animation: menu-flicker 8s ease-in-out infinite;
+}
+
+/* Heat haze shimmer */
+@keyframes menu-heat-haze {
+  0%, 100% { opacity: 0.4; transform: scaleY(1); }
+  50% { opacity: 0.7; transform: scaleY(1.04); }
+}
+
+.menu-heat-haze {
+  animation: menu-heat-haze 4s ease-in-out infinite;
+  transform-origin: bottom;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .menu-title-glow,
+  .menu-dust,
+  .menu-parallax-slow,
+  .menu-parallax-medium,
+  .menu-zombie-walk,
+  .menu-zombie-walk-slow,
+  .menu-flicker,
+  .menu-heat-haze {
+    animation: none;
   }
 }

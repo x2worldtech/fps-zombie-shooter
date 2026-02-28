@@ -1,17 +1,39 @@
 let audioCtx: AudioContext | null = null;
+let audioUnlocked = false;
 
-function getAudioContext(): AudioContext {
+/**
+ * Attempt to resume the AudioContext. Must be called from a user gesture handler.
+ */
+export async function unlockAudio(): Promise<void> {
   if (!audioCtx) {
     audioCtx = new AudioContext();
   }
   if (audioCtx.state === 'suspended') {
-    audioCtx.resume();
+    try {
+      await audioCtx.resume();
+    } catch (_) {}
   }
+  audioUnlocked = audioCtx.state === 'running';
+}
+
+function getAudioContext(): AudioContext | null {
+  if (!audioCtx) {
+    try {
+      audioCtx = new AudioContext();
+    } catch (_) {
+      return null;
+    }
+  }
+  // If suspended, try a non-blocking resume (may not work without gesture, but worth trying)
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume().catch(() => {});
+  }
+  if (audioCtx.state !== 'running') return null;
   return audioCtx;
 }
 
 function createNoise(ctx: AudioContext, duration: number): AudioBufferSourceNode {
-  const bufferSize = ctx.sampleRate * duration;
+  const bufferSize = Math.ceil(ctx.sampleRate * duration);
   const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
   const data = buffer.getChannelData(0);
   for (let i = 0; i < bufferSize; i++) {
@@ -25,6 +47,7 @@ function createNoise(ctx: AudioContext, duration: number): AudioBufferSourceNode
 export function pistolShot(): void {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
 
     // Sharp crack
@@ -62,6 +85,7 @@ export function pistolShot(): void {
 export function shotgunShot(): void {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
 
     // Deep boom
@@ -99,6 +123,7 @@ export function shotgunShot(): void {
 export function assaultRifleShot(): void {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
 
     const noise = createNoise(ctx, 0.1);
@@ -123,6 +148,7 @@ export function assaultRifleShot(): void {
 export function zombieGrowl(): void {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
 
     const osc = ctx.createOscillator();
@@ -157,6 +183,7 @@ export function zombieGrowl(): void {
 export function zombieRoar(): void {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
 
     const osc = ctx.createOscillator();
@@ -184,6 +211,7 @@ export function zombieRoar(): void {
 export function playerHit(): void {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
 
     const osc = ctx.createOscillator();
@@ -205,6 +233,7 @@ export function playerHit(): void {
 export function pickupChime(): void {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
 
     const freqs = [523, 659, 784, 1047];
@@ -227,6 +256,7 @@ export function pickupChime(): void {
 export function waveStart(): void {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
 
     const freqs = [220, 277, 330, 440];
@@ -249,6 +279,7 @@ export function waveStart(): void {
 export function waveClear(): void {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
     const now = ctx.currentTime;
 
     const chord = [523, 659, 784, 1047, 1319];

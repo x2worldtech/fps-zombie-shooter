@@ -13,28 +13,31 @@ import { PauseOverlay } from './PauseOverlay';
 import { useWeaponSystem } from '../../hooks/useWeaponSystem';
 import { useEnemySystem } from '../../hooks/useEnemySystem';
 import { useWaveSystem } from '../../hooks/useWaveSystem';
+import { useJuggernogSystem } from '../../hooks/useJuggernogSystem';
 import { useGameAudio } from '../../hooks/useGameAudio';
 import { PACK_A_PUNCH_POSITION, PACK_A_PUNCH_INTERACT_RANGE } from './PackAPunchMachine';
+import { JUGGERNOG_POSITION } from '../../utils/proceduralGeometry';
 import { UPGRADE_COSTS } from '../../types/weapon';
 
 interface GameSceneProps {
   onGameOver: (score: number, wave: number, kills: number, headshots: number, shotsFired: number) => void;
 }
 
-const MAX_HEALTH = 100;
-
 // Headshot multiplier: head hits deal 1.5x base damage
 const HEADSHOT_DAMAGE_MULTIPLIER = 1.5;
+
+const JUGGERNOG_INTERACT_RANGE = 3.5;
+
+// How often (ms) to randomly play a zombie growl ambient sound
+const ZOMBIE_GROWL_INTERVAL = 3000;
 
 /**
  * Checks whether a hit object (or any of its ancestors up to but not including
  * the enemy root group) is tagged as a head hitbox via userData.isHead.
- * The enemy root group is identified by having userData.enemyId set.
  */
 function isHeadHit(hitObject: THREE.Object3D): boolean {
   let current: THREE.Object3D | null = hitObject;
   while (current) {
-    // Stop at the enemy root group — don't go above it
     if (current.userData.enemyId) break;
     if (current.userData.isHead) return true;
     current = current.parent;
@@ -72,7 +75,6 @@ function RaycastShooter({
         for (const hit of intersects) {
           const obj = hit.object;
 
-          // Walk up the hierarchy to find the enemy root group (has userData.enemyId)
           let current: THREE.Object3D | null = obj;
           let enemyId: string | null = null;
           while (current) {
@@ -84,15 +86,10 @@ function RaycastShooter({
           }
 
           if (enemyId) {
-            // Determine headshot by checking if the directly hit mesh (or any
-            // ancestor below the enemy root) is tagged with userData.isHead
             const headshot = isHeadHit(obj);
-
-            // Head hits deal 1.5x damage, body hits deal 1.0x damage
             const finalDamage = headshot
               ? Math.round(damage * HEADSHOT_DAMAGE_MULTIPLIER)
               : damage;
-
             onHit(enemyId, finalDamage, headshot);
             break;
           }
@@ -124,23 +121,24 @@ function EnemyUpdater({
 
 export function GameScene({ onGameOver }: GameSceneProps) {
   const [isLocked, setIsLocked] = useState(false);
-  const [health, setHealth] = useState(MAX_HEALTH);
+  const [health, setHealth] = useState(100);
   const [isDamaged, setIsDamaged] = useState(false);
   const [killStreak, setKillStreak] = useState(0);
   const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
   const [nearPackAPunch, setNearPackAPunch] = useState(false);
+  const [nearJuggernog, setNearJuggernog] = useState(false);
   const killStreakTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const upgradeMessageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playerPosRef = useRef<[number, number, number]>([0, 1.7, 0]);
   const controlsRef = useRef<{ lock: () => void } | null>(null);
   const gameOverCalledRef = useRef(false);
+  const zombieGrowlTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Session stat trackers
   const killsRef = useRef(0);
   const headshotsRef = useRef(0);
   const shotsFiredRef = useRef(0);
 
-  const audio = useGameAudio();
   const { weaponState, currentConfig, tryFire, switchWeapon, upgradeWeapon, getEffectiveDamage } = useWeaponSystem();
   const {
     enemies,
@@ -158,6 +156,22 @@ export function GameScene({ onGameOver }: GameSceneProps) {
     clearDeadEnemies,
   } = useEnemySystem();
 
+  const juggernogSystem = useJuggernogSystem();
+
+  // Audio system
+  const {
+    playGunshot,
+    playPlayerHit,
+    playPickup,
+    playWaveStart,
+    playWaveClear,
+    playZombieGrowl,
+    resumeAudio,
+  } = useGameAudio();
+
+  // maxHealth is driven by juggernog perk
+  const maxHealth = juggernogSystem.maxHealth;
+
   // triggerGameOver declared early so handlePlayerHit can reference it
   const triggerGameOverRef = useRef<(() => void) | null>(null);
 
@@ -168,9 +182,9 @@ export function GameScene({ onGameOver }: GameSceneProps) {
   }, []);
 
   const handlePlayerHit = useCallback((damage: number) => {
-    audio.playPlayerHit();
     setIsDamaged(true);
     setTimeout(() => setIsDamaged(false), 500);
+    playPlayerHit();
     setHealth(prev => {
       const newHealth = Math.max(0, prev - damage);
       if (newHealth <= 0 && triggerGameOverRef.current) {
@@ -178,22 +192,20 @@ export function GameScene({ onGameOver }: GameSceneProps) {
       }
       return newHealth;
     });
-  }, [audio]);
+  }, [playPlayerHit]);
 
-  // Use stable useCallback wrappers so wave system callbacks don't change identity
   const handleSpawnWave = useCallback((count: number, speed: number, boss: boolean) => {
     spawnEnemies(count, speed, boss);
-    audio.playZombieGrowl();
-  }, [spawnEnemies, audio]);
+  }, [spawnEnemies]);
 
   const handleWaveStart = useCallback(() => {
-    audio.playWaveStart();
-  }, [audio]);
+    playWaveStart();
+  }, [playWaveStart]);
 
   const handleWaveClear = useCallback(() => {
-    audio.playWaveClear();
     clearDeadEnemies();
-  }, [audio, clearDeadEnemies]);
+    playWaveClear();
+  }, [clearDeadEnemies, playWaveClear]);
 
   const { waveState, startGame, triggerGameOver } = useWaveSystem(
     activeEnemyCount,
@@ -205,9 +217,15 @@ export function GameScene({ onGameOver }: GameSceneProps) {
   // Keep ref in sync
   triggerGameOverRef.current = triggerGameOver;
 
-  // Start game on mount
+  // Start game on mount, reset juggernog
   useEffect(() => {
     startGame();
+    juggernogSystem.resetJuggernog();
+    setHealth(100);
+    gameOverCalledRef.current = false;
+    killsRef.current = 0;
+    headshotsRef.current = 0;
+    shotsFiredRef.current = 0;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -219,6 +237,27 @@ export function GameScene({ onGameOver }: GameSceneProps) {
     }
   }, [waveState.phase, score, waveState.wave, onGameOver]);
 
+  // Ambient zombie growl sounds while game is active
+  useEffect(() => {
+    if (waveState.phase === 'active' && activeEnemyCount > 0) {
+      if (zombieGrowlTimerRef.current) clearInterval(zombieGrowlTimerRef.current);
+      zombieGrowlTimerRef.current = setInterval(() => {
+        playZombieGrowl();
+      }, ZOMBIE_GROWL_INTERVAL);
+    } else {
+      if (zombieGrowlTimerRef.current) {
+        clearInterval(zombieGrowlTimerRef.current);
+        zombieGrowlTimerRef.current = null;
+      }
+    }
+    return () => {
+      if (zombieGrowlTimerRef.current) {
+        clearInterval(zombieGrowlTimerRef.current);
+        zombieGrowlTimerRef.current = null;
+      }
+    };
+  }, [waveState.phase, activeEnemyCount, playZombieGrowl]);
+
   // Check proximity to Pack-a-Punch machine
   useEffect(() => {
     const interval = setInterval(() => {
@@ -226,14 +265,43 @@ export function GameScene({ onGameOver }: GameSceneProps) {
       const [mx, , mz] = PACK_A_PUNCH_POSITION;
       const dist = Math.sqrt((px - mx) ** 2 + (pz - mz) ** 2);
       setNearPackAPunch(dist <= PACK_A_PUNCH_INTERACT_RANGE);
+
+      // Check proximity to Juggernog machine
+      const [jx, , jz] = JUGGERNOG_POSITION;
+      const distJ = Math.sqrt((px - jx) ** 2 + (pz - jz) ** 2);
+      setNearJuggernog(distJ <= JUGGERNOG_INTERACT_RANGE);
     }, 100);
     return () => clearInterval(interval);
   }, []);
 
+  // Resume AudioContext on first user interaction (click or keydown)
+  useEffect(() => {
+    let unlocked = false;
+    const handleInteraction = async () => {
+      if (unlocked) return;
+      unlocked = true;
+      await resumeAudio();
+      window.removeEventListener('click', handleInteraction);
+      window.removeEventListener('keydown', handleInteraction);
+      window.removeEventListener('mousedown', handleInteraction);
+    };
+    window.addEventListener('click', handleInteraction);
+    window.addEventListener('keydown', handleInteraction);
+    window.addEventListener('mousedown', handleInteraction);
+    return () => {
+      window.removeEventListener('click', handleInteraction);
+      window.removeEventListener('keydown', handleInteraction);
+      window.removeEventListener('mousedown', handleInteraction);
+    };
+  }, [resumeAudio]);
+
   // E key handler for Pack-a-Punch interaction
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === 'e' || e.key === 'E') && nearPackAPunch && isLocked) {
+      if (!isLocked) return;
+
+      // Pack-a-Punch: E key
+      if ((e.key === 'e' || e.key === 'E') && nearPackAPunch) {
         if (weaponState.upgradeTier >= 3) {
           showUpgradeMessage('⚡ Weapon is fully upgraded!');
           return;
@@ -251,17 +319,38 @@ export function GameScene({ onGameOver }: GameSceneProps) {
           showUpgradeMessage(`⚡ UPGRADED TO ${tierName}! ⚡`);
         }
       }
+
+      // Juggernog: F key
+      if ((e.key === 'f' || e.key === 'F') && nearJuggernog) {
+        juggernogSystem.purchaseJuggernog(
+          points,
+          health,
+          (newPoints, newHealth, newMaxHealth) => {
+            spendPoints(points - newPoints);
+            setHealth(newHealth);
+            const tierMsg = newMaxHealth === 150
+              ? '🍺 JUGGERNOG! Max HP: 150'
+              : '🍺 JUGGERNOG MAX! Max HP: 200';
+            showUpgradeMessage(tierMsg);
+          },
+          (errorMsg) => {
+            showUpgradeMessage(`✗ ${errorMsg}`);
+          }
+        );
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [nearPackAPunch, isLocked, weaponState.upgradeTier, points, spendPoints, upgradeWeapon, showUpgradeMessage]);
+  }, [nearPackAPunch, nearJuggernog, isLocked, weaponState.upgradeTier, points, health,
+      spendPoints, upgradeWeapon, showUpgradeMessage, juggernogSystem]);
 
   const handleFire = useCallback(() => {
     if (!isLocked) return;
     const fired = tryFire();
     if (fired) {
       shotsFiredRef.current += 1;
-      audio.playGunshot(weaponState.currentWeapon);
+      // Play gunshot sound for the current weapon
+      playGunshot(weaponState.currentWeapon);
       const effectiveDamage = getEffectiveDamage(currentConfig.damage);
       window.dispatchEvent(new CustomEvent('game:fire', {
         detail: {
@@ -271,14 +360,13 @@ export function GameScene({ onGameOver }: GameSceneProps) {
         }
       }));
     }
-  }, [isLocked, tryFire, audio, weaponState.currentWeapon, currentConfig, getEffectiveDamage]);
+  }, [isLocked, tryFire, currentConfig, getEffectiveDamage, playGunshot, weaponState.currentWeapon]);
 
   const handleEnemyHit = useCallback((id: string, damage: number, isHeadshot: boolean) => {
     const killed = damageEnemy(id, damage, isHeadshot);
     if (killed) {
       killsRef.current += 1;
       if (isHeadshot) headshotsRef.current += 1;
-      audio.playZombieRoar();
       setKillStreak(prev => {
         const next = prev + 1;
         if (killStreakTimerRef.current) clearTimeout(killStreakTimerRef.current);
@@ -286,11 +374,11 @@ export function GameScene({ onGameOver }: GameSceneProps) {
         return next;
       });
     }
-  }, [damageEnemy, audio]);
+  }, [damageEnemy]);
 
   const handleHealthPickup = useCallback((amount: number) => {
-    setHealth(prev => Math.min(MAX_HEALTH, prev + amount));
-  }, []);
+    setHealth(prev => Math.min(maxHealth, prev + amount));
+  }, [maxHealth]);
 
   const handleAmmoPickup = useCallback(() => {
     switchWeapon(weaponState.currentWeapon);
@@ -321,7 +409,10 @@ export function GameScene({ onGameOver }: GameSceneProps) {
           onUnlock={handleUnlock}
         />
 
-        <DesertEnvironment upgradeTier={weaponState.upgradeTier} />
+        <DesertEnvironment
+          upgradeTier={weaponState.upgradeTier}
+          juggernogPurchaseCount={juggernogSystem.juggernogPurchaseCount}
+        />
 
         <FirstPersonCamera
           isLocked={isLocked}
@@ -361,7 +452,7 @@ export function GameScene({ onGameOver }: GameSceneProps) {
             pickup={pickup}
             playerPos={playerPosRef.current}
             onCollect={collectPickup}
-            onPickupSound={audio.playPickup}
+            onPickupSound={playPickup}
             onHealthPickup={handleHealthPickup}
             onAmmoPickup={handleAmmoPickup}
           />
@@ -370,7 +461,7 @@ export function GameScene({ onGameOver }: GameSceneProps) {
 
       <HUD
         health={health}
-        maxHealth={MAX_HEALTH}
+        maxHealth={maxHealth}
         weaponState={weaponState}
         waveState={waveState}
         score={score}
@@ -379,7 +470,9 @@ export function GameScene({ onGameOver }: GameSceneProps) {
         isDamaged={isDamaged}
         pointsNotifications={pointsNotifications}
         nearPackAPunch={nearPackAPunch}
+        nearJuggernog={nearJuggernog}
         upgradeMessage={upgradeMessage}
+        juggernogPurchaseCount={juggernogSystem.juggernogPurchaseCount}
       />
 
       <WaveOverlay waveState={waveState} />

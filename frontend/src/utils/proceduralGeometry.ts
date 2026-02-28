@@ -368,3 +368,72 @@ export function generatePalmTreePositions(): [number, number, number][] {
 
 // Pre-computed palm tree positions (deterministic, same every render)
 export const PALM_TREE_POSITIONS: [number, number, number][] = generatePalmTreePositions();
+
+/**
+ * Returns a valid outdoor position for the Juggernog machine,
+ * validated against all building AABBs and other obstacles.
+ * Uses deterministic candidate positions to ensure it never spawns inside a building.
+ */
+export function getValidJuggernogPosition(): [number, number, number] {
+  // Candidate positions to try (deterministic, outdoor locations)
+  const candidates: [number, number][] = [
+    [-25, 10],
+    [25, 10],
+    [-10, 25],
+    [10, -25],
+    [-25, -10],
+    [25, -10],
+    [0, 40],
+    [-40, 0],
+    [40, 0],
+    [0, -40],
+    [-18, 18],
+    [18, 18],
+    [-30, 5],
+    [30, 5],
+  ];
+
+  const machineMargin = 3.0;
+  const buildings = generateBuildingData();
+  const buildingAABBs: CollisionAABB[] = buildings.map(b => {
+    const [bx, , bz] = b.position;
+    const halfW = b.width / 2 + machineMargin;
+    const halfD = b.depth / 2 + machineMargin;
+    return {
+      minX: bx - halfW,
+      maxX: bx + halfW,
+      minZ: bz - halfD,
+      maxZ: bz + halfD,
+    };
+  });
+
+  // Pack-a-Punch exclusion zone
+  const papX = 15, papZ = -12;
+  const papExclusionRadius = 6;
+
+  for (const [x, z] of candidates) {
+    // Must be within arena
+    if (Math.sqrt(x * x + z * z) > 55) continue;
+
+    // Must not be too close to Pack-a-Punch
+    if (Math.sqrt((x - papX) ** 2 + (z - papZ) ** 2) < papExclusionRadius) continue;
+
+    // Must not be inside any building AABB
+    let insideBuilding = false;
+    for (const aabb of buildingAABBs) {
+      if (x >= aabb.minX && x <= aabb.maxX && z >= aabb.minZ && z <= aabb.maxZ) {
+        insideBuilding = true;
+        break;
+      }
+    }
+    if (insideBuilding) continue;
+
+    return [x, 0, z];
+  }
+
+  // Fallback (should never be reached with enough candidates)
+  return [-25, 0, 10];
+}
+
+// Pre-computed Juggernog machine position (deterministic, validated outdoor location)
+export const JUGGERNOG_POSITION: [number, number, number] = getValidJuggernogPosition();
