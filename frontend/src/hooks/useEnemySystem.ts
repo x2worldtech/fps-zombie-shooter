@@ -19,6 +19,8 @@ export interface PointsNotification {
   timestamp: number;
 }
 
+export type DismembermentZone = 'head' | 'leftArm' | 'rightArm' | 'leftLeg' | 'rightLeg' | 'torso';
+
 export function useEnemySystem() {
   const [enemies, setEnemies] = useState<Enemy[]>([]);
   const [pickups, setPickups] = useState<Pickup[]>([]);
@@ -36,7 +38,6 @@ export function useEnemySystem() {
       timestamp: Date.now(),
     };
     setPointsNotifications(prev => [...prev, notif]);
-    // Auto-remove after 2 seconds
     setTimeout(() => {
       setPointsNotifications(prev => prev.filter(n => n.id !== notif.id));
     }, 2000);
@@ -94,25 +95,90 @@ export function useEnemySystem() {
   }, []);
 
   /**
-   * Damage an enemy. isHeadshot determines bonus damage and point reward.
-   * Returns true if the enemy was killed.
+   * Determine which body zone was hit based on the hit point relative to the enemy.
    */
-  const damageEnemy = useCallback((id: string, damage: number, isHeadshot = false): boolean => {
-    // Look up the enemy synchronously from the ref before any state update
-    const enemy = enemiesRef.current.find(e => e.id === id);
+  const getHitZone = useCallback((enemy: Enemy, hitY: number): DismembermentZone => {
+    const baseY = enemy.position[1];
+    const scale = enemy.type === 'boss' ? 1.5 : 1.0;
+    const relY = hitY - baseY;
 
-    // If enemy doesn't exist or is already dead, do nothing
-    if (!enemy || enemy.isDead) return false;
+    if (relY > 1.55 * scale) return 'head';
+    if (relY > 0.85 * scale) return 'torso'; // arms handled by X offset separately
+    if (relY > 0.3 * scale) return 'torso';
+    return relY < 0.15 * scale ? 'leftLeg' : 'rightLeg';
+  }, []);
+
+  /**
+   * Damage an enemy. isHeadshot determines bonus damage and point reward.
+   * hitPoint is optional — if provided, dismemberment zone detection is used.
+   * Returns { killed, isDismemberment, zone }.
+   */
+  const damageEnemy = useCallback((
+    id: string,
+    damage: number,
+    isHeadshot = false,
+    hitPoint?: { x: number; y: number; z: number }
+  ): { killed: boolean; isDismemberment: boolean; zone: DismembermentZone } => {
+    const enemy = enemiesRef.current.find(e => e.id === id);
+    if (!enemy || enemy.isDead) return { killed: false, isDismemberment: false, zone: 'torso' };
 
     const newHealth = Math.max(0, enemy.health - damage);
     const killed = newHealth <= 0;
 
-    // Update enemy state
+    // Determine dismemberment zone
+    let zone: DismembermentZone = isHeadshot ? 'head' : 'torso';
+    if (hitPoint) {
+      // Refine zone using hit position
+      const relY = hitPoint.y - enemy.position[1];
+      const relX = hitPoint.x - enemy.position[0];
+      const scale = enemy.type === 'boss' ? 1.5 : 1.0;
+
+      if (relY > 1.55 * scale) {
+        zone = 'head';
+      } else if (relY > 0.85 * scale) {
+        if (relX < -0.25 * scale) zone = 'leftArm';
+        else if (relX > 0.25 * scale) zone = 'rightArm';
+        else zone = 'torso';
+      } else if (relY > 0.3 * scale) {
+        zone = 'torso';
+      } else {
+        zone = relX < 0 ? 'leftLeg' : 'rightLeg';
+      }
+    }
+
+    // Dismemberment: probabilistic per zone, only if not already detached
+    let isDismemberment = false;
+    const dismemberUpdate: Partial<Enemy> = {};
+
+    if (zone === 'head' && !enemy.headDetached && Math.random() < 0.55) {
+      dismemberUpdate.headDetached = true;
+      isDismemberment = true;
+    } else if (zone === 'leftArm' && !enemy.leftArmDetached && Math.random() < 0.6) {
+      dismemberUpdate.leftArmDetached = true;
+      isDismemberment = true;
+    } else if (zone === 'rightArm' && !enemy.rightArmDetached && Math.random() < 0.6) {
+      dismemberUpdate.rightArmDetached = true;
+      isDismemberment = true;
+    } else if (zone === 'leftLeg' && !enemy.leftLegDetached && Math.random() < 0.5) {
+      dismemberUpdate.leftLegDetached = true;
+      isDismemberment = true;
+    } else if (zone === 'rightLeg' && !enemy.rightLegDetached && Math.random() < 0.5) {
+      dismemberUpdate.rightLegDetached = true;
+      isDismemberment = true;
+    }
+
+    // Speed reduction on leg loss
+    const legJustLost = dismemberUpdate.leftLegDetached || dismemberUpdate.rightLegDetached;
+    const legAlreadyLost = enemy.leftLegDetached || enemy.rightLegDetached;
+    const newSpeed = legJustLost && !legAlreadyLost ? enemy.speed * 0.5 : enemy.speed;
+
     setEnemies(prev => prev.map(e => {
       if (e.id !== id || e.isDead) return e;
       return {
         ...e,
+        ...dismemberUpdate,
         health: Math.max(0, e.health - damage),
+        speed: newSpeed,
         isDead: e.health - damage <= 0,
         deathTime: e.health - damage <= 0 ? Date.now() : e.deathTime,
         isHit: true,
@@ -121,16 +187,13 @@ export function useEnemySystem() {
     }));
 
     if (killed) {
-      // Legacy score (for leaderboard)
       const scoreGain = enemy.type === 'boss' ? 500 : 100;
       setScore(prev => prev + scoreGain);
 
-      // Points system: 75 for headshot kill, 50 for normal kill
       const pointsGained = isHeadshot ? 75 : 50;
       setPoints(prev => prev + pointsGained);
       addPointsNotification(pointsGained, isHeadshot);
 
-      // Spawn pickup
       if (Math.random() < 0.6) {
         const pickup: Pickup = {
           id: generatePickupId(),
@@ -142,7 +205,7 @@ export function useEnemySystem() {
       }
     }
 
-    return killed;
+    return { killed, isDismemberment, zone };
   }, [addPointsNotification]);
 
   const spendPoints = useCallback((amount: number): boolean => {
@@ -178,11 +241,9 @@ export function useEnemySystem() {
 
       if (dist < 0.1) return e;
 
-      // Steering toward player
       const nx = dx / dist;
       const nz = dz / dist;
 
-      // Simple separation from other enemies
       let sepX = 0, sepZ = 0;
       prev.forEach(other => {
         if (other.id === e.id || other.isDead) return;
@@ -206,7 +267,6 @@ export function useEnemySystem() {
         const newZ = e.position[2] + (moveZ / moveLen) * e.speed * delta;
         return { ...e, position: [newX, e.position[1], newZ] as [number, number, number] };
       } else {
-        // Attack
         if (now - e.lastAttackTime > e.attackCooldown) {
           onPlayerHit(e.attackDamage);
           return { ...e, lastAttackTime: now };
@@ -232,6 +292,7 @@ export function useEnemySystem() {
 
   return {
     enemies,
+    enemiesRef,
     pickups,
     score,
     points,

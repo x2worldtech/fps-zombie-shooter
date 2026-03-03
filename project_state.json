@@ -1,24 +1,47 @@
 {
   "schemaVersion": "1.0.0",
   "projectStateVersion": 3,
-  "summary": "New project",
-  "architectural_notes": [],
-  "known_issues": [
-    "Sounds are currently not working"
+  "summary": "Zombie/gore game with a main menu and in-game ESC pause menu. From the main menu, clicking 'Start Game' launches directly into gameplay (ESC menu closed). During gameplay, pressing ESC pauses the game until the player resumes.",
+  "architectural_notes": [
+    "Main menu has a 'Start Game' button that transitions directly to gameplay",
+    "ESC key during gameplay opens a pause menu; game resumes when dismissed"
   ],
-  "isFixRequest": true,
+  "known_issues": [],
+  "isFixRequest": false,
   "existing_features": [
     {
-      "id": "feature-diagnose-and-fix-the-audio-system-so-that-all-in-game-sound-effects-gunshots-for-pistol-shotgun-and-assault-rifle-zombie-growls-player-hit-sounds-pickup-sounds-wave-start-clear-events-play-correctly-during-gameplay-the-root-cause-is-likely-in-audiosynthesis-ts-or-usegameaudio-ts-ensure-the-web-audio-api-audiocontext-is-properly-created-resumed-after-a-user-gesture-browsers-require-a-user-interaction-before-audio-can-play-and-that-all-synthesized-sound-callbacks-are-wired-up-and-invoked-at-the-correct-game-events-in-gamescene-tsx",
-      "title": "Diagnose and fix the audio system so that all in-game sound effects (gunshots for pistol, shotgun, and assault rifle; zombie growls; player hit sounds; pickup sounds; wave start/clear events) play correctly during gameplay. The root cause is likely in audioSynthesis.ts or useGameAudio.ts – ensure the Web Audio API AudioContext is properly created, resumed after a user gesture (browsers require a user interaction before audio can play), and that all synthesized sound callbacks are wired up and invoked at the correct game events in GameScene.tsx.",
+      "id": "feature-during-active-gameplay-pressing-the-esc-key-must-pause-the-game-and-display-the-pauseoverlay-the-game-must-remain-paused-enemies-frozen-timers-stopped-until-the-player-explicitly-clicks-the-resume-button-which-dismisses-the-overlay-and-resumes-gameplay",
+      "title": "During active gameplay, pressing the ESC key must pause the game and display the PauseOverlay. The game must remain paused (enemies frozen, timers stopped) until the player explicitly clicks the resume button, which dismisses the overlay and resumes gameplay.",
       "reqIds": [
-        "REQ-1"
+        "REQ-2"
       ],
       "version": 1
     }
   ],
-  "new_feature_requests": [],
-  "projectName": "Fix game audio / sound effects not working",
+  "new_feature_requests": [
+    {
+      "id": "AR-1",
+      "summary": "Start Game from main menu goes directly into gameplay without opening ESC menu",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-2",
+      "summary": "Pressing ESC during gameplay pauses the game until the player resumes",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-3",
+      "summary": "When the player clicks 'Start Game' from the main menu, the game must launch directly into active gameplay with the pause overlay closed and no ESC/pause menu visible.",
+      "reqIds": [
+        "REQ-1"
+      ],
+      "status": "pending"
+    }
+  ],
+  "gameProjectType": "2d",
+  "projectName": "FPS Zombie Shooter",
   "clarification_mode": "instant",
   "clarification_rounds": 0
 }

@@ -22,7 +22,8 @@ export function useWaveSystem(
   activeEnemyCount: number,
   onSpawnWave: (count: number, speed: number, boss: boolean) => void,
   onWaveStart: () => void,
-  onWaveClear: () => void
+  onWaveClear: () => void,
+  isPaused: boolean = false
 ) {
   const [waveState, setWaveState] = useState<WaveState>({
     wave: 0,
@@ -40,6 +41,9 @@ export function useWaveSystem(
   onSpawnWaveRef.current = onSpawnWave;
   onWaveStartRef.current = onWaveStart;
   onWaveClearRef.current = onWaveClear;
+
+  const isPausedRef = useRef(isPaused);
+  isPausedRef.current = isPaused;
 
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const clearedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -74,6 +78,7 @@ export function useWaveSystem(
   }, []);
 
   // Countdown timer — only depends on phase, uses refs for callbacks
+  // Pauses when isPaused is true
   useEffect(() => {
     if (waveState.phase !== 'countdown') return;
 
@@ -84,6 +89,9 @@ export function useWaveSystem(
     }
 
     countdownRef.current = setInterval(() => {
+      // Skip tick if paused
+      if (isPausedRef.current) return;
+
       setWaveState(prev => {
         if (prev.phase !== 'countdown') {
           // Phase changed externally, stop
@@ -120,19 +128,30 @@ export function useWaveSystem(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [waveState.phase]);
 
-  // Check wave cleared
+  // Check wave cleared — skip when paused
   useEffect(() => {
     if (waveState.phase !== 'active') return;
+    if (isPaused) return;
     if (activeEnemyCount === 0 && waveState.enemyCount > 0) {
       onWaveClearRef.current();
       setWaveState(prev => ({ ...prev, phase: 'cleared' }));
 
       if (clearedTimerRef.current) clearTimeout(clearedTimerRef.current);
       clearedTimerRef.current = setTimeout(() => {
-        startNextWave();
+        if (!isPausedRef.current) {
+          startNextWave();
+        } else {
+          // If paused when timer fires, delay until unpaused
+          const checkUnpause = setInterval(() => {
+            if (!isPausedRef.current) {
+              clearInterval(checkUnpause);
+              startNextWave();
+            }
+          }, 200);
+        }
       }, 2500);
     }
-  }, [activeEnemyCount, waveState.phase, waveState.enemyCount, startNextWave]);
+  }, [activeEnemyCount, waveState.phase, waveState.enemyCount, startNextWave, isPaused]);
 
   // Cleanup on unmount
   useEffect(() => {

@@ -15,6 +15,12 @@ export interface Enemy {
   isHit: boolean;
   hitTime: number;
   velocity: [number, number];
+  // Dismemberment state
+  headDetached?: boolean;
+  leftArmDetached?: boolean;
+  rightArmDetached?: boolean;
+  leftLegDetached?: boolean;
+  rightLegDetached?: boolean;
 }
 
 export interface Pickup {

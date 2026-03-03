@@ -1,50 +1,69 @@
 {
   "kind": "implementation_plan",
   "version": "1.0",
-  "title": "Fix game audio / sound effects not working",
+  "title": "Fix Start Game flow and ESC pause menu behavior",
   "requirements": [
     {
       "id": "REQ-1",
-      "summary": "Diagnose and fix the audio system so that all in-game sound effects play correctly during gameplay",
+      "summary": "Ensure clicking 'Start Game' from the main menu launches directly into active gameplay with no pause overlay or ESC menu visible",
       "acceptanceCriteria": [
-        "Gunshot sound plays each time the player fires any weapon (pistol, shotgun, assault rifle).",
-        "Zombie growl/noise plays when enemies are active.",
-        "Player hit sound plays when the player takes damage.",
-        "Pickup sound plays when a health or ammo pickup is collected.",
-        "Wave start and wave cleared audio cues play at the correct wave phase transitions.",
-        "No browser console errors related to AudioContext or suspended audio state.",
-        "Audio works after the first user interaction (click/keypress) without requiring a page reload."
+        "Clicking 'Start Game' from MainMenu transitions immediately to the game screen with PauseOverlay hidden.",
+        "No pause state is active when the game first starts.",
+        "The player can move and interact immediately upon entering the game."
       ],
       "file_operations": [
         {
-          "path": "frontend/src/utils/audioSynthesis.ts",
+          "path": "frontend/src/App.tsx",
           "operation": "modify",
-          "description": "Fix Web Audio API AudioContext initialization and state management. Ensure AudioContext is created lazily and properly resumed after a user gesture (browsers require user interaction before audio can play). Add error handling for suspended AudioContext states and implement a resume mechanism triggered by the first user interaction. Verify all synthesizer functions (createGunshot, createZombieGrowl, etc.) properly connect to the AudioContext destination and handle edge cases where the context might be suspended."
+          "description": "Ensure that when transitioning to the 'game' screen from the main menu, any existing pause state is cleared and the game starts in an active (unpaused) state. Verify that the screen transition does not inadvertently trigger pause logic."
         },
         {
-          "path": "frontend/src/hooks/useGameAudio.ts",
+          "path": "frontend/src/components/GameScene.tsx",
           "operation": "modify",
-          "description": "Ensure all audio callback functions are properly wired and memoized. Verify that playGunshot, playZombieGrowl, playPlayerHit, playPickup, playWaveStart, and playWaveCleared callbacks correctly invoke the corresponding audioSynthesis functions. Add AudioContext resumption logic if needed when any sound is triggered. Ensure callbacks handle cases where AudioContext is not yet initialized or is in a suspended state."
+          "description": "Modify the GameScene component to initialize with isPaused set to false when the game first loads. Ensure the PauseOverlay is only rendered when isPaused is true. Add logic to prevent the ESC key from toggling pause before the game has fully started (e.g., during initial countdown or menu phase)."
         },
         {
-          "path": "frontend/src/components/Game/GameScene.tsx",
+          "path": "frontend/src/components/Game/PauseOverlay.tsx",
           "operation": "modify",
-          "description": "Wire up all game event audio triggers to ensure sound effects play at the correct moments. Connect gunshot audio to weapon fire events from FirstPersonCamera and WeaponViewModel. Ensure zombie growl audio plays when enemies spawn or are active. Connect player hit audio to damage events. Verify pickup audio triggers when PickupMesh collection callbacks fire. Ensure wave start and wave cleared audio play during the appropriate wave phase transitions from useWaveSystem. Add an early user interaction listener (click or keypress) to resume the AudioContext if it is suspended on first load."
-        },
+          "description": "Ensure the PauseOverlay component is conditionally rendered only when the pause state is active. Verify that the overlay does not render on initial game load."
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "summary": "Implement ESC key pause/resume toggle that freezes gameplay (enemies, timers) until the player clicks resume or presses ESC again",
+      "acceptanceCriteria": [
+        "Pressing ESC during active gameplay sets a paused state to true and renders the PauseOverlay.",
+        "While paused, enemy movement, wave timers, and player actions are frozen.",
+        "Clicking the resume button in PauseOverlay sets paused state to false and resumes all game systems.",
+        "Pressing ESC again while paused resumes the game (toggle behavior).",
+        "ESC key has no effect on the pause menu when the player is in the main menu or game-over screen."
+      ],
+      "file_operations": [
         {
-          "path": "frontend/src/components/Game/FirstPersonCamera.tsx",
+          "path": "frontend/src/components/GameScene.tsx",
           "operation": "modify",
-          "description": "Ensure the 'game:fire' custom event is properly dispatched when the player fires a weapon, and that this event is being listened to in GameScene.tsx to trigger gunshot audio. Verify the event includes necessary metadata (weapon type) if required for selecting the correct gunshot sound variant (pistol, shotgun, assault rifle)."
+          "description": "Add an ESC key event listener that toggles the isPaused state during active gameplay. Ensure the listener is only active when the current screen is 'game' and the wave phase is 'active'. Pass the isPaused state to all child systems (enemy system, wave system, weapon system) to freeze their logic. Wire the PauseOverlay's onResume callback to set isPaused to false."
         },
         {
           "path": "frontend/src/hooks/useEnemySystem.ts",
           "operation": "modify",
-          "description": "Ensure enemy spawning, damage, and death events emit or trigger callbacks that can be consumed by GameScene.tsx to play zombie growl and player hit sounds. Verify that pickup spawning on enemy death triggers the pickup audio callback when collected."
+          "description": "Accept an isPaused boolean parameter. When isPaused is true, skip all enemy movement, attack, and spawn logic in the frame loop. Ensure enemy state is preserved while paused and resumes correctly when unpaused."
         },
         {
           "path": "frontend/src/hooks/useWaveSystem.ts",
           "operation": "modify",
-          "description": "Ensure wave phase transitions (entering countdown, starting wave, clearing wave) provide callbacks or state changes that GameScene.tsx can observe to trigger wave start and wave cleared audio cues at the correct times."
+          "description": "Accept an isPaused boolean parameter. When isPaused is true, pause all countdown timers (wave start, wave cleared) and freeze the active wave phase. Ensure timers resume from their paused position when isPaused becomes false."
+        },
+        {
+          "path": "frontend/src/hooks/useWeaponSystem.ts",
+          "operation": "modify",
+          "description": "Accept an isPaused boolean parameter. When isPaused is true, disable weapon firing, reloading, and switching. Ignore all input events (mouse clicks, keyboard shortcuts) while paused."
+        },
+        {
+          "path": "frontend/src/components/Game/FirstPersonCamera.tsx",
+          "operation": "modify",
+          "description": "Accept an isPaused boolean parameter. When isPaused is true, disable player movement (WASD, jump, sprint) and mouse look. Lock the camera and player position while paused."
         }
       ]
     }

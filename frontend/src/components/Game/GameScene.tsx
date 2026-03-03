@@ -10,6 +10,8 @@ import { PickupMesh } from './PickupMesh';
 import { HUD } from './HUD';
 import { WaveOverlay } from './WaveOverlay';
 import { PauseOverlay } from './PauseOverlay';
+import BloodParticles from './BloodParticles';
+import BloodDecals, { BloodDecalsHandle } from './BloodDecals';
 import { useWeaponSystem } from '../../hooks/useWeaponSystem';
 import { useEnemySystem } from '../../hooks/useEnemySystem';
 import { useWaveSystem } from '../../hooks/useWaveSystem';
@@ -23,18 +25,19 @@ interface GameSceneProps {
   onGameOver: (score: number, wave: number, kills: number, headshots: number, shotsFired: number) => void;
 }
 
-// Headshot multiplier: head hits deal 1.5x base damage
 const HEADSHOT_DAMAGE_MULTIPLIER = 1.5;
-
 const JUGGERNOG_INTERACT_RANGE = 3.5;
-
-// How often (ms) to randomly play a zombie growl ambient sound
 const ZOMBIE_GROWL_INTERVAL = 3000;
 
-/**
- * Checks whether a hit object (or any of its ancestors up to but not including
- * the enemy root group) is tagged as a head hitbox via userData.isHead.
- */
+interface BloodEffect {
+  id: number;
+  position: [number, number, number];
+  direction: [number, number, number];
+  intensity: number;
+}
+
+let bloodEffectIdCounter = 0;
+
 function isHeadHit(hitObject: THREE.Object3D): boolean {
   let current: THREE.Object3D | null = hitObject;
   while (current) {
@@ -49,7 +52,7 @@ function RaycastShooter({
   onHit,
   isActive,
 }: {
-  onHit: (id: string, damage: number, isHeadshot: boolean) => void;
+  onHit: (id: string, damage: number, isHeadshot: boolean, hitPoint: { x: number; y: number; z: number }) => void;
   isActive: boolean;
 }) {
   const { camera, scene } = useThree();
@@ -90,7 +93,11 @@ function RaycastShooter({
             const finalDamage = headshot
               ? Math.round(damage * HEADSHOT_DAMAGE_MULTIPLIER)
               : damage;
-            onHit(enemyId, finalDamage, headshot);
+            onHit(enemyId, finalDamage, headshot, {
+              x: hit.point.x,
+              y: hit.point.y,
+              z: hit.point.z,
+            });
             break;
           }
         }
@@ -108,12 +115,15 @@ function EnemyUpdater({
   playerPos,
   onPlayerHit,
   updatePositions,
+  isPaused,
 }: {
   playerPos: React.MutableRefObject<[number, number, number]>;
   onPlayerHit: (dmg: number) => void;
   updatePositions: (pos: [number, number, number], delta: number, onHit: (dmg: number) => void) => void;
+  isPaused: boolean;
 }) {
   useFrame((_, delta) => {
+    if (isPaused) return;
     updatePositions(playerPos.current, delta, onPlayerHit);
   });
   return null;
@@ -121,20 +131,24 @@ function EnemyUpdater({
 
 export function GameScene({ onGameOver }: GameSceneProps) {
   const [isLocked, setIsLocked] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [health, setHealth] = useState(100);
   const [isDamaged, setIsDamaged] = useState(false);
   const [killStreak, setKillStreak] = useState(0);
   const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
   const [nearPackAPunch, setNearPackAPunch] = useState(false);
   const [nearJuggernog, setNearJuggernog] = useState(false);
+  const [bloodEffects, setBloodEffects] = useState<BloodEffect[]>([]);
+
   const killStreakTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const upgradeMessageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playerPosRef = useRef<[number, number, number]>([0, 1.7, 0]);
   const controlsRef = useRef<{ lock: () => void } | null>(null);
   const gameOverCalledRef = useRef(false);
   const zombieGrowlTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const bloodDecalsRef = useRef<BloodDecalsHandle>(null);
+  const isPausedRef = useRef(false);
 
-  // Session stat trackers
   const killsRef = useRef(0);
   const headshotsRef = useRef(0);
   const shotsFiredRef = useRef(0);
@@ -158,7 +172,6 @@ export function GameScene({ onGameOver }: GameSceneProps) {
 
   const juggernogSystem = useJuggernogSystem();
 
-  // Audio system
   const {
     playGunshot,
     playPlayerHit,
@@ -169,10 +182,7 @@ export function GameScene({ onGameOver }: GameSceneProps) {
     resumeAudio,
   } = useGameAudio();
 
-  // maxHealth is driven by juggernog perk
   const maxHealth = juggernogSystem.maxHealth;
-
-  // triggerGameOver declared early so handlePlayerHit can reference it
   const triggerGameOverRef = useRef<(() => void) | null>(null);
 
   const showUpgradeMessage = useCallback((msg: string) => {
@@ -211,17 +221,18 @@ export function GameScene({ onGameOver }: GameSceneProps) {
     activeEnemyCount,
     handleSpawnWave,
     handleWaveStart,
-    handleWaveClear
+    handleWaveClear,
+    isPaused
   );
 
-  // Keep ref in sync
   triggerGameOverRef.current = triggerGameOver;
 
-  // Start game on mount, reset juggernog
   useEffect(() => {
     startGame();
     juggernogSystem.resetJuggernog();
     setHealth(100);
+    setIsPaused(false);
+    isPausedRef.current = false;
     gameOverCalledRef.current = false;
     killsRef.current = 0;
     headshotsRef.current = 0;
@@ -229,7 +240,6 @@ export function GameScene({ onGameOver }: GameSceneProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Game over check
   useEffect(() => {
     if (waveState.phase === 'gameover' && !gameOverCalledRef.current) {
       gameOverCalledRef.current = true;
@@ -237,9 +247,8 @@ export function GameScene({ onGameOver }: GameSceneProps) {
     }
   }, [waveState.phase, score, waveState.wave, onGameOver]);
 
-  // Ambient zombie growl sounds while game is active
   useEffect(() => {
-    if (waveState.phase === 'active' && activeEnemyCount > 0) {
+    if (waveState.phase === 'active' && activeEnemyCount > 0 && !isPaused) {
       if (zombieGrowlTimerRef.current) clearInterval(zombieGrowlTimerRef.current);
       zombieGrowlTimerRef.current = setInterval(() => {
         playZombieGrowl();
@@ -256,9 +265,8 @@ export function GameScene({ onGameOver }: GameSceneProps) {
         zombieGrowlTimerRef.current = null;
       }
     };
-  }, [waveState.phase, activeEnemyCount, playZombieGrowl]);
+  }, [waveState.phase, activeEnemyCount, playZombieGrowl, isPaused]);
 
-  // Check proximity to Pack-a-Punch machine
   useEffect(() => {
     const interval = setInterval(() => {
       const [px, , pz] = playerPosRef.current;
@@ -266,7 +274,6 @@ export function GameScene({ onGameOver }: GameSceneProps) {
       const dist = Math.sqrt((px - mx) ** 2 + (pz - mz) ** 2);
       setNearPackAPunch(dist <= PACK_A_PUNCH_INTERACT_RANGE);
 
-      // Check proximity to Juggernog machine
       const [jx, , jz] = JUGGERNOG_POSITION;
       const distJ = Math.sqrt((px - jx) ** 2 + (pz - jz) ** 2);
       setNearJuggernog(distJ <= JUGGERNOG_INTERACT_RANGE);
@@ -274,7 +281,6 @@ export function GameScene({ onGameOver }: GameSceneProps) {
     return () => clearInterval(interval);
   }, []);
 
-  // Resume AudioContext on first user interaction (click or keydown)
   useEffect(() => {
     let unlocked = false;
     const handleInteraction = async () => {
@@ -295,12 +301,42 @@ export function GameScene({ onGameOver }: GameSceneProps) {
     };
   }, [resumeAudio]);
 
-  // E key handler for Pack-a-Punch interaction
+  // ESC key: toggle pause during active gameplay only
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.code !== 'Escape') return;
+      // Only allow pause toggle when game is running (not gameover, not menu)
+      if (waveState.phase === 'gameover' || waveState.phase === 'menu') return;
+
+      setIsPaused(prev => {
+        const next = !prev;
+        isPausedRef.current = next;
+        return next;
+      });
+    };
+
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [waveState.phase]);
+
+  // When unpausing, re-lock the pointer so the player can look around immediately
+  useEffect(() => {
+    if (!isPaused && isLocked === false && waveState.phase !== 'gameover' && waveState.phase !== 'menu') {
+      // Only re-lock if we were previously paused and the game is active
+      // We use a small delay to let the overlay disappear first
+      const t = setTimeout(() => {
+        if (controlsRef.current && !isPausedRef.current) {
+          controlsRef.current.lock();
+        }
+      }, 50);
+      return () => clearTimeout(t);
+    }
+  }, [isPaused, isLocked, waveState.phase]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isLocked) return;
+      if (!isLocked || isPausedRef.current) return;
 
-      // Pack-a-Punch: E key
       if ((e.key === 'e' || e.key === 'E') && nearPackAPunch) {
         if (weaponState.upgradeTier >= 3) {
           showUpgradeMessage('⚡ Weapon is fully upgraded!');
@@ -311,16 +347,15 @@ export function GameScene({ onGameOver }: GameSceneProps) {
           showUpgradeMessage(`✗ Not enough points! Need ${nextCost.toLocaleString()} pts`);
           return;
         }
-        const spent = spendPoints(nextCost);
-        if (spent) {
-          upgradeWeapon(points);
+        const result = upgradeWeapon(points);
+        if (result.success) {
+          spendPoints(result.cost);
           const tierNames = ['BLUE STEEL', 'VOID PURPLE', 'GOLDEN FURY'];
           const tierName = tierNames[weaponState.upgradeTier];
           showUpgradeMessage(`⚡ UPGRADED TO ${tierName}! ⚡`);
         }
       }
 
-      // Juggernog: F key
       if ((e.key === 'f' || e.key === 'F') && nearJuggernog) {
         juggernogSystem.purchaseJuggernog(
           points,
@@ -345,11 +380,10 @@ export function GameScene({ onGameOver }: GameSceneProps) {
       spendPoints, upgradeWeapon, showUpgradeMessage, juggernogSystem]);
 
   const handleFire = useCallback(() => {
-    if (!isLocked) return;
+    if (!isLocked || isPausedRef.current) return;
     const fired = tryFire();
     if (fired) {
       shotsFiredRef.current += 1;
-      // Play gunshot sound for the current weapon
       playGunshot(weaponState.currentWeapon);
       const effectiveDamage = getEffectiveDamage(currentConfig.damage);
       window.dispatchEvent(new CustomEvent('game:fire', {
@@ -362,11 +396,33 @@ export function GameScene({ onGameOver }: GameSceneProps) {
     }
   }, [isLocked, tryFire, currentConfig, getEffectiveDamage, playGunshot, weaponState.currentWeapon]);
 
-  const handleEnemyHit = useCallback((id: string, damage: number, isHeadshot: boolean) => {
-    const killed = damageEnemy(id, damage, isHeadshot);
-    if (killed) {
+  const handleEnemyHit = useCallback((
+    id: string,
+    damage: number,
+    isHeadshot: boolean,
+    hitPoint: { x: number; y: number; z: number }
+  ) => {
+    const result = damageEnemy(id, damage, isHeadshot, hitPoint);
+
+    // Spawn blood particle burst
+    const shotDir = new THREE.Vector3(0, 0, -1); // approximate forward
+    const intensity = result.isDismemberment ? 2.5 : 1.0;
+    const newEffect: BloodEffect = {
+      id: bloodEffectIdCounter++,
+      position: [hitPoint.x, hitPoint.y, hitPoint.z],
+      direction: [shotDir.x, shotDir.y, shotDir.z],
+      intensity,
+    };
+    setBloodEffects(prev => [...prev, newEffect]);
+
+    // Blood splatter decal at hit point
+    bloodDecalsRef.current?.addBloodSplatter([hitPoint.x, hitPoint.y, hitPoint.z]);
+
+    if (result.killed) {
       killsRef.current += 1;
       if (isHeadshot) headshotsRef.current += 1;
+      // Blood pool at kill location
+      bloodDecalsRef.current?.addBloodPool([hitPoint.x, hitPoint.y, hitPoint.z]);
       setKillStreak(prev => {
         const next = prev + 1;
         if (killStreakTimerRef.current) clearTimeout(killStreakTimerRef.current);
@@ -375,6 +431,10 @@ export function GameScene({ onGameOver }: GameSceneProps) {
       });
     }
   }, [damageEnemy]);
+
+  const removeBloodEffect = useCallback((id: number) => {
+    setBloodEffects(prev => prev.filter(e => e.id !== id));
+  }, []);
 
   const handleHealthPickup = useCallback((amount: number) => {
     setHealth(prev => Math.min(maxHealth, prev + amount));
@@ -385,15 +445,25 @@ export function GameScene({ onGameOver }: GameSceneProps) {
   }, [switchWeapon, weaponState.currentWeapon]);
 
   const handleLock = useCallback(() => setIsLocked(true), []);
-  const handleUnlock = useCallback(() => setIsLocked(false), []);
-
-  const handleResume = useCallback(() => {
-    if (controlsRef.current) {
-      controlsRef.current.lock();
-    }
+  const handleUnlock = useCallback(() => {
+    setIsLocked(false);
+    // If pointer was unlocked by the browser (not by ESC pause), don't auto-pause
+    // ESC pause is handled separately above
   }, []);
 
-  const isGameActive = isLocked && waveState.phase !== 'gameover';
+  const handleResume = useCallback(() => {
+    setIsPaused(false);
+    isPausedRef.current = false;
+    // Re-lock pointer after a short delay
+    setTimeout(() => {
+      if (controlsRef.current) {
+        controlsRef.current.lock();
+      }
+    }, 50);
+  }, []);
+
+  // isGameActive: game is running and not paused
+  const isGameActive = isLocked && waveState.phase !== 'gameover' && !isPaused;
 
   return (
     <div className="relative w-full h-full">
@@ -419,6 +489,7 @@ export function GameScene({ onGameOver }: GameSceneProps) {
           onPlayerPositionUpdate={(pos) => { playerPosRef.current = pos; }}
           onFire={handleFire}
           isGameActive={isGameActive}
+          isPaused={isPaused}
         />
 
         <WeaponViewModel
@@ -434,7 +505,11 @@ export function GameScene({ onGameOver }: GameSceneProps) {
           playerPos={playerPosRef}
           onPlayerHit={handlePlayerHit}
           updatePositions={updateEnemyPositions}
+          isPaused={isPaused}
         />
+
+        {/* Persistent blood decals on the ground */}
+        <BloodDecals ref={bloodDecalsRef} />
 
         {enemies.map(enemy => (
           <group key={enemy.id} userData={{ enemyId: enemy.id }}>
@@ -444,6 +519,17 @@ export function GameScene({ onGameOver }: GameSceneProps) {
               playerPositionRef={playerPosRef}
             />
           </group>
+        ))}
+
+        {/* Blood particle bursts */}
+        {bloodEffects.map(effect => (
+          <BloodParticles
+            key={effect.id}
+            position={effect.position}
+            direction={effect.direction}
+            intensity={effect.intensity}
+            onComplete={() => removeBloodEffect(effect.id)}
+          />
         ))}
 
         {pickups.map(pickup => (
@@ -477,7 +563,8 @@ export function GameScene({ onGameOver }: GameSceneProps) {
 
       <WaveOverlay waveState={waveState} />
 
-      {!isLocked && waveState.phase !== 'gameover' && (
+      {/* Pause overlay: only shown when explicitly paused via ESC */}
+      {isPaused && waveState.phase !== 'gameover' && (
         <PauseOverlay onResume={handleResume} />
       )}
     </div>

@@ -13,6 +13,7 @@ interface FirstPersonCameraProps {
   onPlayerPositionUpdate: (pos: [number, number, number]) => void;
   onFire: () => void;
   isGameActive: boolean;
+  isPaused: boolean;
 }
 
 const MOVE_SPEED = 8;
@@ -32,6 +33,7 @@ export function FirstPersonCamera({
   onPlayerPositionUpdate,
   onFire,
   isGameActive,
+  isPaused,
 }: FirstPersonCameraProps) {
   const { camera } = useThree();
 
@@ -73,7 +75,7 @@ export function FirstPersonCamera({
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isLocked) return;
+      if (!isLocked || isPaused) return;
       const sensitivity = 0.002;
       yawRef.current -= e.movementX * sensitivity;
       pitchRef.current -= e.movementY * sensitivity;
@@ -129,10 +131,19 @@ export function FirstPersonCamera({
       window.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isLocked, isGameActive]);
+  }, [isLocked, isGameActive, isPaused]);
 
   useFrame((_, delta) => {
-    if (!isGameActive) return;
+    // Freeze all movement and firing when paused
+    if (!isGameActive || isPaused) {
+      // Still clear movement keys so player doesn't lurch on resume
+      keysRef.current.w = false;
+      keysRef.current.a = false;
+      keysRef.current.s = false;
+      keysRef.current.d = false;
+      mouseDownRef.current = false;
+      return;
+    }
 
     const keys = keysRef.current;
     const speed = keys.shift ? SPRINT_SPEED : MOVE_SPEED;

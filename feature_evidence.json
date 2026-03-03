@@ -2,12 +2,11 @@
   "kind": "feature_evidence_report",
   "features": [
     {
-      "featureId": "feature-diagnose-and-fix-the-audio-system-so-that-all-in-game-sound-effects-gunshots-for-pistol-shotgun-and-assault-rifle-zombie-growls-player-hit-sounds-pickup-sounds-wave-start-clear-events-play-correctly-during-gameplay-the-root-cause-is-likely-in-audiosynthesis-ts-or-usegameaudio-ts-ensure-the-web-audio-api-audiocontext-is-properly-created-resumed-after-a-user-gesture-browsers-require-a-user-interaction-before-audio-can-play-and-that-all-synthesized-sound-callbacks-are-wired-up-and-invoked-at-the-correct-game-events-in-gamescene-tsx",
-      "featureTitle": "Diagnose and fix the audio system so that all in-game sound effects (gunshots for pistol, shotgun, and assault rifle; zombie growls; player hit sounds; pickup sounds; wave start/clear events) play correctly during gameplay. The root cause is likely in audioSynthesis.ts or useGameAudio.ts – ensure the Web Audio API AudioContext is properly created, resumed after a user gesture (browsers require a user interaction before audio can play), and that all synthesized sound callbacks are wired up and invoked at the correct game events in GameScene.tsx.",
+      "featureId": "feature-during-active-gameplay-pressing-the-esc-key-must-pause-the-game-and-display-the-pauseoverlay-the-game-must-remain-paused-enemies-frozen-timers-stopped-until-the-player-explicitly-clicks-the-resume-button-which-dismisses-the-overlay-and-resumes-gameplay",
+      "featureTitle": "During active gameplay, pressing the ESC key must pause the game and display the PauseOverlay. The game must remain paused (enemies frozen, timers stopped) until the player explicitly clicks the resume button, which dismisses the overlay and resumes gameplay.",
       "files": [
-        "frontend/src/components/Game/GameScene.tsx",
-        "frontend/src/hooks/useGameAudio.ts",
-        "frontend/src/utils/audioSynthesis.ts"
+        "frontend/src/components/Game/FirstPersonCamera.tsx",
+        "frontend/src/hooks/useWaveSystem.ts"
       ],
       "components": [
         "core-infrastructure@1.0.2",
@@ -19,7 +18,7 @@
         "blob-storage@4.0.0"
       ],
       "testIds": [
-        "REQ-1"
+        "REQ-2"
       ],
       "confidence": "high"
     }

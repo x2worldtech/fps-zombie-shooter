@@ -1,39 +1,56 @@
 {
   "kind": "build_request",
-  "title": "Fix game audio / sound effects not working",
+  "title": "Fix Start Game flow and ESC pause menu behavior",
+  "projectName": "FPS Zombie Shooter",
   "priority": "normal",
   "requirements": [
     {
       "id": "REQ-1",
-      "text": "Diagnose and fix the audio system so that all in-game sound effects (gunshots for pistol, shotgun, and assault rifle; zombie growls; player hit sounds; pickup sounds; wave start/clear events) play correctly during gameplay. The root cause is likely in audioSynthesis.ts or useGameAudio.ts – ensure the Web Audio API AudioContext is properly created, resumed after a user gesture (browsers require a user interaction before audio can play), and that all synthesized sound callbacks are wired up and invoked at the correct game events in GameScene.tsx.",
+      "text": "When the player clicks 'Start Game' from the main menu, the game must launch directly into active gameplay with the pause overlay closed and no ESC/pause menu visible.",
       "target": "frontend",
       "source": {
         "messageIds": [
           "msg-4"
         ],
         "quotes": [
-          "die sounds funktionieren aktuell nicht"
+          "wenn man im spielhauptmenü ist und start game klickt kommt man direkt ins spiel ohne das das ESC menü offen ist"
         ]
       },
       "acceptanceCriteria": [
-        "Gunshot sound plays each time the player fires any weapon (pistol, shotgun, assault rifle).",
-        "Zombie growl/noise plays when enemies are active.",
-        "Player hit sound plays when the player takes damage.",
-        "Pickup sound plays when a health or ammo pickup is collected.",
-        "Wave start and wave cleared audio cues play at the correct wave phase transitions.",
-        "No browser console errors related to AudioContext or suspended audio state.",
-        "Audio works after the first user interaction (click/keypress) without requiring a page reload."
+        "Clicking 'Start Game' from MainMenu transitions immediately to the game screen with PauseOverlay hidden.",
+        "No pause state is active when the game first starts.",
+        "The player can move and interact immediately upon entering the game."
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "text": "During active gameplay, pressing the ESC key must pause the game and display the PauseOverlay. The game must remain paused (enemies frozen, timers stopped) until the player explicitly clicks the resume button, which dismisses the overlay and resumes gameplay.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-4"
+        ],
+        "quotes": [
+          "wenn man im spiel ESC drückt dann pausiert das spiel bis man fortsetzt"
+        ]
+      },
+      "acceptanceCriteria": [
+        "Pressing ESC during active gameplay sets a paused state to true and renders the PauseOverlay.",
+        "While paused, enemy movement, wave timers, and player actions are frozen.",
+        "Clicking the resume button in PauseOverlay sets paused state to false and resumes all game systems.",
+        "Pressing ESC again while paused resumes the game (toggle behavior).",
+        "ESC key has no effect on the pause menu when the player is in the main menu or game-over screen."
       ]
     }
   ],
   "constraints": [
-    "Do not modify any file listed under frontend.immutablePaths.",
-    "Keep all audio synthesis logic inside frontend/src/utils/audioSynthesis.ts and frontend/src/hooks/useGameAudio.ts; do not introduce external audio libraries or audio asset files."
+    "Do not modify any files under frontend/src/hooks/useInternetIdentity.ts, frontend/src/hooks/useActor.ts, frontend/src/main.tsx, or frontend/src/components/ui.",
+    "Reuse the existing PauseOverlay component; do not create a new pause UI component."
   ],
   "nonGoals": [
-    "Adding new sound effects not already designed in the system.",
-    "Backend changes.",
-    "Visual or gameplay changes unrelated to audio."
+    "Redesigning or restyling the PauseOverlay component.",
+    "Adding new pause menu options (settings, quit, etc.) beyond what already exists.",
+    "Any backend changes."
   ],
   "imageRequirements": {
     "required": [],
