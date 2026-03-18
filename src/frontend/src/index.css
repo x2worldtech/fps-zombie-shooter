@@ -1,0 +1,395 @@
+@import url("https://fonts.googleapis.com/css2?family=Bangers&family=Oswald:wght@400;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --radius: 0.25rem;
+    --background: 0.12 0.02 30;
+    --foreground: 0.95 0.03 90;
+    --card: 0.18 0.03 35;
+    --card-foreground: 0.95 0.03 90;
+    --popover: 0.18 0.03 35;
+    --popover-foreground: 0.95 0.03 90;
+    --primary: 0.62 0.18 48;
+    --primary-foreground: 0.12 0.02 30;
+    --secondary: 0.45 0.22 25;
+    --secondary-foreground: 0.95 0.03 90;
+    --muted: 0.22 0.03 35;
+    --muted-foreground: 0.65 0.05 60;
+    --accent: 0.88 0.18 100;
+    --accent-foreground: 0.12 0.02 30;
+    --destructive: 0.45 0.22 25;
+    --destructive-foreground: 0.95 0.03 90;
+    --border: 0.35 0.06 45;
+    --input: 0.22 0.03 35;
+    --ring: 0.62 0.18 48;
+    --chart-1: 0.62 0.18 48;
+    --chart-2: 0.45 0.22 25;
+    --chart-3: 0.88 0.18 100;
+    --chart-4: 0.72 0.2 140;
+    --chart-5: 0.82 0.09 85;
+    --sidebar: 0.15 0.02 30;
+    --sidebar-foreground: 0.95 0.03 90;
+    --sidebar-primary: 0.62 0.18 48;
+    --sidebar-primary-foreground: 0.12 0.02 30;
+    --sidebar-accent: 0.22 0.03 35;
+    --sidebar-accent-foreground: 0.95 0.03 90;
+    --sidebar-border: 0.35 0.06 45;
+    --sidebar-ring: 0.62 0.18 48;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Oswald", sans-serif;
+    overflow: hidden;
+  }
+
+  h1,
+  h2,
+  h3,
+  .toon-title {
+    font-family: "Bangers", cursive;
+    letter-spacing: 0.05em;
+    -webkit-text-stroke: 2px oklch(0.12 0.02 30);
+    text-shadow: 3px 3px 0 oklch(0.12 0.02 30), -1px -1px 0 oklch(0.12 0.02 30),
+      1px -1px 0 oklch(0.12 0.02 30), -1px 1px 0 oklch(0.12 0.02 30);
+  }
+}
+
+@layer components {
+  .toon-btn {
+    font-family: "Bangers", cursive;
+    letter-spacing: 0.08em;
+    font-size: 1.5rem;
+    padding: 0.5rem 2rem;
+    background: oklch(0.62 0.18 48);
+    color: oklch(0.12 0.02 30);
+    border: 3px solid oklch(0.12 0.02 30);
+    box-shadow: 4px 4px 0 oklch(0.12 0.02 30);
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.1s, background 0.1s;
+    text-transform: uppercase;
+    display: inline-block;
+    user-select: none;
+  }
+
+  .toon-btn:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0 oklch(0.12 0.02 30), 0 0 18px rgba(255, 140, 0, 0.45);
+    background: oklch(0.72 0.2 55);
+  }
+
+  .toon-btn:active {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0 oklch(0.12 0.02 30);
+  }
+
+  .toon-btn-red {
+    background: oklch(0.45 0.22 25);
+    color: oklch(0.95 0.03 90);
+  }
+  .toon-btn-red:hover {
+    background: oklch(0.55 0.22 25);
+  }
+  .toon-btn-yellow {
+    background: oklch(0.88 0.18 100);
+    color: oklch(0.12 0.02 30);
+  }
+  .toon-btn-yellow:hover {
+    background: oklch(0.92 0.18 100);
+  }
+
+  .toon-panel {
+    background: oklch(0.15 0.03 30 / 0.92);
+    border: 3px solid oklch(0.12 0.02 30);
+    box-shadow: 6px 6px 0 oklch(0.12 0.02 30);
+  }
+
+  .toon-text {
+    font-family: "Oswald", sans-serif;
+    font-weight: 600;
+    color: oklch(0.95 0.03 90);
+    text-shadow: 1px 1px 0 oklch(0.12 0.02 30), -1px -1px 0 oklch(0.12 0.02 30);
+  }
+
+  .hud-text {
+    font-family: "Bangers", cursive;
+    letter-spacing: 0.05em;
+    -webkit-text-stroke: 1px oklch(0.12 0.02 30);
+    text-shadow: 2px 2px 0 oklch(0.12 0.02 30);
+  }
+
+  /* ── PRIMARY BUTTON (Start Game) ── */
+  .menu-primary-btn {
+    position: relative;
+    overflow: hidden;
+    font-family: "Oswald", sans-serif;
+    font-weight: 700;
+    font-size: clamp(1.1rem, 3vw, 1.45rem);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    width: clamp(240px, 38vw, 320px);
+    padding: 14px 28px;
+    background: linear-gradient(160deg, #c01800 0%, #880e00 50%, #6a0800 100%);
+    border: 2px solid rgba(255, 80, 40, 0.9);
+    color: #ffffff;
+    cursor: pointer;
+    user-select: none;
+    box-shadow: 0 0 0 1px rgba(255, 60, 20, 0.25), 0 0 20px
+      rgba(200, 20, 0, 0.6), 0 0 45px rgba(180, 10, 0, 0.25), inset 0 1px 0
+      rgba(255, 120, 80, 0.25);
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8), 0 0 20px rgba(255, 100, 60, 0.5);
+    transition: all 0.18s ease;
+    clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+  }
+
+  .menu-primary-btn-shine {
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.08),
+      transparent
+    );
+    transform: skewX(-15deg);
+    transition: left 0.4s ease;
+    pointer-events: none;
+  }
+
+  .menu-primary-btn-label {
+    position: relative;
+    z-index: 1;
+    display: block;
+  }
+
+  .menu-primary-btn:hover .menu-primary-btn-shine {
+    left: 140%;
+  }
+
+  .menu-primary-btn:hover {
+    background: linear-gradient(160deg, #e01e00 0%, #aa1000 50%, #880800 100%);
+    border-color: rgba(255, 120, 80, 1);
+    box-shadow: 0 0 0 1px rgba(255, 100, 60, 0.5), 0 0 30px
+      rgba(220, 30, 0, 0.8), 0 0 70px rgba(200, 10, 0, 0.4), inset 0 1px 0
+      rgba(255, 150, 100, 0.35);
+    transform: translateY(-2px);
+    text-shadow: 0 0 20px rgba(255, 150, 100, 0.9), 0 1px 4px rgba(0, 0, 0, 0.8);
+  }
+
+  .menu-primary-btn:active {
+    transform: translateY(1px);
+    box-shadow: 0 0 12px rgba(200, 20, 0, 0.5), inset 0 2px 4px
+      rgba(0, 0, 0, 0.4);
+  }
+
+  /* ── SECONDARY BUTTONS ── */
+  .menu-secondary-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: "Oswald", sans-serif;
+    font-weight: 600;
+    font-size: clamp(0.85rem, 2.2vw, 1.05rem);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    width: clamp(220px, 35vw, 295px);
+    padding: 11px 24px;
+    background: rgba(8, 2, 0, 0.92);
+    border: 1px solid rgba(200, 60, 20, 0.65);
+    color: rgba(230, 170, 130, 0.95);
+    cursor: pointer;
+    user-select: none;
+    box-shadow: 0 0 10px rgba(180, 40, 0, 0.2), inset 0 0 0 1px
+      rgba(180, 40, 0, 0.08);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+    transition: all 0.16s ease;
+    clip-path: polygon(6px 0%, 100% 0%, calc(100% - 6px) 100%, 0% 100%);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .menu-secondary-btn::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      rgba(220, 60, 20, 0.8),
+      transparent
+    );
+    opacity: 0;
+    transition: opacity 0.16s;
+  }
+
+  .menu-secondary-btn:hover {
+    background: rgba(20, 5, 0, 0.96);
+    border-color: rgba(240, 80, 30, 0.9);
+    color: #ffffff;
+    box-shadow: 0 0 18px rgba(200, 40, 0, 0.45), 0 0 40px rgba(180, 20, 0, 0.2),
+      inset 0 0 0 1px rgba(220, 60, 20, 0.15);
+    transform: translateX(3px);
+  }
+
+  .menu-secondary-btn:hover::before {
+    opacity: 1;
+  }
+
+  .menu-secondary-btn:active {
+    transform: translateX(1px);
+  }
+
+  .menu-secondary-btn--blue {
+    border-color: rgba(40, 100, 200, 0.55);
+    color: rgba(140, 190, 255, 0.9);
+    box-shadow: 0 0 10px rgba(20, 60, 180, 0.15);
+  }
+
+  .menu-secondary-btn--blue::before {
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      rgba(60, 130, 240, 0.8),
+      transparent
+    );
+  }
+
+  .menu-secondary-btn--blue:hover {
+    border-color: rgba(80, 150, 255, 0.9);
+    box-shadow: 0 0 18px rgba(30, 80, 220, 0.45), 0 0 40px
+      rgba(20, 60, 180, 0.2);
+  }
+
+  .menu-secondary-btn--dim {
+    border-color: rgba(100, 70, 30, 0.5);
+    color: rgba(180, 140, 90, 0.85);
+    box-shadow: 0 0 8px rgba(100, 60, 0, 0.12);
+  }
+
+  .menu-secondary-btn--dim::before {
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      rgba(160, 100, 30, 0.7),
+      transparent
+    );
+  }
+
+  .menu-secondary-btn--dim:hover {
+    border-color: rgba(180, 120, 40, 0.85);
+    color: rgba(230, 190, 120, 0.95);
+    box-shadow: 0 0 16px rgba(160, 90, 10, 0.4);
+  }
+
+  .menu-secondary-btn-icon {
+    font-size: 1.05em;
+    flex-shrink: 0;
+  }
+
+  .menu-auth-btn:hover {
+    filter: brightness(1.2);
+    box-shadow: 0 0 12px rgba(200, 40, 0, 0.4) !important;
+  }
+}
+
+/* ── ANIMATIONS ── */
+
+@keyframes menu-title-pulse {
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: scale(1.0);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+.menu-title-pulse {
+  animation: menu-title-pulse 3.5s ease-in-out infinite;
+}
+
+@keyframes menu-blood-drip {
+  0% {
+    transform: scaleY(0);
+    transform-origin: top;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  60% {
+    transform: scaleY(1);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scaleY(1);
+    opacity: 0;
+  }
+}
+.menu-blood-drip {
+  animation: menu-blood-drip ease-in-out infinite;
+}
+
+@keyframes menu-ash-float {
+  0% {
+    transform: translateY(0) translateX(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateY(-100vh) translateX(20px);
+    opacity: 0;
+  }
+}
+.menu-ash {
+  animation: menu-ash-float linear infinite;
+}
+
+@keyframes menu-flicker {
+  0%,
+  96%,
+  100% {
+    opacity: 0;
+  }
+  97% {
+    opacity: 1;
+  }
+  98% {
+    opacity: 0.2;
+  }
+  99% {
+    opacity: 0.7;
+  }
+}
+.menu-flicker {
+  animation: menu-flicker 10s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-title-pulse,
+  .menu-blood-drip,
+  .menu-ash,
+  .menu-flicker {
+    animation: none;
+  }
+}
