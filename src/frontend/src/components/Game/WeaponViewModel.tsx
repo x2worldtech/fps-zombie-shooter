@@ -1,5 +1,5 @@
 import { useFrame, useThree } from "@react-three/fiber";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { WeaponName } from "../../types/weapon";
 import { useOutlineMaterial, useToonMaterial } from "./ToonMaterial";
@@ -352,7 +352,7 @@ function PistolModel({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SHOTGUN — Mossberg 500 / Remington 870 pump-action
+// SHOTGUN — Mossberg 590 pump-action (highly detailed, realistic)
 // ─────────────────────────────────────────────────────────────────────────────
 function ShotgunModel({
   recoilOffset,
@@ -365,233 +365,343 @@ function ShotgunModel({
 }) {
   const groupRef = useRef<THREE.Group>(null);
 
-  // Color palette: walnut wood stock, blued steel barrel/receiver
-  const woodMat = useToonMaterial("#6b3a1f"); // walnut stock
-  const woodDarkMat = useToonMaterial("#4a2510"); // darker wood grain
-  const steelMat = useToonMaterial("#2a2a2a"); // blued steel
-  const steelLtMat = useToonMaterial("#484848"); // lighter steel
-  const detailMat = useToonMaterial("#1a1a1a"); // very dark details
-  const outlineMat = useOutlineMaterial(0.03);
+  const {
+    metalMat,
+    metalLightMat,
+    metalBlued,
+    woodMat,
+    woodDarkMat,
+    rubberMat,
+    brassMat,
+    beadMat,
+    redDotMat,
+  } = useMemo(() => {
+    return {
+      metalMat: new THREE.MeshStandardMaterial({
+        color: "#1e1e1e",
+        metalness: 0.95,
+        roughness: 0.2,
+      }),
+      metalLightMat: new THREE.MeshStandardMaterial({
+        color: "#3a3a3a",
+        metalness: 0.9,
+        roughness: 0.25,
+      }),
+      metalBlued: new THREE.MeshStandardMaterial({
+        color: "#151820",
+        metalness: 1.0,
+        roughness: 0.15,
+      }),
+      woodMat: new THREE.MeshStandardMaterial({
+        color: "#5c3210",
+        metalness: 0,
+        roughness: 0.85,
+      }),
+      woodDarkMat: new THREE.MeshStandardMaterial({
+        color: "#3d1f08",
+        metalness: 0,
+        roughness: 0.9,
+      }),
+      rubberMat: new THREE.MeshStandardMaterial({
+        color: "#111111",
+        metalness: 0,
+        roughness: 0.95,
+      }),
+      brassMat: new THREE.MeshStandardMaterial({
+        color: "#c8a035",
+        metalness: 0.9,
+        roughness: 0.2,
+      }),
+      beadMat: new THREE.MeshStandardMaterial({
+        color: "#ffffff",
+        emissive: "#aaaaaa",
+        emissiveIntensity: 0.5,
+        metalness: 0.8,
+        roughness: 0.2,
+      }),
+      redDotMat: new THREE.MeshStandardMaterial({
+        color: "#cc0000",
+        emissive: "#880000",
+        emissiveIntensity: 1,
+      }),
+    };
+  }, []);
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
-    const targetY = -0.28 - recoilOffset * 0.55;
-    const reloadBob = isReloading ? Math.sin(Date.now() * 0.004) * 0.06 : 0;
+    const targetY = -0.3 - recoilOffset * 0.6;
+    const reloadBob = isReloading ? Math.sin(Date.now() * 0.004) * 0.07 : 0;
     groupRef.current.position.y +=
       (targetY + reloadBob - groupRef.current.position.y) *
       Math.min(delta * 12, 1);
     groupRef.current.rotation.x +=
-      (-recoilOffset * 0.5 - groupRef.current.rotation.x) *
+      (-recoilOffset * 0.55 - groupRef.current.rotation.x) *
       Math.min(delta * 12, 1);
   });
 
   return (
-    <group ref={groupRef} position={[0.28, -0.28, -0.6]}>
-      {/* ── STOCK ── */}
-      {/* Main stock body – tapered toward butt */}
-      <mesh material={woodMat} position={[0, 0.005, 0.28]}>
-        <boxGeometry args={[0.065, 0.095, 0.32]} />
-      </mesh>
-      <mesh material={outlineMat} position={[0, 0.005, 0.28]}>
-        <boxGeometry args={[0.065, 0.095, 0.32]} />
+    <group ref={groupRef} position={[0.3, -0.3, -0.65]}>
+      {/* ══ STOCK (rear, z positive) ══ */}
+      {/* Main stock body */}
+      <mesh material={woodMat} position={[0, 0, 0.32]}>
+        <boxGeometry args={[0.07, 0.1, 0.3]} />
       </mesh>
       <GlowOverlay
         tier={upgradeTier}
-        position={[0, 0.005, 0.28]}
-        args={[0.065, 0.095, 0.32]}
+        position={[0, 0, 0.32]}
+        args={[0.07, 0.1, 0.3]}
       />
 
-      {/* Stock taper – narrower at butt end */}
-      <mesh material={woodMat} position={[0, -0.01, 0.42]}>
-        <boxGeometry args={[0.06, 0.075, 0.06]} />
+      {/* Stock cheekpiece */}
+      <mesh material={woodMat} position={[0, 0.06, 0.25]}>
+        <boxGeometry args={[0.068, 0.02, 0.18]} />
       </mesh>
 
-      {/* Butt plate – rubber pad at end of stock */}
-      <mesh material={detailMat} position={[0, -0.005, 0.455]}>
-        <boxGeometry args={[0.063, 0.09, 0.012]} />
+      {/* Stock taper */}
+      <mesh material={woodMat} position={[0, -0.005, 0.46]}>
+        <boxGeometry args={[0.065, 0.085, 0.06]} />
       </mesh>
-      <mesh material={outlineMat} position={[0, -0.005, 0.455]}>
-        <boxGeometry args={[0.063, 0.09, 0.012]} />
+
+      {/* Butt pad rubber */}
+      <mesh material={rubberMat} position={[0, -0.005, 0.5]}>
+        <boxGeometry args={[0.072, 0.105, 0.018]} />
       </mesh>
 
       {/* Wood grain lines on stock */}
-      {[-0.025, 0, 0.025].map((xOff, i) => (
-        <mesh
-          // biome-ignore lint: pre-existing issue
-          key={`grain-${i}`}
-          material={woodDarkMat}
-          position={[xOff, 0.005, 0.28]}
-        >
-          <boxGeometry args={[0.004, 0.097, 0.31]} />
-        </mesh>
-      ))}
-
-      {/* ── RECEIVER (action body) ── */}
-      <mesh material={steelMat} position={[0, 0.01, 0.04]}>
-        <boxGeometry args={[0.075, 0.1, 0.22]} />
+      <mesh material={woodDarkMat} position={[0.025, 0, 0.32]}>
+        <boxGeometry args={[0.003, 0.102, 0.29]} />
       </mesh>
-      <mesh material={outlineMat} position={[0, 0.01, 0.04]}>
-        <boxGeometry args={[0.075, 0.1, 0.22]} />
+      <mesh material={woodDarkMat} position={[-0.025, 0, 0.32]}>
+        <boxGeometry args={[0.003, 0.102, 0.29]} />
+      </mesh>
+
+      {/* ══ PISTOL GRIP AREA ══ */}
+      <mesh material={woodMat} position={[0, -0.028, 0.14]}>
+        <boxGeometry args={[0.068, 0.075, 0.06]} />
+      </mesh>
+
+      {/* ══ RECEIVER ══ */}
+      {/* Main receiver */}
+      <mesh material={metalMat} position={[0, 0.005, 0.0]}>
+        <boxGeometry args={[0.082, 0.108, 0.24]} />
       </mesh>
       <GlowOverlay
         tier={upgradeTier}
-        position={[0, 0.01, 0.04]}
-        args={[0.075, 0.1, 0.22]}
+        position={[0, 0.005, 0.0]}
+        args={[0.082, 0.108, 0.24]}
       />
 
-      {/* Ejection port – right side of receiver */}
-      <mesh material={detailMat} position={[0.04, 0.015, 0.06]}>
-        <boxGeometry args={[0.006, 0.045, 0.075]} />
+      {/* Receiver top flat */}
+      <mesh material={metalLightMat} position={[0, 0.06, 0.0]}>
+        <boxGeometry args={[0.078, 0.012, 0.22]} />
       </mesh>
 
-      {/* Loading port – bottom of receiver */}
-      <mesh material={detailMat} position={[0, -0.04, 0.06]}>
-        <boxGeometry args={[0.04, 0.008, 0.06]} />
+      {/* Ejection port right side */}
+      <mesh material={rubberMat} position={[0.044, 0.01, 0.01]}>
+        <boxGeometry args={[0.006, 0.05, 0.09]} />
       </mesh>
 
-      {/* Safety button – top rear of receiver */}
-      <mesh material={steelLtMat} position={[0, 0.065, 0.13]}>
-        <boxGeometry args={[0.018, 0.012, 0.022]} />
-      </mesh>
-      <mesh material={outlineMat} position={[0, 0.065, 0.13]}>
-        <boxGeometry args={[0.018, 0.012, 0.022]} />
+      {/* Loading port bottom */}
+      <mesh material={rubberMat} position={[0, -0.048, 0.02]}>
+        <boxGeometry args={[0.045, 0.008, 0.065]} />
       </mesh>
 
-      {/* ── TRIGGER GUARD ── */}
+      {/* Safety tang top rear */}
+      <mesh material={metalLightMat} position={[0, 0.072, 0.105]}>
+        <boxGeometry args={[0.025, 0.018, 0.03]} />
+      </mesh>
+      {/* Red dot safety indicator */}
+      <mesh material={redDotMat} position={[0, 0.082, 0.105]}>
+        <sphereGeometry args={[0.005, 6, 6]} />
+      </mesh>
+
+      {/* Action bar left */}
+      <mesh material={metalLightMat} position={[-0.045, -0.025, 0.0]}>
+        <boxGeometry args={[0.006, 0.012, 0.16]} />
+      </mesh>
+      {/* Action bar right */}
+      <mesh material={metalLightMat} position={[0.045, -0.025, 0.0]}>
+        <boxGeometry args={[0.006, 0.012, 0.16]} />
+      </mesh>
+
+      {/* ══ TRIGGER GUARD ══ */}
       {/* Bottom bar */}
-      <mesh material={steelMat} position={[0, -0.04, 0.04]}>
-        <boxGeometry args={[0.06, 0.01, 0.1]} />
+      <mesh material={metalMat} position={[0, -0.05, 0.04]}>
+        <boxGeometry args={[0.065, 0.012, 0.1]} />
       </mesh>
       {/* Front vertical */}
-      <mesh material={steelMat} position={[0, -0.01, -0.01]}>
-        <boxGeometry args={[0.06, 0.06, 0.01]} />
+      <mesh material={metalMat} position={[0, -0.02, -0.01]}>
+        <boxGeometry args={[0.065, 0.06, 0.012]} />
       </mesh>
-      <mesh material={outlineMat} position={[0, -0.04, 0.04]}>
-        <boxGeometry args={[0.06, 0.01, 0.1]} />
-      </mesh>
-
       {/* Trigger */}
       <mesh
-        material={steelLtMat}
-        position={[0, -0.015, 0.055]}
-        rotation={[0.25, 0, 0]}
+        material={metalLightMat}
+        position={[0, -0.02, 0.06]}
+        rotation={[0.3, 0, 0]}
       >
-        <boxGeometry args={[0.01, 0.038, 0.008]} />
+        <boxGeometry args={[0.012, 0.045, 0.009]} />
       </mesh>
 
-      {/* ── MAGAZINE TUBE (under barrel) ── */}
+      {/* ══ MAGAZINE TUBE ══ */}
+      {/* Main tube */}
       <mesh
-        material={steelMat}
-        position={[0, -0.025, -0.18]}
+        material={metalBlued}
+        position={[0, -0.03, -0.2]}
         rotation={[Math.PI / 2, 0, 0]}
       >
-        <cylinderGeometry args={[0.018, 0.018, 0.42, 10]} />
+        <cylinderGeometry args={[0.022, 0.022, 0.46, 12]} />
       </mesh>
+      {/* End cap */}
       <mesh
-        material={outlineMat}
-        position={[0, -0.025, -0.18]}
+        material={metalLightMat}
+        position={[0, -0.03, -0.44]}
         rotation={[Math.PI / 2, 0, 0]}
       >
-        <cylinderGeometry args={[0.018, 0.018, 0.42, 10]} />
+        <cylinderGeometry args={[0.026, 0.026, 0.02, 12]} />
+      </mesh>
+      {/* Tube clamp ring */}
+      <mesh
+        material={metalMat}
+        position={[0, -0.018, -0.42]}
+        rotation={[Math.PI / 2, 0, 0]}
+      >
+        <cylinderGeometry args={[0.028, 0.028, 0.016, 12]} />
       </mesh>
 
-      {/* ── PUMP FOREND ── */}
-      {/* Main forend body – slides on magazine tube */}
-      <mesh material={woodMat} position={[0, -0.018, -0.16]}>
-        <boxGeometry args={[0.072, 0.055, 0.13]} />
-      </mesh>
-      <mesh material={outlineMat} position={[0, -0.018, -0.16]}>
-        <boxGeometry args={[0.072, 0.055, 0.13]} />
+      {/* ══ PUMP FOREND ══ */}
+      {/* Main forend */}
+      <mesh material={woodMat} position={[0, -0.02, -0.17]}>
+        <boxGeometry args={[0.078, 0.065, 0.145]} />
       </mesh>
       <GlowOverlay
         tier={upgradeTier}
-        position={[0, -0.018, -0.16]}
-        args={[0.072, 0.055, 0.13]}
+        position={[0, -0.02, -0.17]}
+        args={[0.078, 0.065, 0.145]}
       />
 
-      {/* Forend finger grooves */}
-      {[-0.04, -0.015, 0.01, 0.035].map((zOff, i) => (
+      {/* 5 finger grooves */}
+      {[0, 1, 2, 3, 4].map((i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
         <mesh
-          // biome-ignore lint: pre-existing issue
           key={`fg-${i}`}
           material={woodDarkMat}
-          position={[0, -0.018, -0.16 + zOff]}
+          position={[0, -0.02, -0.105 + i * 0.028]}
         >
-          <boxGeometry args={[0.074, 0.057, 0.008]} />
+          <boxGeometry args={[0.08, 0.067, 0.008]} />
         </mesh>
       ))}
 
-      {/* ── BARREL ── */}
-      {/* Main barrel – long and wide (12-gauge) */}
-      <mesh
-        material={steelMat}
-        position={[0, 0.025, -0.28]}
-        rotation={[Math.PI / 2, 0, 0]}
-      >
-        <cylinderGeometry args={[0.026, 0.026, 0.44, 12]} />
+      {/* Forend rubber strip bottom */}
+      <mesh material={rubberMat} position={[0, -0.055, -0.17]}>
+        <boxGeometry args={[0.076, 0.008, 0.14]} />
       </mesh>
+
+      {/* ══ BARREL ══ */}
+      {/* Main barrel */}
       <mesh
-        material={outlineMat}
-        position={[0, 0.025, -0.28]}
+        material={metalBlued}
+        position={[0, 0.028, -0.26]}
         rotation={[Math.PI / 2, 0, 0]}
       >
-        <cylinderGeometry args={[0.026, 0.026, 0.44, 12]} />
+        <cylinderGeometry args={[0.028, 0.028, 0.48, 14]} />
       </mesh>
       <GlowOverlay
         tier={upgradeTier}
-        position={[0, 0.025, -0.28]}
-        args={[0.052, 0.052, 0.44]}
+        position={[0, 0.028, -0.26]}
+        args={[0.056, 0.056, 0.48]}
       />
 
-      {/* Ventilated rib – series of small posts along top of barrel */}
-      {Array.from({ length: 8 }).map((_, i) => (
+      {/* Barrel ring at receiver */}
+      <mesh
+        material={metalMat}
+        position={[0, 0.028, -0.08]}
+        rotation={[Math.PI / 2, 0, 0]}
+      >
+        <cylinderGeometry args={[0.034, 0.034, 0.024, 14]} />
+      </mesh>
+
+      {/* ══ HEAT SHIELD ══ */}
+      {/* Heat shield base */}
+      <mesh material={metalMat} position={[0, 0.065, -0.22]}>
+        <boxGeometry args={[0.065, 0.014, 0.32]} />
+      </mesh>
+      {/* 7 heat slots */}
+      {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
         <mesh
-          // biome-ignore lint: pre-existing issue
-          key={`rib-${i}`}
-          material={steelLtMat}
-          position={[0, 0.054, -0.08 - i * 0.055]}
+          key={`hs-${i}`}
+          material={rubberMat}
+          position={[0, 0.065, -0.07 - i * 0.05]}
         >
-          <boxGeometry args={[0.01, 0.01, 0.03]} />
+          <boxGeometry args={[0.058, 0.016, 0.022]} />
         </mesh>
       ))}
 
-      {/* Rib rail connecting posts */}
-      <mesh material={steelLtMat} position={[0, 0.054, -0.28]}>
-        <boxGeometry args={[0.006, 0.006, 0.44]} />
+      {/* ══ VENTILATED RIB ══ */}
+      {/* Rib rail */}
+      <mesh material={metalLightMat} position={[0, 0.073, -0.22]}>
+        <boxGeometry args={[0.008, 0.007, 0.38]} />
       </mesh>
+      {/* 8 rib posts */}
+      {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
+        <mesh
+          key={`rp-${i}`}
+          material={metalLightMat}
+          position={[0, 0.076, -0.06 - i * 0.05]}
+          rotation={[Math.PI / 2, 0, 0]}
+        >
+          <cylinderGeometry args={[0.004, 0.004, 0.018, 6]} />
+        </mesh>
+      ))}
 
-      {/* Muzzle – slightly flared end */}
+      {/* ══ MUZZLE ══ */}
+      {/* Muzzle choke */}
       <mesh
-        material={detailMat}
-        position={[0, 0.025, -0.505]}
+        material={metalLightMat}
+        position={[0, 0.028, -0.51]}
         rotation={[Math.PI / 2, 0, 0]}
       >
-        <cylinderGeometry args={[0.03, 0.026, 0.018, 12]} />
+        <cylinderGeometry args={[0.032, 0.028, 0.028, 14]} />
       </mesh>
+      {/* Muzzle crown */}
       <mesh
-        material={outlineMat}
-        position={[0, 0.025, -0.505]}
+        material={metalMat}
+        position={[0, 0.028, -0.526]}
         rotation={[Math.PI / 2, 0, 0]}
       >
-        <cylinderGeometry args={[0.03, 0.026, 0.018, 12]} />
+        <cylinderGeometry args={[0.03, 0.03, 0.01, 14]} />
       </mesh>
-
       {/* Front bead sight */}
-      <mesh
-        material={steelLtMat}
-        position={[0, 0.058, -0.49]}
-        rotation={[Math.PI / 2, 0, 0]}
-      >
-        <sphereGeometry args={[0.007, 6, 6]} />
+      <mesh material={beadMat} position={[0, 0.065, -0.5]}>
+        <sphereGeometry args={[0.009, 8, 8]} />
       </mesh>
 
-      {/* Barrel-to-receiver connection ring */}
+      {/* ══ SIDE SADDLE SHELL HOLDER ══ */}
+      {/* Saddle base */}
+      <mesh material={rubberMat} position={[-0.046, 0.005, 0.01]}>
+        <boxGeometry args={[0.008, 0.075, 0.16]} />
+      </mesh>
+      {/* 6 shell tubes */}
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
+        <mesh
+          key={`sh-${i}`}
+          material={brassMat}
+          position={[-0.055, -0.025 + i * 0.015, 0.01 + (i % 2) * 0.01]}
+          rotation={[0, 0, Math.PI / 2]}
+        >
+          <cylinderGeometry args={[0.009, 0.009, 0.065, 8]} />
+        </mesh>
+      ))}
+
+      {/* ══ SLING SWIVEL ══ */}
       <mesh
-        material={steelLtMat}
-        position={[0, 0.025, -0.065]}
+        material={metalLightMat}
+        position={[0, -0.055, -0.39]}
         rotation={[Math.PI / 2, 0, 0]}
       >
-        <cylinderGeometry args={[0.03, 0.03, 0.022, 12]} />
+        <cylinderGeometry args={[0.006, 0.006, 0.025, 8]} />
       </mesh>
 
       <GoldSparkles active={upgradeTier === 3} />
