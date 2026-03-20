@@ -26,11 +26,16 @@ export function useWeaponSystem() {
   const stateRef = useRef(weaponState);
   stateRef.current = weaponState;
 
+  // Synchronous ref for fire timing – avoids async setState race conditions
+  // that caused double-shots when lastFireTime hadn't updated yet
+  const lastFireTimeRef = useRef<number>(0);
+
   const switchWeapon = useCallback((weapon: WeaponName) => {
     if (stateRef.current.isReloading) {
       if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
     }
     const config = WEAPON_CONFIGS[weapon];
+    lastFireTimeRef.current = 0; // reset cooldown on weapon switch
     setWeaponState((prev) => ({
       ...prev,
       currentWeapon: weapon,
@@ -80,9 +85,12 @@ export function useWeaponSystem() {
     }
 
     const config = WEAPON_CONFIGS[state.currentWeapon];
-    const now = Date.now();
+    const now = performance.now();
     const minInterval = 1000 / config.fireRate;
-    if (now - state.lastFireTime < minInterval) return false;
+
+    // Use synchronous ref – immune to setState async batching
+    if (now - lastFireTimeRef.current < minInterval) return false;
+    lastFireTimeRef.current = now;
 
     setWeaponState((prev) => ({
       ...prev,

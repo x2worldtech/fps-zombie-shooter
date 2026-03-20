@@ -71,7 +71,6 @@ export function FirstPersonCamera({
   const isGroundedRef = useRef(true);
   const posRef = useRef(new THREE.Vector3(0, PLAYER_HEIGHT, 0));
   const mouseDownRef = useRef(false);
-  const lastFireRef = useRef(0);
 
   useEffect(() => {
     camera.position.copy(posRef.current);
@@ -269,13 +268,11 @@ export function FirstPersonCamera({
 
     camera.position.copy(posRef.current);
 
-    // Auto-fire when mouse held
+    // Auto-fire when mouse held – fire every frame and let tryFire's
+    // time-based cooldown (useWeaponSystem) handle the actual rate limit.
+    // This avoids the old 50 ms hardcoded interval that could drift with FPS.
     if (mouseDownRef.current && isLocked) {
-      const now = Date.now();
-      if (now - lastFireRef.current > 50) {
-        lastFireRef.current = now;
-        onFire();
-      }
+      onFire();
     }
 
     onPlayerPositionUpdate([
