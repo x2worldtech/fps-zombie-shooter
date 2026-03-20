@@ -6,7 +6,6 @@ interface PalmTreeProps {
   seed?: number;
 }
 
-// Seeded RNG for deterministic per-tree variation
 function seededRng(seed: number) {
   let s = seed;
   return () => {
@@ -15,12 +14,6 @@ function seededRng(seed: number) {
   };
 }
 
-/**
- * Creates a tapered trunk geometry: wider at base, narrower at top.
- * The trunk bottom is at y=0, top at y=trunkHeight.
- * Uses a CylinderGeometry with different top/bottom radii and vertex displacement
- * for a natural, slightly curved look.
- */
 function createTrunkGeometry(
   trunkHeight: number,
   baseRadius: number,
@@ -28,13 +21,12 @@ function createTrunkGeometry(
   seed: number,
 ): THREE.BufferGeometry {
   const rng = seededRng(seed);
-  // 8 radial segments, 10 height segments for smooth taper and curvature
   const geo = new THREE.CylinderGeometry(
     topRadius,
     baseRadius,
     trunkHeight,
-    8,
     10,
+    16,
     false,
   );
   const positions = geo.attributes.position as THREE.BufferAttribute;
@@ -43,27 +35,26 @@ function createTrunkGeometry(
     const x = positions.getX(i);
     const y = positions.getY(i);
     const z = positions.getZ(i);
-
-    // Normalized height 0=base, 1=top
     const t = (y + trunkHeight / 2) / trunkHeight;
 
-    // Slight horizontal sway — palms lean naturally
-    const swayX = Math.sin(t * Math.PI) * 0.3 * (rng() - 0.3);
-    const swayZ = Math.sin(t * Math.PI) * 0.2 * (rng() - 0.3);
+    // Natural lean with smooth curve
+    const swayX = Math.sin(t * Math.PI * 0.8) * 0.5 * (rng() - 0.35);
+    const swayZ = Math.sin(t * Math.PI * 0.8) * 0.35 * (rng() - 0.35);
 
-    // Ring-like bumps on the trunk surface (characteristic palm texture)
-    const ringBump = Math.sin(t * Math.PI * 14) * 0.04 * (1 - t * 0.5);
+    // Ring bumps (characteristic palm bark texture)
+    const ringBump = Math.sin(t * Math.PI * 18) * 0.045 * (1 - t * 0.4);
+    // Secondary roughness
+    const roughBump = (rng() - 0.5) * 0.02;
 
-    // Radial direction
     const len = Math.sqrt(x * x + z * z);
     if (len > 0.001) {
       const nx = x / len;
       const nz = z / len;
       positions.setXYZ(
         i,
-        x + nx * ringBump + swayX,
+        x + nx * (ringBump + roughBump) + swayX,
         y,
-        z + nz * ringBump + swayZ,
+        z + nz * (ringBump + roughBump) + swayZ,
       );
     }
   }
@@ -73,8 +64,8 @@ function createTrunkGeometry(
 }
 
 /**
- * Creates a single palm frond as a flat, elongated shape that curves downward.
- * The frond originates at the origin (top of trunk) and extends outward + droops.
+ * Creates a pinnate (feather) palm frond — a central rachis with leaflets on each side.
+ * This is the realistic structure of a coconut/date palm frond.
  */
 function createFrondGeometry(
   length: number,
@@ -83,46 +74,109 @@ function createFrondGeometry(
   seed: number,
 ): THREE.BufferGeometry {
   const rng = seededRng(seed);
-  // Build frond as a series of quads along its length
-  const segments = 12;
+  const segments = 18;
+  const leafletPairs = 14; // pairs of leaflets along the rachis
+
   const vertices: number[] = [];
   const indices: number[] = [];
   const normals: number[] = [];
   const uvs: number[] = [];
 
+  // --- Central rachis (spine of the frond) ---
+  const rachisPoints: THREE.Vector3[] = [];
   for (let i = 0; i <= segments; i++) {
     const t = i / segments;
-    // Frond extends along +Z axis, droops downward with a curve
     const z = t * length;
-    // Droop: parabolic curve, more droop toward tip
-    const y = -droop * t * t;
-    // Width tapers from base to tip
-    const w = width * (1 - t * 0.75) * (0.5 + rng() * 0.15);
-    // Slight lateral wave for realism
-    const wave = Math.sin(t * Math.PI * 3) * 0.08 * length;
-
-    // Left vertex
-    vertices.push(-w, y + wave * 0.3, z);
-    normals.push(0, 1, 0);
-    uvs.push(0, t);
-
-    // Right vertex
-    vertices.push(w, y - wave * 0.3, z);
-    normals.push(0, 1, 0);
-    uvs.push(1, t);
+    const y = -droop * t * t * 1.1;
+    // Slight lateral curve
+    const x = Math.sin(t * Math.PI) * 0.08 * length * (rng() - 0.5);
+    rachisPoints.push(new THREE.Vector3(x, y, z));
   }
 
-  // Build quad indices
+  // --- Leaflets as thin elongated quads fanning out from rachis ---
+  // Each leaflet pair: left and right leaflets
+  const leafletCount = leafletPairs * 2;
+  // Place leaflets along rachis segments
+  for (let p = 0; p < leafletCount; p++) {
+    const side = p % 2 === 0 ? -1 : 1; // left or right
+    const pairIndex = Math.floor(p / 2);
+    // Distribute along the middle 80% of the rachis (skip tip and base)
+    const t = 0.08 + (pairIndex / (leafletPairs - 1)) * 0.84;
+    const segIdx = Math.min(Math.floor(t * segments), segments - 1);
+    const origin = rachisPoints[segIdx].clone();
+    const next = rachisPoints[Math.min(segIdx + 1, segments)].clone();
+    const rachisDir = next.clone().sub(origin).normalize();
+
+    // Leaflet length: full at middle, shorter near base and tip
+    const tipFactor = Math.sin(t * Math.PI);
+    const leafLen = width * (1.0 + tipFactor * 0.6) * (0.85 + rng() * 0.3);
+    const leafWidth = leafLen * 0.12 * (0.8 + rng() * 0.4);
+    const leafDroop = leafLen * 0.35 * (0.7 + rng() * 0.6);
+    // Slight angle variation
+    const spreadAngle = (0.45 + rng() * 0.25) * side;
+    // Twist leaflets slightly downward along their length
+
+    const leafSegs = 6;
+    const baseIdx = vertices.length / 3;
+
+    for (let ls = 0; ls <= leafSegs; ls++) {
+      const lt = ls / leafSegs;
+      // Leaflet extends perpendicular to rachis direction, with droop
+      const lx =
+        origin.x +
+        Math.cos(spreadAngle) * lt * leafLen * side -
+        rachisDir.z * lt * leafLen * 0.2;
+      const lz =
+        origin.z +
+        rachisDir.z * lt * leafLen * 0.25 +
+        lt * leafLen * Math.sin(Math.abs(spreadAngle)) * 0.5;
+      const ly = origin.y - leafDroop * lt * lt;
+
+      // Leaflet width tapers to tip
+      const lw = leafWidth * (1.0 - lt * 0.85);
+
+      // Perpendicular direction in XZ for leaf width
+      const perpX = -rachisDir.z;
+      const perpZ = rachisDir.x;
+
+      vertices.push(lx + perpX * lw, ly + lw * 0.1, lz + perpZ * lw);
+      normals.push(0, 1, 0);
+      uvs.push(0, lt);
+
+      vertices.push(lx - perpX * lw, ly - lw * 0.1, lz - perpZ * lw);
+      normals.push(0, 1, 0);
+      uvs.push(1, lt);
+    }
+
+    for (let ls = 0; ls < leafSegs; ls++) {
+      const a = baseIdx + ls * 2;
+      const b = a + 1;
+      const c = a + 2;
+      const d = a + 3;
+      indices.push(a, b, c, b, d, c);
+      indices.push(c, b, a, c, d, b); // back face
+    }
+  }
+
+  // --- Rachis itself as a thin strip ---
+  const rachisBaseIdx = vertices.length / 3;
+  const rachisW = 0.06;
+  for (let i = 0; i <= segments; i++) {
+    const p = rachisPoints[i];
+    vertices.push(p.x - rachisW, p.y, p.z);
+    normals.push(0, 1, 0);
+    uvs.push(0, i / segments);
+    vertices.push(p.x + rachisW, p.y, p.z);
+    normals.push(0, 1, 0);
+    uvs.push(1, i / segments);
+  }
   for (let i = 0; i < segments; i++) {
-    const a = i * 2;
-    const b = i * 2 + 1;
-    const c = i * 2 + 2;
-    const d = i * 2 + 3;
-    indices.push(a, b, c);
-    indices.push(b, d, c);
-    // Back face
-    indices.push(c, b, a);
-    indices.push(c, d, b);
+    const a = rachisBaseIdx + i * 2;
+    const b = a + 1;
+    const c = a + 2;
+    const d = a + 3;
+    indices.push(a, b, c, b, d, c);
+    indices.push(c, b, a, c, d, b);
   }
 
   const geo = new THREE.BufferGeometry();
@@ -134,26 +188,23 @@ function createFrondGeometry(
   return geo;
 }
 
-/**
- * Creates a coconut cluster geometry (small sphere group at crown).
- */
 function CoconutCluster({ trunkHeight }: { trunkHeight: number }) {
   const coconutMat = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
         color: new THREE.Color("#3d2b1a"),
-        roughness: 0.9,
+        roughness: 0.95,
         metalness: 0.0,
-        flatShading: false,
       }),
     [],
   );
 
   const offsets: [number, number, number][] = [
-    [0.3, 0, 0.2],
-    [-0.25, 0, 0.3],
-    [0.1, 0.15, -0.3],
-    [-0.2, 0.1, -0.1],
+    [0.28, 0.05, 0.18],
+    [-0.22, 0, 0.28],
+    [0.1, 0.18, -0.28],
+    [-0.18, 0.08, -0.1],
+    [0.32, -0.05, -0.15],
   ];
 
   return (
@@ -161,16 +212,13 @@ function CoconutCluster({ trunkHeight }: { trunkHeight: number }) {
       {offsets.map((off, i) => (
         // biome-ignore lint: pre-existing issue
         <mesh key={i} material={coconutMat} position={off} castShadow>
-          <sphereGeometry args={[0.22, 6, 5]} />
+          <sphereGeometry args={[0.2, 7, 6]} />
         </mesh>
       ))}
     </group>
   );
 }
 
-/**
- * A single palm frond rendered at a given angle around the crown.
- */
 function PalmFrond({
   trunkHeight,
   angle,
@@ -193,100 +241,56 @@ function PalmFrond({
     [length, width, droop, seed],
   );
 
-  // Deep green frond material with slight variation
   const frondMat = useMemo(() => {
     const rng = seededRng(seed + 100);
-    const greenVariation = 0.85 + rng() * 0.3;
+    const greenVariation = 0.78 + rng() * 0.44;
+    const yellowTint = rng() * 0.04;
     return new THREE.MeshStandardMaterial({
       color: new THREE.Color(
-        0.08 * greenVariation,
-        0.28 * greenVariation,
-        0.06 * greenVariation,
+        0.06 * greenVariation + yellowTint,
+        0.32 * greenVariation,
+        0.05 * greenVariation,
       ),
-      roughness: 0.75,
+      roughness: 0.7,
       metalness: 0.0,
       side: THREE.DoubleSide,
-      flatShading: false,
     });
   }, [seed]);
 
-  // Frond midrib (spine) — thin dark green cylinder along the frond
-  const midribMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: new THREE.Color(0.05, 0.18, 0.04),
-        roughness: 0.8,
-        metalness: 0.0,
-      }),
-    [],
-  );
-
   return (
     <group position={[0, trunkHeight, 0]} rotation={[0, angle, 0]}>
-      {/* Tilt the frond upward from horizontal then let it droop */}
       <group rotation={[-tiltUp, 0, 0]}>
-        {/* Frond blade */}
         <mesh geometry={frondGeo} material={frondMat} castShadow />
-        {/* Midrib spine */}
-        <mesh
-          material={midribMat}
-          position={[0, 0, length * 0.45]}
-          rotation={[Math.PI / 2, 0, 0]}
-        >
-          <cylinderGeometry args={[0.04, 0.07, length * 0.9, 4, 1]} />
-        </mesh>
       </group>
     </group>
   );
 }
 
-/**
- * Realistic palm tree component.
- * - Trunk base is at y=0 (ground level), top at y=trunkHeight
- * - 7–8 large fronds fan out from the crown
- * - Coconut cluster at the crown
- */
 export function PalmTree({ position, seed = 0 }: PalmTreeProps) {
   const rng = useMemo(() => seededRng(seed + 999), [seed]);
 
-  // Tree dimensions — large, prominent palms
   // biome-ignore lint: pre-existing issue
-  const trunkHeight = useMemo(() => 9 + rng() * 3, [seed]);
+  const trunkHeight = useMemo(() => 9.5 + rng() * 3.5, [seed]);
   // biome-ignore lint: pre-existing issue
-  const baseRadius = useMemo(() => 0.38 + rng() * 0.12, [seed]);
+  const baseRadius = useMemo(() => 0.36 + rng() * 0.12, [seed]);
   // biome-ignore lint: pre-existing issue
-  const topRadius = useMemo(() => 0.18 + rng() * 0.06, [seed]);
+  const topRadius = useMemo(() => 0.16 + rng() * 0.06, [seed]);
 
-  // Trunk geometry
   const trunkGeo = useMemo(
     () => createTrunkGeometry(trunkHeight, baseRadius, topRadius, seed),
     [trunkHeight, baseRadius, topRadius, seed],
   );
 
-  // Trunk material — warm sandy brown with ring texture feel
   const trunkMat = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
         color: new THREE.Color("#7a5c2e"),
         roughness: 0.95,
         metalness: 0.0,
-        flatShading: false,
       }),
     [],
   );
 
-  // Trunk outline (dark back-face pass for toon look)
-  const trunkOutlineMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: new THREE.Color(0.08, 0.05, 0.02),
-        side: THREE.BackSide,
-        roughness: 1,
-      }),
-    [],
-  );
-
-  // Base skirt — small flared base where trunk meets ground
   const baseMat = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
@@ -298,38 +302,37 @@ export function PalmTree({ position, seed = 0 }: PalmTreeProps) {
     [],
   );
 
-  // Generate frond parameters
-  const frondCount = 8;
+  // 14 fronds — dense, realistic palm crown
+  const frondCount = 14;
   // biome-ignore lint: pre-existing issue
   const fronds = useMemo(() => {
     const rngF = seededRng(seed + 77);
     return Array.from({ length: frondCount }, (_, i) => {
       const baseAngle = (i / frondCount) * Math.PI * 2;
-      const angleJitter = (rngF() - 0.5) * 0.35;
+      const angleJitter = (rngF() - 0.5) * 0.28;
       return {
         angle: baseAngle + angleJitter,
-        length: 5.5 + rngF() * 2.5,
-        width: 0.55 + rngF() * 0.25,
-        droop: 2.5 + rngF() * 1.5,
-        tiltUp: 0.25 + rngF() * 0.3, // radians upward from horizontal
+        length: 5.8 + rngF() * 2.8,
+        width: 1.4 + rngF() * 0.6, // wider fronds = more leaflets
+        droop: 2.8 + rngF() * 1.8,
+        tiltUp: 0.18 + rngF() * 0.38,
         seed: seed * 100 + i * 17,
       };
     });
   }, [seed, frondCount]);
 
-  // Trunk center is at y = trunkHeight/2 (since CylinderGeometry is centered)
   const trunkCenterY = trunkHeight / 2;
 
   return (
     <group position={position}>
-      {/* Ground base flare — connects trunk to ground visually */}
+      {/* Ground base flare */}
       <mesh material={baseMat} position={[0, 0.15, 0]} receiveShadow>
         <cylinderGeometry
-          args={[baseRadius * 1.6, baseRadius * 2.2, 0.3, 8, 1]}
+          args={[baseRadius * 1.5, baseRadius * 2.1, 0.3, 9, 1]}
         />
       </mesh>
 
-      {/* Trunk — centered at trunkHeight/2 so bottom is at y=0 */}
+      {/* Trunk */}
       <mesh
         geometry={trunkGeo}
         material={trunkMat}
@@ -337,17 +340,10 @@ export function PalmTree({ position, seed = 0 }: PalmTreeProps) {
         castShadow
         receiveShadow
       />
-      {/* Trunk outline pass */}
-      <mesh
-        geometry={trunkGeo}
-        material={trunkOutlineMat}
-        position={[0, trunkCenterY, 0]}
-        scale={[1.04, 1.005, 1.04]}
-      />
 
-      {/* Crown base — thickened knob where fronds emerge */}
+      {/* Crown knob */}
       <mesh material={baseMat} position={[0, trunkHeight, 0]} castShadow>
-        <sphereGeometry args={[topRadius * 2.2, 8, 6]} />
+        <sphereGeometry args={[topRadius * 2.4, 9, 7]} />
       </mesh>
 
       {/* Palm fronds */}
