@@ -12,11 +12,205 @@ import JuggernogMachine from "./JuggernogMachine";
 import { MountainBarrier } from "./MountainBarrier";
 import { PackAPunchMachine } from "./PackAPunchMachine";
 import { PalmTree } from "./PalmTree";
-import { useOutlineMaterial, useToonMaterial } from "./ToonMaterial";
+import { useOutlineMaterial } from "./ToonMaterial";
 
 interface DesertEnvironmentProps {
   upgradeTier?: number;
   juggernogPurchaseCount?: number;
+}
+
+// ─── Shared PBR material helpers ─────────────────────────────────────────────
+function usePBRMat(
+  color: string,
+  roughness = 0.82,
+  metalness = 0.0,
+  emissive?: string,
+  emissiveIntensity = 0,
+) {
+  return useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: new THREE.Color(color),
+        roughness,
+        metalness,
+        emissive: emissive ? new THREE.Color(emissive) : undefined,
+        emissiveIntensity,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [color, roughness, metalness, emissive, emissiveIntensity],
+  );
+}
+
+// ─── Window component ─────────────────────────────────────────────────────────
+function Window({
+  position,
+  width = 0.7,
+  height = 1.0,
+  frameColor,
+  hasLight = false,
+}: {
+  position: [number, number, number];
+  width?: number;
+  height?: number;
+  frameColor: string;
+  hasLight?: boolean;
+}) {
+  const frameMat = usePBRMat(frameColor, 0.75);
+  const glassMat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: hasLight
+          ? new THREE.Color(0.9, 0.8, 0.5)
+          : new THREE.Color(0.04, 0.07, 0.14),
+        roughness: 0.05,
+        metalness: 0.6,
+        emissive: hasLight
+          ? new THREE.Color(0.4, 0.3, 0.1)
+          : new THREE.Color(0.01, 0.02, 0.05),
+        emissiveIntensity: hasLight ? 0.8 : 0.3,
+        transparent: true,
+        opacity: hasLight ? 0.85 : 0.7,
+      }),
+    [hasLight],
+  );
+  const sillMat = usePBRMat(frameColor, 0.6);
+
+  return (
+    <group position={position}>
+      {/* Outer frame recess */}
+      <mesh material={frameMat}>
+        <boxGeometry args={[width + 0.14, height + 0.14, 0.12]} />
+      </mesh>
+      {/* Glass pane */}
+      <mesh material={glassMat} position={[0, 0, 0.04]}>
+        <boxGeometry args={[width, height, 0.04]} />
+      </mesh>
+      {/* Window sill below */}
+      <mesh material={sillMat} position={[0, -(height / 2 + 0.08), 0.04]}>
+        <boxGeometry args={[width + 0.24, 0.1, 0.18]} />
+      </mesh>
+      {/* Window lintel above */}
+      <mesh material={sillMat} position={[0, height / 2 + 0.07, 0]}>
+        <boxGeometry args={[width + 0.2, 0.08, 0.12]} />
+      </mesh>
+      {/* Vertical divider */}
+      <mesh material={frameMat} position={[0, 0, 0.06]}>
+        <boxGeometry args={[0.04, height - 0.04, 0.03]} />
+      </mesh>
+    </group>
+  );
+}
+
+// ─── Balcony component ────────────────────────────────────────────────────────
+function Balcony({
+  position,
+  width,
+  floorColor,
+  railColor,
+}: {
+  position: [number, number, number];
+  width: number;
+  floorColor: string;
+  railColor: string;
+}) {
+  const floorMat = usePBRMat(floorColor, 0.88);
+  const railMat = usePBRMat(railColor, 0.7, 0.1);
+  const postCount = Math.max(2, Math.floor(width / 0.6));
+
+  return (
+    <group position={position}>
+      {/* Slab */}
+      <mesh material={floorMat} castShadow>
+        <boxGeometry args={[width + 0.3, 0.12, 0.9]} />
+      </mesh>
+      {/* Front rail */}
+      <mesh material={railMat} position={[0, 0.45, 0.38]}>
+        <boxGeometry args={[width + 0.28, 0.06, 0.04]} />
+      </mesh>
+      {/* Posts */}
+      {Array.from({ length: postCount }).map((_, i) => (
+        <mesh
+          // biome-ignore lint/suspicious/noArrayIndexKey: static
+          key={i}
+          material={railMat}
+          position={[-width / 2 + (i / (postCount - 1)) * width, 0.22, 0.38]}
+        >
+          <boxGeometry args={[0.06, 0.5, 0.06]} />
+        </mesh>
+      ))}
+      {/* Side rails */}
+      {[-1, 1].map((s, i) => (
+        <mesh
+          // biome-ignore lint/suspicious/noArrayIndexKey: static
+          key={i}
+          material={railMat}
+          position={[s * (width / 2 + 0.14), 0.45, 0.18]}
+        >
+          <boxGeometry args={[0.06, 0.06, 0.42]} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+// ─── Rooftop AC Unit ─────────────────────────────────────────────────────────
+function ACUnit({ position }: { position: [number, number, number] }) {
+  const bodyMat = usePBRMat("#7a8088", 0.7, 0.3);
+  const ventMat = usePBRMat("#55595e", 0.8, 0.2);
+  return (
+    <group position={position}>
+      <mesh material={bodyMat} castShadow>
+        <boxGeometry args={[0.9, 0.55, 0.7]} />
+      </mesh>
+      {/* Vent slats */}
+      {[-0.2, 0, 0.2].map((y, i) => (
+        <mesh
+          // biome-ignore lint/suspicious/noArrayIndexKey: static
+          key={i}
+          material={ventMat}
+          position={[0, y, 0.36]}
+        >
+          <boxGeometry args={[0.75, 0.07, 0.04]} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+// ─── Water Tank ───────────────────────────────────────────────────────────────
+function WaterTank({ position }: { position: [number, number, number] }) {
+  const tankMat = usePBRMat("#8a7060", 0.85);
+  const bandMat = usePBRMat("#5a4030", 0.7, 0.1);
+  return (
+    <group position={position}>
+      {/* Cylinder legs */}
+      {[-0.3, 0.3].map((x, i) => (
+        <mesh
+          // biome-ignore lint/suspicious/noArrayIndexKey: static
+          key={i}
+          material={bandMat}
+          position={[x, -0.3, 0]}
+        >
+          <boxGeometry args={[0.08, 0.5, 0.08]} />
+        </mesh>
+      ))}
+      {/* Tank body */}
+      <mesh material={tankMat} position={[0, 0.1, 0]} castShadow>
+        <cylinderGeometry args={[0.35, 0.35, 0.7, 10]} />
+      </mesh>
+      {/* Bands */}
+      {[-0.15, 0.15].map((y, i) => (
+        <mesh
+          // biome-ignore lint/suspicious/noArrayIndexKey: static
+          key={i}
+          material={bandMat}
+          position={[0, y + 0.1, 0]}
+        >
+          <torusGeometry args={[0.36, 0.03, 6, 12]} />
+        </mesh>
+      ))}
+    </group>
+  );
 }
 
 // ─── Realistic intact building ───────────────────────────────────────────────
@@ -33,158 +227,285 @@ function IntactBuilding({
   depth: number;
   color: string;
 }) {
-  const wallMat = useToonMaterial(color);
-  const outlineMat = useOutlineMaterial(0.1);
-  // Slightly darker shade for window recesses and trim
+  // Derive realistic colour palette from base color
+  const baseColor = useMemo(() => new THREE.Color(color), [color]);
+
+  const wallColor = useMemo(() => {
+    // Desaturate slightly & lighten for concrete/stucco feel
+    const c = baseColor.clone();
+    const hsl = { h: 0, s: 0, l: 0 };
+    c.getHSL(hsl);
+    return `#${new THREE.Color().setHSL(hsl.h, hsl.s * 0.4, Math.min(1, hsl.l * 1.1)).getHexString()}`;
+  }, [baseColor]);
+
   const trimColor = useMemo(() => {
-    const c = new THREE.Color(color);
-    c.multiplyScalar(0.65);
-    return `#${c.getHexString()}`;
-  }, [color]);
-  const trimMat = useToonMaterial(trimColor);
-  // Dark window glass
-  const windowMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: new THREE.Color(0.05, 0.08, 0.15),
-        roughness: 0.1,
-        metalness: 0.6,
-        emissive: new THREE.Color(0.02, 0.04, 0.08),
-        emissiveIntensity: 0.5,
-      }),
-    [],
-  );
+    const c = baseColor.clone();
+    const hsl = { h: 0, s: 0, l: 0 };
+    c.getHSL(hsl);
+    return `#${new THREE.Color().setHSL(hsl.h, hsl.s * 0.3, Math.max(0, hsl.l * 0.75)).getHexString()}`;
+  }, [baseColor]);
 
-  // Parapet height on top
-  const parapetH = 0.4;
-  // Number of window rows/columns based on building size
-  const windowCols = Math.max(1, Math.floor(width / 2.5));
-  const windowRows = Math.max(1, Math.floor(height / 3.5));
-  const windowW = 0.55;
-  const windowH = 0.75;
-  const windowDepth = 0.08;
+  const accentColor = useMemo(() => {
+    const c = baseColor.clone();
+    const hsl = { h: 0, s: 0, l: 0 };
+    c.getHSL(hsl);
+    return `#${new THREE.Color().setHSL(hsl.h, hsl.s * 0.5, Math.min(1, hsl.l * 1.3)).getHexString()}`;
+  }, [baseColor]);
 
-  // Generate window positions on front face (z = depth/2)
-  const windows = useMemo(() => {
-    const wins: { x: number; y: number }[] = [];
-    for (let row = 0; row < windowRows; row++) {
+  const wallMat = usePBRMat(wallColor, 0.88);
+  const trimMat = usePBRMat(trimColor, 0.78);
+  const accentMat = usePBRMat(accentColor, 0.65);
+  const concreteMat = usePBRMat("#b0a898", 0.9);
+  const outlineMat = useOutlineMaterial(0.08);
+
+  const parapetH = 0.5;
+  const floorH = 3.2;
+  const numFloors = Math.max(1, Math.round(height / floorH));
+  const windowCols = Math.max(1, Math.floor(width / 2.8));
+  const windowW = 0.65;
+  const windowH = 0.9;
+
+  // Window grid
+  const windowGrid = useMemo(() => {
+    const wins: { x: number; y: number; hasLight: boolean }[] = [];
+    for (let fl = 0; fl < numFloors; fl++) {
+      const y = -height / 2 + (fl + 0.55) * (height / numFloors) + 0.2;
       for (let col = 0; col < windowCols; col++) {
         const x = (col - (windowCols - 1) / 2) * (width / windowCols);
-        const y =
-          (row + 0.5) * (height / (windowRows + 0.5)) - height / 2 + 0.5;
-        wins.push({ x, y });
+        wins.push({ x, y, hasLight: Math.sin(fl * 3.1 + col * 1.7) > 0.2 });
       }
     }
     return wins;
-  }, [windowCols, windowRows, width, height]);
+  }, [numFloors, windowCols, width, height]);
+
+  // Which floors get balconies (every other floor, skip ground)
+  const balconyFloors = useMemo(() => {
+    const floors: number[] = [];
+    for (let fl = 1; fl < numFloors; fl += 2) {
+      floors.push(fl);
+    }
+    return floors;
+  }, [numFloors]);
+
+  // Rooftop details
+  const hasWaterTank = width > 5;
+  const acUnitCount = Math.floor(width / 4);
 
   return (
     <group position={position}>
-      {/* Main body */}
+      {/* ── Main wall body ── */}
       <mesh material={wallMat} castShadow receiveShadow>
         <boxGeometry args={[width, height, depth]} />
       </mesh>
       <mesh material={outlineMat}>
-        <boxGeometry args={[width + 0.05, height + 0.05, depth + 0.05]} />
+        <boxGeometry args={[width + 0.06, height + 0.06, depth + 0.06]} />
       </mesh>
 
-      {/* Parapet / roofline ledge */}
+      {/* ── Plinth / base band ── */}
+      <mesh material={trimMat} position={[0, -height / 2 + 0.5, 0]} castShadow>
+        <boxGeometry args={[width + 0.2, 1.0, depth + 0.2]} />
+      </mesh>
+
+      {/* ── Horizontal floor separation bands ── */}
+      {Array.from({ length: numFloors - 1 }).map((_, i) => {
+        const bandY = -height / 2 + (i + 1) * (height / numFloors);
+        return (
+          <mesh
+            // biome-ignore lint/suspicious/noArrayIndexKey: static
+            key={`band-${i}`}
+            material={accentMat}
+            position={[0, bandY, 0]}
+          >
+            <boxGeometry args={[width + 0.14, 0.18, depth + 0.14]} />
+          </mesh>
+        );
+      })}
+
+      {/* ── Corner pilasters full height ── */}
+      {(
+        [
+          [-1, -1],
+          [-1, 1],
+          [1, -1],
+          [1, 1],
+        ] as [number, number][]
+      ).map(([sx, sz], i) => (
+        <mesh
+          // biome-ignore lint/suspicious/noArrayIndexKey: static
+          key={`pilaster-${i}`}
+          material={trimMat}
+          position={[sx * (width / 2 + 0.1), 0, sz * (depth / 2 + 0.1)]}
+          castShadow
+        >
+          <boxGeometry args={[0.28, height + parapetH, 0.28]} />
+        </mesh>
+      ))}
+
+      {/* ── Parapet ── */}
       <mesh
-        material={trimMat}
+        material={concreteMat}
         position={[0, height / 2 + parapetH / 2, 0]}
         castShadow
       >
-        <boxGeometry args={[width + 0.3, parapetH, depth + 0.3]} />
+        <boxGeometry args={[width + 0.35, parapetH, depth + 0.35]} />
       </mesh>
-      <mesh material={outlineMat} position={[0, height / 2 + parapetH / 2, 0]}>
-        <boxGeometry args={[width + 0.35, parapetH + 0.05, depth + 0.35]} />
-      </mesh>
+      {/* Parapet merlons (crenellations) */}
+      {Array.from({ length: Math.floor(width * 1.2) }).map((_, i, arr) => {
+        const t = i / (arr.length - 1);
+        const x = -width / 2 + t * width;
+        return (
+          <mesh
+            // biome-ignore lint/suspicious/noArrayIndexKey: static
+            key={`merlon-${i}`}
+            material={concreteMat}
+            position={[x, height / 2 + parapetH + 0.18, 0]}
+          >
+            <boxGeometry args={[0.22, 0.36, depth + 0.4]} />
+          </mesh>
+        );
+      })}
 
-      {/* Roof slab */}
+      {/* ── Roof slab ── */}
       <mesh material={trimMat} position={[0, height / 2 + parapetH + 0.08, 0]}>
-        <boxGeometry args={[width + 0.1, 0.16, depth + 0.1]} />
+        <boxGeometry args={[width + 0.12, 0.14, depth + 0.12]} />
       </mesh>
 
-      {/* Horizontal floor-band trim (every ~3 units of height) */}
-      {Array.from({ length: Math.floor(height / 3) }).map((_, i) => (
-        <mesh
-          // biome-ignore lint/suspicious/noArrayIndexKey: static array
-          key={`band-${i}`}
-          material={trimMat}
-          position={[
-            0,
-            -height / 2 + (i + 1) * (height / (Math.floor(height / 3) + 1)),
-            0,
-          ]}
-        >
-          <boxGeometry args={[width + 0.15, 0.12, depth + 0.15]} />
-        </mesh>
-      ))}
-
-      {/* Corner pilasters (vertical strips on corners) */}
-      {[
-        [-1, -1],
-        [-1, 1],
-        [1, -1],
-        [1, 1],
-      ].map(([sx, sz], i) => (
-        <mesh
-          // biome-ignore lint/suspicious/noArrayIndexKey: static array
-          key={`pilaster-${i}`}
-          material={trimMat}
-          position={[sx * (width / 2 + 0.06), 0, sz * (depth / 2 + 0.06)]}
-          castShadow
-        >
-          <boxGeometry args={[0.22, height + parapetH * 2, 0.22]} />
-        </mesh>
-      ))}
-
-      {/* Windows on front face */}
-      {windows.map((w, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: static array
-        <group key={`win-front-${i}`} position={[w.x, w.y, depth / 2 + 0.01]}>
-          {/* Window recess frame */}
-          <mesh material={trimMat}>
-            <boxGeometry
-              args={[windowW + 0.14, windowH + 0.14, windowDepth + 0.02]}
-            />
-          </mesh>
-          {/* Window glass */}
-          <mesh material={windowMat} position={[0, 0, 0.02]}>
-            <boxGeometry args={[windowW, windowH, windowDepth]} />
-          </mesh>
-        </group>
-      ))}
-
-      {/* Windows on back face */}
-      {windows.map((w, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: static array
-        <group key={`win-back-${i}`} position={[w.x, w.y, -(depth / 2 + 0.01)]}>
-          <mesh material={trimMat}>
-            <boxGeometry
-              args={[windowW + 0.14, windowH + 0.14, windowDepth + 0.02]}
-            />
-          </mesh>
-          <mesh material={windowMat} position={[0, 0, -0.02]}>
-            <boxGeometry args={[windowW, windowH, windowDepth]} />
-          </mesh>
-        </group>
-      ))}
-
-      {/* Door opening on front face (ground floor) */}
-      <mesh
-        material={trimMat}
-        position={[0, -height / 2 + 1.1, depth / 2 + 0.01]}
-      >
-        <boxGeometry args={[1.0, 2.2, 0.1]} />
-      </mesh>
-      <mesh position={[0, -height / 2 + 1.1, depth / 2 + 0.06]}>
-        <boxGeometry args={[0.8, 2.0, 0.08]} />
-        <meshStandardMaterial
-          color={new THREE.Color(0.04, 0.03, 0.02)}
-          roughness={0.9}
+      {/* ── Front face windows ── */}
+      {windowGrid.map((w, i) => (
+        <Window
+          // biome-ignore lint/suspicious/noArrayIndexKey: static
+          key={`wf-${i}`}
+          position={[w.x, w.y, depth / 2 + 0.05]}
+          width={windowW}
+          height={windowH}
+          frameColor={trimColor}
+          hasLight={w.hasLight}
         />
-      </mesh>
+      ))}
+
+      {/* ── Back face windows ── */}
+      {windowGrid.map((w, i) => (
+        <Window
+          // biome-ignore lint/suspicious/noArrayIndexKey: static
+          key={`wb-${i}`}
+          position={[w.x, w.y, -(depth / 2 + 0.05)]}
+          width={windowW}
+          height={windowH}
+          frameColor={trimColor}
+          hasLight={w.hasLight}
+        />
+      ))}
+
+      {/* ── Side windows (left/right) ── */}
+      {windowGrid
+        .slice(0, Math.floor(windowGrid.length / windowCols))
+        .map((w, i) => {
+          const sideWins = Math.max(1, Math.floor(depth / 3.0));
+          return Array.from({ length: sideWins }).map((_, j) => {
+            const xOff = (j - (sideWins - 1) / 2) * (depth / sideWins);
+            return (
+              <group
+                // biome-ignore lint/suspicious/noArrayIndexKey: static
+                key={`ws-${i}-${j}`}
+              >
+                <Window
+                  position={[-(width / 2 + 0.05), w.y, xOff]}
+                  width={windowW * 0.85}
+                  height={windowH}
+                  frameColor={trimColor}
+                  hasLight={w.hasLight}
+                />
+                <Window
+                  position={[width / 2 + 0.05, w.y, xOff]}
+                  width={windowW * 0.85}
+                  height={windowH}
+                  frameColor={trimColor}
+                  hasLight={w.hasLight}
+                />
+              </group>
+            );
+          });
+        })}
+
+      {/* ── Balconies on alternating floors ── */}
+      {balconyFloors.map((fl, i) => {
+        const by = -height / 2 + (fl + 0.06) * (height / numFloors);
+        return (
+          <Balcony
+            // biome-ignore lint/suspicious/noArrayIndexKey: static
+            key={`bal-${i}`}
+            position={[0, by, depth / 2 + 0.45]}
+            width={width * 0.6}
+            floorColor={trimColor}
+            railColor={accentColor}
+          />
+        );
+      })}
+
+      {/* ── Main entrance ── */}
+      <group position={[0, -height / 2 + 1.2, depth / 2 + 0.01]}>
+        {/* Door arch surround */}
+        <mesh material={accentMat}>
+          <boxGeometry args={[1.4, 2.6, 0.18]} />
+        </mesh>
+        {/* Door panels */}
+        <mesh position={[-0.33, -0.05, 0.1]}>
+          <boxGeometry args={[0.52, 2.1, 0.08]} />
+          <meshStandardMaterial color="#2a1a0a" roughness={0.9} />
+        </mesh>
+        <mesh position={[0.33, -0.05, 0.1]}>
+          <boxGeometry args={[0.52, 2.1, 0.08]} />
+          <meshStandardMaterial color="#2a1a0a" roughness={0.9} />
+        </mesh>
+        {/* Door frame top */}
+        <mesh material={trimMat} position={[0, 1.15, 0.05]}>
+          <boxGeometry args={[1.42, 0.18, 0.14]} />
+        </mesh>
+        {/* Overhang canopy */}
+        <mesh material={concreteMat} position={[0, 1.45, 0.5]}>
+          <boxGeometry args={[1.8, 0.1, 1.1]} />
+        </mesh>
+        {/* Canopy supports */}
+        {[-0.65, 0.65].map((x, i) => (
+          <mesh
+            // biome-ignore lint/suspicious/noArrayIndexKey: static
+            key={i}
+            material={trimMat}
+            position={[x, 1.3, 0.9]}
+          >
+            <boxGeometry args={[0.1, 0.35, 0.1]} />
+          </mesh>
+        ))}
+        {/* Steps */}
+        <mesh material={trimMat} position={[0, -1.1, 0.35]}>
+          <boxGeometry args={[1.6, 0.12, 0.7]} />
+        </mesh>
+        <mesh material={trimMat} position={[0, -1.2, 0.7]}>
+          <boxGeometry args={[1.8, 0.1, 0.5]} />
+        </mesh>
+      </group>
+
+      {/* ── Rooftop equipment ── */}
+      {Array.from({ length: acUnitCount }).map((_, i) => (
+        <ACUnit
+          // biome-ignore lint/suspicious/noArrayIndexKey: static
+          key={`ac-${i}`}
+          position={[
+            -width / 2 + 1 + i * 2.2,
+            height / 2 + parapetH + 0.42,
+            depth * 0.2,
+          ]}
+        />
+      ))}
+      {hasWaterTank && (
+        <WaterTank
+          position={[
+            width / 2 - 1.2,
+            height / 2 + parapetH + 0.65,
+            -depth * 0.2,
+          ]}
+        />
+      )}
     </group>
   );
 }
@@ -203,40 +524,51 @@ function RuinedBuilding({
   depth: number;
   color: string;
 }) {
-  const wallMat = useToonMaterial(color);
-  const outlineMat = useOutlineMaterial(0.1);
-  const darkColor = useMemo(() => {
-    const c = new THREE.Color(color);
-    c.multiplyScalar(0.55);
-    return `#${c.getHexString()}`;
-  }, [color]);
-  const darkMat = useToonMaterial(darkColor);
-  const rubbleMat = useToonMaterial("#7a6040");
+  const baseColor = useMemo(() => new THREE.Color(color), [color]);
 
-  // Broken top — irregular heights for wall sections
+  const wallColor = useMemo(() => {
+    const c = baseColor.clone();
+    const hsl = { h: 0, s: 0, l: 0 };
+    c.getHSL(hsl);
+    return `#${new THREE.Color().setHSL(hsl.h, hsl.s * 0.35, Math.min(1, hsl.l * 0.95)).getHexString()}`;
+  }, [baseColor]);
+
+  const darkColor = useMemo(() => {
+    const c = baseColor.clone();
+    c.multiplyScalar(0.45);
+    return `#${c.getHexString()}`;
+  }, [baseColor]);
+
+  const wallMat = usePBRMat(wallColor, 0.92);
+  const darkMat = usePBRMat(darkColor, 0.95);
+  const exposedMat = usePBRMat("#8a7060", 0.93);
+  const steelMat = usePBRMat("#5a4a3a", 0.6, 0.4);
+  const rubbleMat = usePBRMat("#7a6a55", 0.95);
+  const outlineMat = useOutlineMaterial(0.08);
+
   const wallSections = useMemo(
     () => [
-      { xOff: -width * 0.25, hMult: 0.9, wFrac: 0.45 },
-      { xOff: width * 0.25, hMult: 0.6, wFrac: 0.45 },
+      { xOff: -width * 0.22, hMult: 0.85, wFrac: 0.48 },
+      { xOff: width * 0.26, hMult: 0.55, wFrac: 0.44 },
     ],
     [width],
   );
 
   return (
     <group position={position}>
-      {/* Base slab */}
+      {/* Base */}
       <mesh material={wallMat} castShadow receiveShadow>
         <boxGeometry args={[width, height, depth]} />
       </mesh>
       <mesh material={outlineMat}>
-        <boxGeometry args={[width + 0.05, height + 0.05, depth + 0.05]} />
+        <boxGeometry args={[width + 0.06, height + 0.06, depth + 0.06]} />
       </mesh>
 
-      {/* Broken wall sections rising above main body */}
+      {/* Broken upper wall sections */}
       {wallSections.map((s, i) => (
         <mesh
-          // biome-ignore lint/suspicious/noArrayIndexKey: static array
-          key={`wall-${i}`}
+          // biome-ignore lint/suspicious/noArrayIndexKey: static
+          key={`ws-${i}`}
           material={i % 2 === 0 ? wallMat : darkMat}
           position={[s.xOff, height / 2 + height * s.hMult * 0.25, 0]}
           castShadow
@@ -247,42 +579,87 @@ function RuinedBuilding({
         </mesh>
       ))}
 
-      {/* Exposed interior dark fill */}
-      <mesh material={darkMat} position={[0, height * 0.1, 0]}>
-        <boxGeometry args={[width * 0.7, height * 0.6, depth * 0.7]} />
+      {/* Exposed interior – dark cavity */}
+      <mesh material={darkMat} position={[0, height * 0.08, 0]}>
+        <boxGeometry args={[width * 0.7, height * 0.55, depth * 0.65]} />
       </mesh>
 
-      {/* Crumbled rubble at base */}
-      {[-1, 0, 1].map((xi, i) => (
+      {/* Exposed brick/rebar layer */}
+      <mesh
+        material={exposedMat}
+        position={[width * 0.15, height * 0.1, depth / 2 - 0.05]}
+      >
+        <boxGeometry args={[width * 0.3, height * 0.4, 0.12]} />
+      </mesh>
+
+      {/* Rebar sticking out */}
+      {[-0.15, 0, 0.15].map((ox, i) => (
         <mesh
-          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry array
-          key={`rubble-${i}`}
-          material={rubbleMat}
-          position={[
-            xi * width * 0.3,
-            -height / 2 + 0.25,
-            depth / 2 + 0.3 + i * 0.2,
-          ]}
-          scale={[0.6 + i * 0.15, 0.4, 0.5 + i * 0.1]}
+          // biome-ignore lint/suspicious/noArrayIndexKey: static
+          key={`rebar-${i}`}
+          material={steelMat}
+          position={[ox + width * 0.1, height / 2 + 0.6 + i * 0.12, 0]}
+          rotation={[0.2 + i * 0.1, 0, -0.15 + ox * 0.4]}
         >
-          <icosahedronGeometry args={[0.5, 0]} />
+          <cylinderGeometry args={[0.03, 0.03, 1.1 + i * 0.2, 5]} />
         </mesh>
       ))}
 
       {/* Cracked window openings */}
-      {[
-        { x: -width * 0.2, y: height * 0.1 },
-        { x: width * 0.2, y: -height * 0.05 },
-      ].map((w, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: static geometry array
-        <mesh key={`crack-${i}`} position={[w.x, w.y, depth / 2 + 0.02]}>
-          <boxGeometry args={[0.7, 0.9, 0.12]} />
-          <meshStandardMaterial
-            color={new THREE.Color(0.03, 0.02, 0.01)}
-            roughness={1}
-          />
+      {(
+        [
+          { x: -width * 0.22, y: height * 0.08, w: 0.7, h: 0.95 },
+          { x: width * 0.22, y: -height * 0.06, w: 0.55, h: 0.8 },
+        ] as { x: number; y: number; w: number; h: number }[]
+      ).map((wnd, i) => (
+        <group
+          // biome-ignore lint/suspicious/noArrayIndexKey: static
+          key={`cwin-${i}`}
+          position={[wnd.x, wnd.y, depth / 2 + 0.02]}
+        >
+          <mesh>
+            <boxGeometry args={[wnd.w + 0.14, wnd.h + 0.14, 0.14]} />
+            <meshStandardMaterial color="#1a100a" roughness={1} />
+          </mesh>
+          {/* Broken frame shards */}
+          <mesh position={[wnd.w / 3, wnd.h / 3, 0.04]} rotation={[0, 0, 0.4]}>
+            <boxGeometry args={[0.12, 0.25, 0.06]} />
+            <meshStandardMaterial color="#6a5540" roughness={0.9} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Rubble heap at base */}
+      {([-0.4, 0, 0.4] as number[]).map((xi, i) => (
+        <mesh
+          // biome-ignore lint/suspicious/noArrayIndexKey: static
+          key={`rubble-${i}`}
+          material={rubbleMat}
+          position={[
+            xi * width * 0.35,
+            -height / 2 + 0.3,
+            depth / 2 + 0.35 + i * 0.22,
+          ]}
+          scale={[0.7 + i * 0.18, 0.45, 0.55 + i * 0.1]}
+          rotation={[0.1 * i, 0.5 * i, 0.2 * i]}
+        >
+          <dodecahedronGeometry args={[0.5, 0]} />
         </mesh>
       ))}
+
+      {/* Scorch mark */}
+      <mesh
+        position={[-width * 0.1, height * 0.18, depth / 2 + 0.02]}
+        rotation={[0, 0, -0.15]}
+      >
+        <planeGeometry args={[width * 0.35, height * 0.25]} />
+        <meshStandardMaterial
+          color="#0a0806"
+          roughness={1}
+          transparent
+          opacity={0.65}
+        />
+      </mesh>
     </group>
   );
 }
@@ -299,24 +676,21 @@ function Barrier({
   height: number;
   depth: number;
 }) {
-  const concreteMat = useToonMaterial("#9e9080");
-  const darkMat = useToonMaterial("#6b5f52");
-  const outlineMat = useOutlineMaterial(0.07);
+  const concreteMat = usePBRMat("#9e9585", 0.88);
+  const darkMat = usePBRMat("#6e6358", 0.82);
+  const outlineMat = useOutlineMaterial(0.06);
 
   return (
     <group position={position}>
-      {/* Main barrier body */}
       <mesh material={concreteMat} castShadow receiveShadow>
         <boxGeometry args={[width, height, depth]} />
       </mesh>
       <mesh material={outlineMat}>
         <boxGeometry args={[width + 0.04, height + 0.04, depth + 0.04]} />
       </mesh>
-      {/* Top bevel */}
       <mesh material={darkMat} position={[0, height / 2 - 0.08, 0]}>
         <boxGeometry args={[width - 0.1, 0.16, depth - 0.1]} />
       </mesh>
-      {/* Horizontal groove */}
       <mesh material={darkMat} position={[0, 0, depth / 2 + 0.01]}>
         <boxGeometry args={[width - 0.05, 0.08, 0.04]} />
       </mesh>
@@ -326,9 +700,9 @@ function Barrier({
 
 // ─── Rubble pile ──────────────────────────────────────────────────────────────
 function RubblePile({ position }: { position: [number, number, number] }) {
-  const toonMat = useToonMaterial("#7a6040");
-  const darkMat = useToonMaterial("#5a4530");
-  const outlineMat = useOutlineMaterial(0.06);
+  const toonMat = usePBRMat("#7a6a50", 0.95);
+  const darkMat = usePBRMat("#5a4a35", 0.92);
+  const outlineMat = useOutlineMaterial(0.05);
 
   return (
     <group position={position}>
@@ -397,7 +771,7 @@ function SkyDome() {
   );
 }
 
-// ─── Dispatcher: pick the right building component by type ───────────────────
+// ─── Dispatcher ───────────────────────────────────────────────────────────────
 function BuildingDispatcher({ b }: { b: BuildingData }) {
   const [bx, by, bz] = b.position;
   const pos: [number, number, number] = [bx, by, bz];
@@ -434,7 +808,6 @@ function BuildingDispatcher({ b }: { b: BuildingData }) {
       />
     );
   }
-  // rubble
   return <RubblePile position={[bx, 0, bz]} />;
 }
 
@@ -444,7 +817,6 @@ export function DesertEnvironment({
 }: DesertEnvironmentProps) {
   const buildings = useMemo(() => generateBuildingData(), []);
 
-  // Decorative rubble positions (no collision needed — purely cosmetic)
   const rubblePositions = useMemo<[number, number, number][]>(() => {
     const positions: [number, number, number][] = [];
     for (let i = 0; i < 12; i++) {
@@ -461,42 +833,51 @@ export function DesertEnvironment({
       <SandGround />
 
       {buildings.map((b, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: static geometry array
+        // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
         <BuildingDispatcher key={i} b={b} />
       ))}
 
       {rubblePositions.map((pos, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: static geometry array
+        // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
         <RubblePile key={`deco-${i}`} position={pos} />
       ))}
 
-      {/* 10 large realistic palm trees scattered across the map */}
       {PALM_TREE_POSITIONS.map((pos, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: static geometry array
+        // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
         <PalmTree key={`palm-${i}`} position={pos} seed={i * 137 + 42} />
       ))}
 
-      {/* Pack-a-Punch Machine */}
       <PackAPunchMachine upgradeTier={upgradeTier} />
 
-      {/* Juggernog Machine — placed at validated outdoor position */}
       <JuggernogMachine
         position={JUGGERNOG_POSITION}
         purchaseCount={juggernogPurchaseCount}
       />
 
-      {/* Mountain ring barrier surrounding the map perimeter */}
       <MountainBarrier />
 
-      {/* Ambient + directional light */}
-      <ambientLight intensity={0.4} color="#ff9944" />
+      {/* Lighting */}
+      <ambientLight intensity={0.55} color="#ffbb77" />
       <directionalLight
-        position={[50, 80, 30]}
-        intensity={1.2}
-        color="#ffcc88"
+        position={[60, 90, 40]}
+        intensity={1.8}
+        color="#ffe8aa"
         castShadow
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+        shadow-camera-far={200}
+        shadow-camera-left={-80}
+        shadow-camera-right={80}
+        shadow-camera-top={80}
+        shadow-camera-bottom={-80}
       />
-      <hemisphereLight args={["#ff8833", "#442200", 0.3]} />
+      <hemisphereLight args={["#ffaa55", "#5a3311", 0.35]} />
+      {/* Fill light from opposite side */}
+      <directionalLight
+        position={[-30, 40, -20]}
+        intensity={0.4}
+        color="#aaccff"
+      />
     </group>
   );
 }
