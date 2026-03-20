@@ -54,35 +54,77 @@ export function pistolShot(): void {
     if (!ctx) return;
     const now = ctx.currentTime;
 
-    // Sharp crack
-    const noise = createNoise(ctx, 0.15);
-    const gainNode = ctx.createGain();
-    const filter = ctx.createBiquadFilter();
-    filter.type = "bandpass";
-    filter.frequency.setValueAtTime(2000, now);
-    filter.frequency.exponentialRampToValueAtTime(400, now + 0.1);
-    filter.Q.value = 0.5;
+    // === Layer 1: Sub-bass pop (the initial pressure wave) ===
+    const subOsc = ctx.createOscillator();
+    const subGain = ctx.createGain();
+    subOsc.type = "sine";
+    subOsc.frequency.setValueAtTime(160, now);
+    subOsc.frequency.exponentialRampToValueAtTime(40, now + 0.1);
+    subGain.gain.setValueAtTime(1.2, now);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+    subOsc.connect(subGain);
+    subGain.connect(ctx.destination);
+    subOsc.start(now);
+    subOsc.stop(now + 0.12);
 
-    gainNode.gain.setValueAtTime(0.8, now);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    // === Layer 2: Mid crack (body of the shot) ===
+    const midOsc = ctx.createOscillator();
+    const midGain = ctx.createGain();
+    midOsc.type = "triangle";
+    midOsc.frequency.setValueAtTime(600, now);
+    midOsc.frequency.exponentialRampToValueAtTime(120, now + 0.08);
+    midGain.gain.setValueAtTime(0.85, now);
+    midGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    midOsc.connect(midGain);
+    midGain.connect(ctx.destination);
+    midOsc.start(now);
+    midOsc.stop(now + 0.1);
 
-    noise.connect(filter);
-    filter.connect(gainNode);
-    gainNode.connect(ctx.destination);
-    noise.start(now);
-    noise.stop(now + 0.15);
+    // === Layer 3: Sharp high-frequency crack burst ===
+    const crackNoise = createNoise(ctx, 0.05);
+    const crackFilter = ctx.createBiquadFilter();
+    crackFilter.type = "highpass";
+    crackFilter.frequency.setValueAtTime(4000, now);
+    const crackGain = ctx.createGain();
+    crackGain.gain.setValueAtTime(1.0, now);
+    crackGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+    crackNoise.connect(crackFilter);
+    crackFilter.connect(crackGain);
+    crackGain.connect(ctx.destination);
+    crackNoise.start(now);
+    crackNoise.stop(now + 0.05);
 
-    // Tone snap
-    const osc = ctx.createOscillator();
-    const oscGain = ctx.createGain();
-    osc.frequency.setValueAtTime(800, now);
-    osc.frequency.exponentialRampToValueAtTime(100, now + 0.08);
-    oscGain.gain.setValueAtTime(0.4, now);
-    oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
-    osc.connect(oscGain);
-    oscGain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.08);
+    // === Layer 4: Body noise sweep (the full shot body) ===
+    const bodyNoise = createNoise(ctx, 0.18);
+    const bodyFilter = ctx.createBiquadFilter();
+    bodyFilter.type = "bandpass";
+    bodyFilter.frequency.setValueAtTime(1200, now);
+    bodyFilter.frequency.exponentialRampToValueAtTime(200, now + 0.15);
+    bodyFilter.Q.value = 1.5;
+    const bodyGain = ctx.createGain();
+    bodyGain.gain.setValueAtTime(1.0, now);
+    bodyGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+    bodyNoise.connect(bodyFilter);
+    bodyFilter.connect(bodyGain);
+    bodyGain.connect(ctx.destination);
+    bodyNoise.start(now);
+    bodyNoise.stop(now + 0.18);
+
+    // === Layer 5: Slide/brass ejection click ===
+    const brassNoise = createNoise(ctx, 0.035);
+    const brassFilter = ctx.createBiquadFilter();
+    brassFilter.type = "bandpass";
+    brassFilter.frequency.setValueAtTime(2800, now + 0.05);
+    brassFilter.Q.value = 5.0;
+    const brassGain = ctx.createGain();
+    brassGain.gain.setValueAtTime(0, now);
+    brassGain.gain.setValueAtTime(0.28, now + 0.05);
+    brassGain.gain.exponentialRampToValueAtTime(0.001, now + 0.085);
+    brassNoise.connect(brassFilter);
+    brassFilter.connect(brassGain);
+    brassGain.connect(ctx.destination);
+    brassNoise.start(now + 0.05);
+    brassNoise.stop(now + 0.085);
   } catch (_) {}
 }
 
@@ -92,35 +134,77 @@ export function shotgunShot(): void {
     if (!ctx) return;
     const now = ctx.currentTime;
 
-    // Deep boom
-    const noise = createNoise(ctx, 0.5);
-    const gainNode = ctx.createGain();
-    const filter = ctx.createBiquadFilter();
-    filter.type = "lowpass";
-    filter.frequency.setValueAtTime(800, now);
-    filter.frequency.exponentialRampToValueAtTime(80, now + 0.4);
+    // === Layer 1: Massive sub-bass explosion boom ===
+    const subOsc = ctx.createOscillator();
+    const subGain = ctx.createGain();
+    subOsc.type = "sine";
+    subOsc.frequency.setValueAtTime(100, now);
+    subOsc.frequency.exponentialRampToValueAtTime(22, now + 0.35);
+    subGain.gain.setValueAtTime(2.0, now);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    subOsc.connect(subGain);
+    subGain.connect(ctx.destination);
+    subOsc.start(now);
+    subOsc.stop(now + 0.4);
 
-    gainNode.gain.setValueAtTime(1.2, now);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    // === Layer 2: Mid-body explosion (the chunky blast) ===
+    const midOsc = ctx.createOscillator();
+    const midGain = ctx.createGain();
+    midOsc.type = "sawtooth";
+    midOsc.frequency.setValueAtTime(200, now);
+    midOsc.frequency.exponentialRampToValueAtTime(45, now + 0.22);
+    midGain.gain.setValueAtTime(1.3, now);
+    midGain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+    midOsc.connect(midGain);
+    midGain.connect(ctx.destination);
+    midOsc.start(now);
+    midOsc.stop(now + 0.28);
 
-    noise.connect(filter);
-    filter.connect(gainNode);
-    gainNode.connect(ctx.destination);
-    noise.start(now);
-    noise.stop(now + 0.5);
+    // === Layer 3: Sharp pellet crack burst ===
+    const crackNoise = createNoise(ctx, 0.07);
+    const crackFilter = ctx.createBiquadFilter();
+    crackFilter.type = "highpass";
+    crackFilter.frequency.setValueAtTime(3000, now);
+    const crackGain = ctx.createGain();
+    crackGain.gain.setValueAtTime(1.5, now);
+    crackGain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+    crackNoise.connect(crackFilter);
+    crackFilter.connect(crackGain);
+    crackGain.connect(ctx.destination);
+    crackNoise.start(now);
+    crackNoise.stop(now + 0.07);
 
-    // Sub boom
-    const osc = ctx.createOscillator();
-    const oscGain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(120, now);
-    osc.frequency.exponentialRampToValueAtTime(40, now + 0.3);
-    oscGain.gain.setValueAtTime(0.8, now);
-    oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-    osc.connect(oscGain);
-    oscGain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.3);
+    // === Layer 4: Low rumble noise tail (reverb body) ===
+    const bodyNoise = createNoise(ctx, 0.6);
+    const bodyFilter = ctx.createBiquadFilter();
+    bodyFilter.type = "lowpass";
+    bodyFilter.frequency.setValueAtTime(900, now);
+    bodyFilter.frequency.exponentialRampToValueAtTime(60, now + 0.5);
+    bodyFilter.Q.value = 2.5;
+    const bodyGain = ctx.createGain();
+    bodyGain.gain.setValueAtTime(1.6, now);
+    bodyGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+    bodyNoise.connect(bodyFilter);
+    bodyFilter.connect(bodyGain);
+    bodyGain.connect(ctx.destination);
+    bodyNoise.start(now);
+    bodyNoise.stop(now + 0.6);
+
+    // === Layer 5: Pump-action mechanical clank ===
+    const pumpNoise = createNoise(ctx, 0.055);
+    const pumpFilter = ctx.createBiquadFilter();
+    pumpFilter.type = "bandpass";
+    pumpFilter.frequency.setValueAtTime(750, now + 0.18);
+    pumpFilter.Q.value = 3.5;
+    const pumpGain = ctx.createGain();
+    pumpGain.gain.setValueAtTime(0, now);
+    pumpGain.gain.setValueAtTime(0.45, now + 0.18);
+    pumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.235);
+    pumpNoise.connect(pumpFilter);
+    pumpFilter.connect(pumpGain);
+    pumpGain.connect(ctx.destination);
+    pumpNoise.start(now + 0.18);
+    pumpNoise.stop(now + 0.235);
   } catch (_) {}
 }
 
