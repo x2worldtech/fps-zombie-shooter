@@ -130,22 +130,77 @@ export function assaultRifleShot(): void {
     if (!ctx) return;
     const now = ctx.currentTime;
 
-    const noise = createNoise(ctx, 0.1);
-    const gainNode = ctx.createGain();
-    const filter = ctx.createBiquadFilter();
-    filter.type = "bandpass";
-    filter.frequency.setValueAtTime(1200, now);
-    filter.frequency.exponentialRampToValueAtTime(300, now + 0.08);
-    filter.Q.value = 1.0;
+    // === Layer 1: Sub-bass thud (deep body of the shot) ===
+    const subOsc = ctx.createOscillator();
+    const subGain = ctx.createGain();
+    subOsc.type = "sine";
+    subOsc.frequency.setValueAtTime(90, now);
+    subOsc.frequency.exponentialRampToValueAtTime(28, now + 0.18);
+    subGain.gain.setValueAtTime(1.4, now);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+    subOsc.connect(subGain);
+    subGain.connect(ctx.destination);
+    subOsc.start(now);
+    subOsc.stop(now + 0.22);
 
-    gainNode.gain.setValueAtTime(0.6, now);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    // === Layer 2: Mid-frequency body punch ===
+    const midOsc = ctx.createOscillator();
+    const midGain = ctx.createGain();
+    midOsc.type = "triangle";
+    midOsc.frequency.setValueAtTime(180, now);
+    midOsc.frequency.exponentialRampToValueAtTime(55, now + 0.14);
+    midGain.gain.setValueAtTime(0.9, now);
+    midGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+    midOsc.connect(midGain);
+    midGain.connect(ctx.destination);
+    midOsc.start(now);
+    midOsc.stop(now + 0.18);
 
-    noise.connect(filter);
-    filter.connect(gainNode);
-    gainNode.connect(ctx.destination);
-    noise.start(now);
-    noise.stop(now + 0.1);
+    // === Layer 3: Sharp crack (high-freq noise burst) ===
+    const crackNoise = createNoise(ctx, 0.06);
+    const crackFilter = ctx.createBiquadFilter();
+    crackFilter.type = "highpass";
+    crackFilter.frequency.setValueAtTime(3500, now);
+    const crackGain = ctx.createGain();
+    crackGain.gain.setValueAtTime(1.1, now);
+    crackGain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+    crackNoise.connect(crackFilter);
+    crackFilter.connect(crackGain);
+    crackGain.connect(ctx.destination);
+    crackNoise.start(now);
+    crackNoise.stop(now + 0.06);
+
+    // === Layer 4: Body noise with low-pass sweep (the "meat") ===
+    const bodyNoise = createNoise(ctx, 0.25);
+    const bodyFilter = ctx.createBiquadFilter();
+    bodyFilter.type = "lowpass";
+    bodyFilter.frequency.setValueAtTime(1800, now);
+    bodyFilter.frequency.exponentialRampToValueAtTime(120, now + 0.2);
+    bodyFilter.Q.value = 2.0;
+    const bodyGain = ctx.createGain();
+    bodyGain.gain.setValueAtTime(1.2, now);
+    bodyGain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    bodyNoise.connect(bodyFilter);
+    bodyFilter.connect(bodyGain);
+    bodyGain.connect(ctx.destination);
+    bodyNoise.start(now);
+    bodyNoise.stop(now + 0.25);
+
+    // === Layer 5: Mechanical clank (bolt cycling) ===
+    const clankNoise = createNoise(ctx, 0.04);
+    const clankFilter = ctx.createBiquadFilter();
+    clankFilter.type = "bandpass";
+    clankFilter.frequency.setValueAtTime(900, now + 0.06);
+    clankFilter.Q.value = 4.0;
+    const clankGain = ctx.createGain();
+    clankGain.gain.setValueAtTime(0, now);
+    clankGain.gain.setValueAtTime(0.35, now + 0.06);
+    clankGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    clankNoise.connect(clankFilter);
+    clankFilter.connect(clankGain);
+    clankGain.connect(ctx.destination);
+    clankNoise.start(now + 0.06);
+    clankNoise.stop(now + 0.1);
   } catch (_) {}
 }
 
