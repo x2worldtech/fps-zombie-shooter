@@ -134,7 +134,7 @@ function GoldSparkles({ active }: { active: boolean }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PISTOL — Glock-style semi-automatic handgun
+// PISTOL — Colt M1911 (highly detailed, realistic PBR materials)
 // ─────────────────────────────────────────────────────────────────────────────
 function PistolModel({
   recoilOffset,
@@ -147,13 +147,47 @@ function PistolModel({
 }) {
   const groupRef = useRef<THREE.Group>(null);
 
-  // Color palette: gunmetal frame, dark slide, tan grip panels
-  const frameMat = useToonMaterial("#5a5a5a"); // polymer frame – medium grey
-  const slideMat = useToonMaterial("#2e2e2e"); // steel slide – near black
-  const gripMat = useToonMaterial("#3d2b1a"); // grip panels – dark brown
-  const barrelMat = useToonMaterial("#1a1a1a"); // barrel – very dark
-  const detailMat = useToonMaterial("#888888"); // small details – light grey
-  const outlineMat = useOutlineMaterial(0.025);
+  const {
+    steelBlued,
+    steelBright,
+    gripMat,
+    gripLightMat,
+    rubberMat,
+    brassMat,
+  } = useMemo(() => {
+    return {
+      steelBlued: new THREE.MeshStandardMaterial({
+        color: "#1a1c20",
+        metalness: 1.0,
+        roughness: 0.12,
+      }),
+      steelBright: new THREE.MeshStandardMaterial({
+        color: "#3a3d42",
+        metalness: 0.95,
+        roughness: 0.2,
+      }),
+      gripMat: new THREE.MeshStandardMaterial({
+        color: "#2a1a0e",
+        metalness: 0,
+        roughness: 0.95,
+      }),
+      gripLightMat: new THREE.MeshStandardMaterial({
+        color: "#3d2510",
+        metalness: 0,
+        roughness: 0.9,
+      }),
+      rubberMat: new THREE.MeshStandardMaterial({
+        color: "#111111",
+        metalness: 0,
+        roughness: 1.0,
+      }),
+      brassMat: new THREE.MeshStandardMaterial({
+        color: "#b8942a",
+        metalness: 0.85,
+        roughness: 0.25,
+      }),
+    };
+  }, []);
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
@@ -172,178 +206,304 @@ function PistolModel({
 
   return (
     <group ref={groupRef} position={[0.22, -0.25, -0.5]}>
-      {/* ── FRAME (lower receiver) ── */}
+      {/* ══ FRAME (lower receiver) ══ */}
       {/* Main frame body */}
-      <mesh material={frameMat} position={[0, 0.01, 0.01]}>
-        <boxGeometry args={[0.072, 0.095, 0.22]} />
-      </mesh>
-      <mesh material={outlineMat} position={[0, 0.01, 0.01]}>
-        <boxGeometry args={[0.072, 0.095, 0.22]} />
+      <mesh material={steelBlued} position={[0, 0.005, 0.01]}>
+        <boxGeometry args={[0.058, 0.085, 0.21]} />
       </mesh>
       <GlowOverlay
         tier={upgradeTier}
-        position={[0, 0.01, 0.01]}
-        args={[0.072, 0.095, 0.22]}
+        position={[0, 0.005, 0.01]}
+        args={[0.058, 0.085, 0.21]}
       />
 
-      {/* ── SLIDE (upper receiver) ── */}
-      {/* Main slide body – sits on top of frame */}
-      <mesh material={slideMat} position={[0, 0.075, -0.02]}>
-        <boxGeometry args={[0.068, 0.055, 0.26]} />
+      {/* Frame dust cover (under barrel, front) */}
+      <mesh material={steelBlued} position={[0, -0.022, -0.08]}>
+        <boxGeometry args={[0.058, 0.032, 0.09]} />
       </mesh>
-      <mesh material={outlineMat} position={[0, 0.075, -0.02]}>
-        <boxGeometry args={[0.068, 0.055, 0.26]} />
+
+      {/* Frame rails – left and right */}
+      <mesh material={steelBright} position={[0.031, 0.045, 0.01]}>
+        <boxGeometry args={[0.002, 0.008, 0.18]} />
+      </mesh>
+      <mesh material={steelBright} position={[-0.031, 0.045, 0.01]}>
+        <boxGeometry args={[0.002, 0.008, 0.18]} />
+      </mesh>
+
+      {/* Trigger guard – bottom bar */}
+      <mesh material={steelBlued} position={[0, -0.03, -0.04]}>
+        <boxGeometry args={[0.055, 0.01, 0.09]} />
+      </mesh>
+      {/* Trigger guard – front vertical (squared, M1911 signature) */}
+      <mesh material={steelBlued} position={[0, -0.005, -0.085]}>
+        <boxGeometry args={[0.055, 0.05, 0.01]} />
+      </mesh>
+
+      {/* ══ SLIDE ══ */}
+      {/* Main slide body */}
+      <mesh material={steelBlued} position={[0, 0.07, -0.02]}>
+        <boxGeometry args={[0.062, 0.052, 0.255]} />
       </mesh>
       <GlowOverlay
         tier={upgradeTier}
-        position={[0, 0.075, -0.02]}
-        args={[0.068, 0.055, 0.26]}
+        position={[0, 0.07, -0.02]}
+        args={[0.062, 0.052, 0.255]}
       />
 
-      {/* Slide serrations – rear (6 thin vertical cuts) */}
-      {[-0.018, -0.009, 0, 0.009, 0.018, 0.027].map((zOff, i) => (
+      {/* Slide top flat */}
+      <mesh material={steelBright} position={[0, 0.098, -0.02]}>
+        <boxGeometry args={[0.058, 0.008, 0.24]} />
+      </mesh>
+
+      {/* Rear slide serrations – 8 vertical grooves (M1911 signature) */}
+      {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
         <mesh
-          // biome-ignore lint: pre-existing issue
+          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
           key={`ser-${i}`}
-          material={barrelMat}
-          position={[0, 0.075, 0.09 + zOff]}
+          material={rubberMat}
+          position={[0, 0.07, 0.07 + i * 0.012]}
         >
-          <boxGeometry args={[0.074, 0.057, 0.004]} />
+          <boxGeometry args={[0.064, 0.054, 0.004]} />
         </mesh>
       ))}
 
-      {/* Ejection port – right side cutout (dark inset) */}
-      <mesh material={barrelMat} position={[0.036, 0.078, -0.01]}>
-        <boxGeometry args={[0.006, 0.028, 0.07]} />
+      {/* Ejection port – right side */}
+      <mesh material={rubberMat} position={[0.033, 0.072, -0.01]}>
+        <boxGeometry args={[0.007, 0.025, 0.065]} />
       </mesh>
 
-      {/* Front sight – small post on top of slide */}
-      <mesh material={detailMat} position={[0, 0.107, -0.1]}>
-        <boxGeometry args={[0.008, 0.012, 0.008]} />
-      </mesh>
-      <mesh material={outlineMat} position={[0, 0.107, -0.1]}>
-        <boxGeometry args={[0.008, 0.012, 0.008]} />
+      {/* Slide stop notch cutout – left */}
+      <mesh material={rubberMat} position={[-0.033, 0.048, 0.01]}>
+        <boxGeometry args={[0.007, 0.018, 0.022]} />
       </mesh>
 
-      {/* Rear sight – U-notch on top rear of slide */}
-      <mesh material={detailMat} position={[-0.012, 0.107, 0.09]}>
-        <boxGeometry args={[0.008, 0.012, 0.01]} />
-      </mesh>
-      <mesh material={detailMat} position={[0.012, 0.107, 0.09]}>
-        <boxGeometry args={[0.008, 0.012, 0.01]} />
-      </mesh>
-
-      {/* ── BARREL ── */}
-      {/* Barrel tube extending forward from slide */}
+      {/* ══ BARREL ══ */}
+      {/* Barrel tube */}
       <mesh
-        material={barrelMat}
-        position={[0, 0.072, -0.175]}
+        material={steelBlued}
+        position={[0, 0.07, -0.155]}
         rotation={[Math.PI / 2, 0, 0]}
       >
-        <cylinderGeometry args={[0.014, 0.014, 0.09, 10]} />
-      </mesh>
-      <mesh
-        material={outlineMat}
-        position={[0, 0.072, -0.175]}
-        rotation={[Math.PI / 2, 0, 0]}
-      >
-        <cylinderGeometry args={[0.014, 0.014, 0.09, 10]} />
+        <cylinderGeometry args={[0.013, 0.013, 0.11, 12]} />
       </mesh>
 
-      {/* Muzzle crown – slightly wider ring at barrel tip */}
+      {/* Barrel bushing – wider ring at muzzle (M1911 signature) */}
       <mesh
-        material={detailMat}
-        position={[0, 0.072, -0.222]}
+        material={steelBright}
+        position={[0, 0.07, -0.225]}
         rotation={[Math.PI / 2, 0, 0]}
       >
-        <cylinderGeometry args={[0.018, 0.018, 0.008, 10]} />
+        <cylinderGeometry args={[0.018, 0.018, 0.024, 12]} />
       </mesh>
 
-      {/* ── GRIP ── */}
-      {/* Main grip body – angled slightly backward */}
+      {/* Muzzle crown */}
       <mesh
-        material={gripMat}
-        position={[0, -0.075, 0.085]}
-        rotation={[0.12, 0, 0]}
+        material={steelBright}
+        position={[0, 0.07, -0.24]}
+        rotation={[Math.PI / 2, 0, 0]}
       >
-        <boxGeometry args={[0.065, 0.13, 0.075]} />
+        <cylinderGeometry args={[0.016, 0.013, 0.008, 12]} />
       </mesh>
+
+      {/* Recoil spring plug (round plug below barrel at muzzle) */}
       <mesh
-        material={outlineMat}
-        position={[0, -0.075, 0.085]}
-        rotation={[0.12, 0, 0]}
+        material={steelBright}
+        position={[0, 0.044, -0.23]}
+        rotation={[Math.PI / 2, 0, 0]}
       >
-        <boxGeometry args={[0.065, 0.13, 0.075]} />
+        <cylinderGeometry args={[0.013, 0.013, 0.02, 10]} />
+      </mesh>
+
+      {/* ══ SIGHTS ══ */}
+      {/* Front sight – tall narrow post (GI style) */}
+      <mesh material={steelBright} position={[0, 0.103, -0.19]}>
+        <boxGeometry args={[0.006, 0.016, 0.007]} />
+      </mesh>
+
+      {/* Rear sight – two-post U-notch */}
+      <mesh material={steelBright} position={[0.014, 0.103, 0.085]}>
+        <boxGeometry args={[0.007, 0.014, 0.01]} />
+      </mesh>
+      <mesh material={steelBright} position={[-0.014, 0.103, 0.085]}>
+        <boxGeometry args={[0.007, 0.014, 0.01]} />
+      </mesh>
+
+      {/* ══ EXTERNAL HAMMER (M1911 signature) ══ */}
+      {/* Hammer body */}
+      <mesh material={steelBlued} position={[0, 0.098, 0.1]}>
+        <boxGeometry args={[0.018, 0.028, 0.016]} />
+      </mesh>
+      {/* Hammer spur */}
+      <mesh
+        material={steelBlued}
+        position={[0, 0.108, 0.112]}
+        rotation={[-0.4, 0, 0]}
+      >
+        <boxGeometry args={[0.016, 0.012, 0.022]} />
+      </mesh>
+      {/* Half-cock notch visual */}
+      <mesh material={rubberMat} position={[0, 0.085, 0.098]}>
+        <boxGeometry args={[0.01, 0.006, 0.004]} />
+      </mesh>
+
+      {/* ══ GRIP SAFETY (M1911 signature) ══ */}
+      {/* Grip safety body */}
+      <mesh material={steelBlued} position={[0, 0.018, 0.105]}>
+        <boxGeometry args={[0.062, 0.045, 0.016]} />
+      </mesh>
+      {/* Beavertail extension */}
+      <mesh material={steelBlued} position={[0, 0.038, 0.108]}>
+        <boxGeometry args={[0.058, 0.022, 0.014]} />
+      </mesh>
+
+      {/* ══ THUMB SAFETY – left side ══ */}
+      {/* Safety lever */}
+      <mesh material={steelBlued} position={[-0.042, 0.042, 0.065]}>
+        <boxGeometry args={[0.022, 0.012, 0.028]} />
+      </mesh>
+      {/* Safety pivot */}
+      <mesh
+        material={steelBright}
+        position={[-0.042, 0.042, 0.052]}
+        rotation={[0, Math.PI / 2, 0]}
+      >
+        <cylinderGeometry args={[0.005, 0.005, 0.015, 8]} />
+      </mesh>
+
+      {/* ══ SLIDE STOP LEVER – left side ══ */}
+      <mesh material={steelBlued} position={[-0.042, 0.028, 0.01]}>
+        <boxGeometry args={[0.022, 0.008, 0.048]} />
+      </mesh>
+
+      {/* ══ GRIP PANELS (checkered walnut) ══ */}
+      {/* Left panel */}
+      <mesh material={gripMat} position={[-0.036, -0.055, 0.065]}>
+        <boxGeometry args={[0.007, 0.115, 0.1]} />
       </mesh>
       <GlowOverlay
         tier={upgradeTier}
-        position={[0, -0.075, 0.085]}
-        args={[0.065, 0.13, 0.075]}
+        position={[-0.036, -0.055, 0.065]}
+        args={[0.007, 0.115, 0.1]}
+      />
+      {/* Right panel */}
+      <mesh material={gripMat} position={[0.036, -0.055, 0.065]}>
+        <boxGeometry args={[0.007, 0.115, 0.1]} />
+      </mesh>
+      <GlowOverlay
+        tier={upgradeTier}
+        position={[0.036, -0.055, 0.065]}
+        args={[0.007, 0.115, 0.1]}
       />
 
-      {/* Grip checkering – horizontal ridges on both sides */}
-      {[-0.04, -0.02, 0, 0.02, 0.04, 0.06].map((yOff, i) => (
+      {/* Wood grain lines – left panel (3 vertical lines) */}
+      {[0, 1, 2].map((j) => (
         <mesh
-          // biome-ignore lint: pre-existing issue
-          key={`grip-r-${i}`}
-          material={barrelMat}
-          position={[0.034, -0.055 + yOff, 0.085]}
+          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
+          key={`wg-l-${j}`}
+          material={gripLightMat}
+          position={[-0.036, -0.055, 0.02 + j * 0.035]}
         >
-          <boxGeometry args={[0.004, 0.008, 0.07]} />
+          <boxGeometry args={[0.008, 0.113, 0.003]} />
         </mesh>
       ))}
-      {[-0.04, -0.02, 0, 0.02, 0.04, 0.06].map((yOff, i) => (
+      {/* Wood grain lines – right panel */}
+      {[0, 1, 2].map((j) => (
         <mesh
-          // biome-ignore lint: pre-existing issue
-          key={`grip-l-${i}`}
-          material={barrelMat}
-          position={[-0.034, -0.055 + yOff, 0.085]}
+          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
+          key={`wg-r-${j}`}
+          material={gripLightMat}
+          position={[0.036, -0.055, 0.02 + j * 0.035]}
         >
-          <boxGeometry args={[0.004, 0.008, 0.07]} />
+          <boxGeometry args={[0.008, 0.113, 0.003]} />
         </mesh>
       ))}
 
-      {/* Magazine base plate – bottom of grip */}
-      <mesh material={slideMat} position={[0, -0.148, 0.085]}>
-        <boxGeometry args={[0.068, 0.012, 0.078]} />
+      {/* Diamond checkering simulation – left (6 horizontal ridges) */}
+      {[0, 1, 2, 3, 4, 5].map((k) => (
+        <mesh
+          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
+          key={`chk-l-${k}`}
+          material={gripMat}
+          position={[-0.036, -0.02 + k * 0.02, 0.065]}
+        >
+          <boxGeometry args={[0.008, 0.006, 0.098]} />
+        </mesh>
+      ))}
+      {/* Diamond checkering simulation – right */}
+      {[0, 1, 2, 3, 4, 5].map((k) => (
+        <mesh
+          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
+          key={`chk-r-${k}`}
+          material={gripMat}
+          position={[0.036, -0.02 + k * 0.02, 0.065]}
+        >
+          <boxGeometry args={[0.008, 0.006, 0.098]} />
+        </mesh>
+      ))}
+
+      {/* ══ MAINSPRING HOUSING (flat, bottom rear of grip) ══ */}
+      <mesh material={steelBlued} position={[0, -0.085, 0.112]}>
+        <boxGeometry args={[0.056, 0.035, 0.012]} />
       </mesh>
-      <mesh material={outlineMat} position={[0, -0.148, 0.085]}>
-        <boxGeometry args={[0.068, 0.012, 0.078]} />
+      {/* Lanyard loop */}
+      <mesh material={steelBright} position={[0, -0.098, 0.112]}>
+        <boxGeometry args={[0.024, 0.008, 0.016]} />
       </mesh>
 
-      {/* ── TRIGGER GUARD ── */}
-      {/* Bottom bar of trigger guard */}
-      <mesh material={frameMat} position={[0, -0.025, -0.04]}>
-        <boxGeometry args={[0.065, 0.012, 0.09]} />
+      {/* ══ MAGAZINE ══ */}
+      {/* Mag body */}
+      <mesh material={steelBlued} position={[0, -0.1, 0.065]}>
+        <boxGeometry args={[0.05, 0.1, 0.088]} />
       </mesh>
-      {/* Front vertical of trigger guard */}
-      <mesh material={frameMat} position={[0, 0.005, -0.085]}>
-        <boxGeometry args={[0.065, 0.055, 0.012]} />
+      {/* Mag base plate */}
+      <mesh material={steelBright} position={[0, -0.152, 0.065]}>
+        <boxGeometry args={[0.053, 0.012, 0.09]} />
       </mesh>
-      <mesh material={outlineMat} position={[0, -0.025, -0.04]}>
-        <boxGeometry args={[0.065, 0.012, 0.09]} />
-      </mesh>
+      {/* Witness holes – right side (3) */}
+      {[0, 1, 2].map((m) => (
+        <mesh
+          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
+          key={`wh-${m}`}
+          material={rubberMat}
+          position={[0.027, -0.075 + m * 0.025, 0.065]}
+        >
+          <boxGeometry args={[0.007, 0.006, 0.086]} />
+        </mesh>
+      ))}
 
-      {/* ── TRIGGER ── */}
+      {/* ══ TRIGGER (longer than Glock, M1911 style) ══ */}
+      {/* Trigger bow */}
       <mesh
-        material={detailMat}
-        position={[0, -0.01, -0.01]}
-        rotation={[0.3, 0, 0]}
+        material={steelBright}
+        position={[0, -0.008, -0.01]}
+        rotation={[0.25, 0, 0]}
       >
-        <boxGeometry args={[0.01, 0.04, 0.008]} />
+        <boxGeometry args={[0.01, 0.048, 0.009]} />
+      </mesh>
+      {/* Trigger shoe */}
+      <mesh material={steelBright} position={[0, -0.028, -0.018]}>
+        <boxGeometry args={[0.012, 0.014, 0.014]} />
       </mesh>
 
-      {/* ── RAIL (under barrel) ── */}
-      <mesh material={slideMat} position={[0, 0.025, -0.06]}>
-        <boxGeometry args={[0.074, 0.01, 0.12]} />
+      {/* ══ PICATINNY RAIL (under dust cover) ══ */}
+      <mesh material={steelBlued} position={[0, -0.038, -0.07]}>
+        <boxGeometry args={[0.062, 0.008, 0.075]} />
       </mesh>
+      {/* 2 cross slots */}
+      {[0, 1].map((n) => (
+        <mesh
+          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
+          key={`rail-${n}`}
+          material={rubberMat}
+          position={[0, -0.038, -0.045 + n * 0.03]}
+        >
+          <boxGeometry args={[0.064, 0.009, 0.005]} />
+        </mesh>
+      ))}
 
-      {/* ── HAMMER indicator (rear of slide) ── */}
-      <mesh material={detailMat} position={[0, 0.09, 0.115]}>
-        <boxGeometry args={[0.014, 0.018, 0.014]} />
-      </mesh>
-      <mesh material={outlineMat} position={[0, 0.09, 0.115]}>
-        <boxGeometry args={[0.014, 0.018, 0.014]} />
+      {/* ══ BRASS accent — front sight dot ══ */}
+      <mesh material={brassMat} position={[0, 0.105, -0.19]}>
+        <sphereGeometry args={[0.003, 6, 6]} />
       </mesh>
 
       <GoldSparkles active={upgradeTier === 3} />
