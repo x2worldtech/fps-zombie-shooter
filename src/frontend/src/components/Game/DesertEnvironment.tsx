@@ -42,14 +42,21 @@ function usePBRMat(
 }
 
 // ─── Window component ─────────────────────────────────────────────────────────
+// rotationY controls which direction the window faces outward:
+//   Front wall  (+Z): rotationY = 0           (default)
+//   Back wall   (-Z): rotationY = Math.PI
+//   Right wall  (+X): rotationY = Math.PI / 2
+//   Left wall   (-X): rotationY = -Math.PI / 2
 function Window({
   position,
+  rotationY = 0,
   width = 0.7,
   height = 1.0,
   frameColor,
   hasLight = false,
 }: {
   position: [number, number, number];
+  rotationY?: number;
   width?: number;
   height?: number;
   frameColor: string;
@@ -76,7 +83,7 @@ function Window({
   const sillMat = usePBRMat(frameColor, 0.6);
 
   return (
-    <group position={position}>
+    <group position={position} rotation={[0, rotationY, 0]}>
       {/* Outer frame recess */}
       <mesh material={frameMat}>
         <boxGeometry args={[width + 0.14, height + 0.14, 0.12]} />
@@ -370,12 +377,13 @@ function IntactBuilding({
         <boxGeometry args={[width + 0.12, 0.14, depth + 0.12]} />
       </mesh>
 
-      {/* ── Front face windows ── */}
+      {/* ── Front face windows (faces +Z) ── */}
       {windowGrid.map((w, i) => (
         <Window
           // biome-ignore lint/suspicious/noArrayIndexKey: static
           key={`wf-${i}`}
           position={[w.x, w.y, depth / 2 + 0.05]}
+          rotationY={0}
           width={windowW}
           height={windowH}
           frameColor={trimColor}
@@ -383,12 +391,13 @@ function IntactBuilding({
         />
       ))}
 
-      {/* ── Back face windows ── */}
+      {/* ── Back face windows (faces -Z) ── */}
       {windowGrid.map((w, i) => (
         <Window
           // biome-ignore lint/suspicious/noArrayIndexKey: static
           key={`wb-${i}`}
           position={[w.x, w.y, -(depth / 2 + 0.05)]}
+          rotationY={Math.PI}
           width={windowW}
           height={windowH}
           frameColor={trimColor}
@@ -396,7 +405,7 @@ function IntactBuilding({
         />
       ))}
 
-      {/* ── Side windows (left/right) ── */}
+      {/* ── Side windows (left faces -X, right faces +X) ── */}
       {windowGrid
         .slice(0, Math.floor(windowGrid.length / windowCols))
         .map((w, i) => {
@@ -408,15 +417,19 @@ function IntactBuilding({
                 // biome-ignore lint/suspicious/noArrayIndexKey: static
                 key={`ws-${i}-${j}`}
               >
+                {/* Left wall — faces -X */}
                 <Window
                   position={[-(width / 2 + 0.05), w.y, xOff]}
+                  rotationY={-Math.PI / 2}
                   width={windowW * 0.85}
                   height={windowH}
                   frameColor={trimColor}
                   hasLight={w.hasLight}
                 />
+                {/* Right wall — faces +X */}
                 <Window
                   position={[width / 2 + 0.05, w.y, xOff]}
+                  rotationY={Math.PI / 2}
                   width={windowW * 0.85}
                   height={windowH}
                   frameColor={trimColor}
