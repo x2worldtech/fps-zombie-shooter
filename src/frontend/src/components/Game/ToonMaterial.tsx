@@ -8,6 +8,31 @@ interface ToonMaterialProps {
   hitFlash?: number;
 }
 
+// Standard PBR material (no cell-shading) — used for zombies
+export function useStandardMaterial(color: string, hitFlash = 0) {
+  const materialRef = useRef<THREE.MeshStandardMaterial | null>(null);
+
+  if (!materialRef.current) {
+    materialRef.current = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(color),
+      roughness: 0.85,
+      metalness: 0.05,
+    });
+  }
+
+  if (materialRef.current) {
+    materialRef.current.color.set(color);
+    materialRef.current.emissive.setRGB(
+      hitFlash * 0.6,
+      hitFlash * 0.1,
+      hitFlash * 0.1,
+    );
+  }
+
+  return materialRef.current;
+}
+
+// Kept for environment cell-shading (not used by zombies)
 export function useToonMaterial(color: string, hitFlash = 0) {
   const materialRef = useRef<THREE.ShaderMaterial | null>(null);
 

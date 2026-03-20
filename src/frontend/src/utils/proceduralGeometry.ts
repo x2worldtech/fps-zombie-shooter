@@ -26,7 +26,6 @@ export interface MountainSegmentData {
   ridgeOffsets: { x: number; z: number; h: number; w: number; d: number }[];
   boulderOffsets: { x: number; z: number; h: number; r: number }[];
   colorIndex: number;
-  hasSnowCap: boolean;
 }
 
 // Seeded pseudo-random for deterministic level generation
@@ -163,24 +162,24 @@ export function generateCollisionAABBs(playerRadius = 0.4): CollisionAABB[] {
 
 /**
  * Generate mountain ring segment data for the perimeter barrier.
- * Mountains are placed in a ring at radius ~64-78 units, with varied heights and profiles.
+ * Mountains are placed in a ring at radius ~62-80 units, with varied heights and profiles.
  */
 export function generateMountainRingGeometry(): MountainSegmentData[] {
   const rng = seededRandom(137);
   const segments: MountainSegmentData[] = [];
 
-  // Total number of mountain peaks around the ring — denser for more continuous range
-  const totalPeaks = 60;
+  // Total number of mountain peaks around the ring
+  const totalPeaks = 48;
 
   for (let i = 0; i < totalPeaks; i++) {
     const angle = (i / totalPeaks) * Math.PI * 2;
-    // Vary the radius for a natural, uneven ring
-    const radius = 64 + rng() * 14;
+    // Vary the radius slightly for a natural, uneven ring
+    const radius = 68 + rng() * 10;
     const x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
 
     // Peak height varies significantly for natural skyline
-    const peakHeight = 22 + rng() * 35;
+    const peakHeight = 18 + rng() * 28;
 
     // Base dimensions — wider mountains have more ridges
     const baseWidth = 14 + rng() * 12;
@@ -190,20 +189,20 @@ export function generateMountainRingGeometry(): MountainSegmentData[] {
     const rotation = angle + Math.PI + (rng() - 0.5) * 0.4;
 
     // Ridge sub-peaks layered on the main peak
-    const ridgeCount = 3 + Math.floor(rng() * 5);
+    const ridgeCount = 2 + Math.floor(rng() * 4);
     const ridgeOffsets: MountainSegmentData["ridgeOffsets"] = [];
     for (let r = 0; r < ridgeCount; r++) {
       ridgeOffsets.push({
         x: (rng() - 0.5) * baseWidth * 0.7,
         z: (rng() - 0.5) * baseDepth * 0.5,
         h: peakHeight * (0.35 + rng() * 0.55),
-        w: baseWidth * (0.25 + rng() * 0.35),
-        d: baseDepth * (0.25 + rng() * 0.3),
+        w: baseWidth * (0.3 + rng() * 0.4),
+        d: baseDepth * (0.3 + rng() * 0.35),
       });
     }
 
     // Boulder clusters at the base
-    const boulderCount = 4 + Math.floor(rng() * 6);
+    const boulderCount = 3 + Math.floor(rng() * 5);
     const boulderOffsets: MountainSegmentData["boulderOffsets"] = [];
     for (let b = 0; b < boulderCount; b++) {
       boulderOffsets.push({
@@ -217,9 +216,6 @@ export function generateMountainRingGeometry(): MountainSegmentData[] {
     // Color index for stone palette variation
     const colorIndex = Math.floor(rng() * 6);
 
-    // Snow cap on tall peaks (height > 28)
-    const hasSnowCap = peakHeight > 28;
-
     segments.push({
       position: [x, 0, z],
       peakHeight,
@@ -229,7 +225,6 @@ export function generateMountainRingGeometry(): MountainSegmentData[] {
       ridgeOffsets,
       boulderOffsets,
       colorIndex,
-      hasSnowCap,
     });
   }
 

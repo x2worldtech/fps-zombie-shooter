@@ -3,7 +3,7 @@ import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import type { Enemy } from "../../types/enemy";
-import { useOutlineMaterial, useToonMaterial } from "./ToonMaterial";
+import { useStandardMaterial } from "./ToonMaterial";
 
 interface EnemyMeshProps {
   enemy: Enemy;
@@ -73,19 +73,31 @@ function FallingLimb({
       {limbType === "head" && (
         <mesh>
           <boxGeometry args={[0.34, 0.36, 0.3]} />
-          <meshToonMaterial color={color} />
+          <meshStandardMaterial
+            color={color}
+            roughness={0.85}
+            metalness={0.05}
+          />
         </mesh>
       )}
       {limbType === "arm" && (
         <mesh>
           <capsuleGeometry args={[0.07, 0.5, 4, 8]} />
-          <meshToonMaterial color={color} />
+          <meshStandardMaterial
+            color={color}
+            roughness={0.85}
+            metalness={0.05}
+          />
         </mesh>
       )}
       {limbType === "leg" && (
         <mesh>
           <capsuleGeometry args={[0.09, 0.6, 4, 8]} />
-          <meshToonMaterial color={color} />
+          <meshStandardMaterial
+            color={color}
+            roughness={0.85}
+            metalness={0.05}
+          />
         </mesh>
       )}
     </group>
@@ -106,34 +118,21 @@ function StandardZombie({
   const rightLegRef = useRef<THREE.Group>(null);
   const hitFlashRef = useRef(0);
 
-  // Skin: pale greenish-grey necrotic tone
-  const skinMat = useToonMaterial("#7a9470", hitFlashRef.current);
-  // Darker necrotic patches
-  const necroMat = useToonMaterial("#3d5238", hitFlashRef.current);
-  // Clothing: dark brown/black torn rags
-  const clothMat = useToonMaterial("#2e2318", hitFlashRef.current);
-  // Torn cloth variant
-  const clothTornMat = useToonMaterial("#1e1510", hitFlashRef.current);
-  // Blood accents: vivid dark red
-  const bloodMat = useToonMaterial("#8b0000", hitFlashRef.current);
-  // Eye sockets: very dark recessed
-  const eyeMat = useToonMaterial("#0d0d0d", hitFlashRef.current);
-  // Glowing yellow eyes
+  const skinMat = useStandardMaterial("#7a9470", hitFlashRef.current);
+  const necroMat = useStandardMaterial("#3d5238", hitFlashRef.current);
+  const clothMat = useStandardMaterial("#2e2318", hitFlashRef.current);
+  const clothTornMat = useStandardMaterial("#1e1510", hitFlashRef.current);
+  const bloodMat = useStandardMaterial("#8b0000", hitFlashRef.current);
+  const eyeMat = useStandardMaterial("#0d0d0d", hitFlashRef.current);
   const eyeGlowMat = useRef<THREE.MeshBasicMaterial | null>(null);
   if (!eyeGlowMat.current) {
     eyeGlowMat.current = new THREE.MeshBasicMaterial({
       color: new THREE.Color("#ddcc00"),
     });
   }
-  // Bone color
-  const boneMat = useToonMaterial("#d4c89a", hitFlashRef.current);
-  // Teeth
-  const teethMat = useToonMaterial("#e8e0c0", hitFlashRef.current);
-  // Outline
-  const outlineMat = useOutlineMaterial(0.055);
-  const outlineThickMat = useOutlineMaterial(0.07);
+  const boneMat = useStandardMaterial("#d4c89a", hitFlashRef.current);
+  const teethMat = useStandardMaterial("#e8e0c0", hitFlashRef.current);
 
-  // Track dismemberment changes to spawn falling limbs
   const [fallingLimbs, setFallingLimbs] = useState<
     Array<{
       id: number;
@@ -251,18 +250,42 @@ function StandardZombie({
       }
     }
 
-    // Hit flash
     if (enemy.isHit) {
       hitFlashRef.current = Math.min(hitFlashRef.current + delta * 8, 1);
+      // Update emissive on all standard materials
+      for (const mat of [
+        skinMat,
+        necroMat,
+        clothMat,
+        clothTornMat,
+        boneMat,
+        teethMat,
+      ]) {
+        if (mat)
+          mat.emissive.setRGB(
+            hitFlashRef.current * 0.6,
+            hitFlashRef.current * 0.1,
+            hitFlashRef.current * 0.1,
+          );
+      }
       if (hitFlashRef.current >= 0.9) {
         onHitFlashDone(enemy.id);
         hitFlashRef.current = 0;
       }
     } else {
       hitFlashRef.current = Math.max(hitFlashRef.current - delta * 8, 0);
+      for (const mat of [
+        skinMat,
+        necroMat,
+        clothMat,
+        clothTornMat,
+        boneMat,
+        teethMat,
+      ]) {
+        if (mat) mat.emissive.setRGB(0, 0, 0);
+      }
     }
 
-    // Death fade
     if (enemy.isDead) {
       const elapsed = (Date.now() - enemy.deathTime) / 1000;
       const opacity = Math.max(0, 1 - elapsed * 1.5);
@@ -278,7 +301,6 @@ function StandardZombie({
 
   return (
     <>
-      {/* Falling detached limbs */}
       {fallingLimbs.map((limb) => (
         <FallingLimb
           key={limb.id}
@@ -296,9 +318,6 @@ function StandardZombie({
         <group ref={torsoRef} position={[0, 0.1, 0]} rotation={[0.32, 0, 0]}>
           {/* Main torso */}
           <mesh material={skinMat} position={[0, 0, 0]}>
-            <boxGeometry args={[0.62, 0.82, 0.34]} />
-          </mesh>
-          <mesh material={outlineMat} position={[0, 0, 0]}>
             <boxGeometry args={[0.62, 0.82, 0.34]} />
           </mesh>
 
@@ -368,9 +387,6 @@ function StandardZombie({
                 position={[0, 0, 0]}
                 userData={{ isHead: true }}
               >
-                <boxGeometry args={[0.46, 0.52, 0.44]} />
-              </mesh>
-              <mesh material={outlineThickMat} position={[0, 0, 0]}>
                 <boxGeometry args={[0.46, 0.52, 0.44]} />
               </mesh>
 
@@ -475,9 +491,6 @@ function StandardZombie({
               <mesh material={bloodMat} position={[0.09, -0.45, 0.09]}>
                 <boxGeometry args={[0.04, 0.1, 0.02]} />
               </mesh>
-              <mesh material={outlineMat} position={[0, -0.35, 0]}>
-                <boxGeometry args={[0.22, 0.72, 0.22]} />
-              </mesh>
             </group>
           ) : (
             /* Arm stump */
@@ -511,9 +524,6 @@ function StandardZombie({
               <mesh material={clothTornMat} position={[-0.1, -0.38, 0.1]}>
                 <boxGeometry args={[0.04, 0.18, 0.04]} />
               </mesh>
-              <mesh material={outlineMat} position={[0, -0.35, 0]}>
-                <boxGeometry args={[0.22, 0.72, 0.22]} />
-              </mesh>
             </group>
           ) : (
             <mesh material={bloodMat} position={[0.38, 0.28, 0]}>
@@ -543,9 +553,6 @@ function StandardZombie({
             <mesh material={eyeMat} position={[0, -0.74, 0.04]}>
               <boxGeometry args={[0.22, 0.14, 0.28]} />
             </mesh>
-            <mesh material={outlineMat} position={[0, -0.44, 0]}>
-              <boxGeometry args={[0.26, 0.76, 0.26]} />
-            </mesh>
           </group>
         ) : (
           <mesh material={bloodMat} position={[-0.18, -0.62, 0]}>
@@ -564,9 +571,6 @@ function StandardZombie({
             </mesh>
             <mesh material={eyeMat} position={[0, -0.74, 0.04]}>
               <boxGeometry args={[0.22, 0.14, 0.28]} />
-            </mesh>
-            <mesh material={outlineMat} position={[0, -0.44, 0]}>
-              <boxGeometry args={[0.26, 0.76, 0.26]} />
             </mesh>
           </group>
         ) : (
@@ -593,15 +597,13 @@ function BossZombie({
   const rightLegRef = useRef<THREE.Group>(null);
   const hitFlashRef = useRef(0);
 
-  const skinMat = useToonMaterial("#4a5c3a", hitFlashRef.current);
-  const necroMat = useToonMaterial("#2e3d22", hitFlashRef.current);
-  const clothMat = useToonMaterial("#1a1208", hitFlashRef.current);
-  const clothTornMat = useToonMaterial("#120e06", hitFlashRef.current);
-  const bloodMat = useToonMaterial("#8b0000", hitFlashRef.current);
-  const boneMat = useToonMaterial("#c8c0b0", hitFlashRef.current);
-  const teethMat = useToonMaterial("#d8d0b0", hitFlashRef.current);
-  const outlineMat = useOutlineMaterial(0.09);
-  const outlineThickMat = useOutlineMaterial(0.12);
+  const skinMat = useStandardMaterial("#4a5c3a", hitFlashRef.current);
+  const necroMat = useStandardMaterial("#2e3d22", hitFlashRef.current);
+  const clothMat = useStandardMaterial("#1a1208", hitFlashRef.current);
+  const clothTornMat = useStandardMaterial("#120e06", hitFlashRef.current);
+  const bloodMat = useStandardMaterial("#8b0000", hitFlashRef.current);
+  const boneMat = useStandardMaterial("#c8c0b0", hitFlashRef.current);
+  const teethMat = useStandardMaterial("#d8d0b0", hitFlashRef.current);
 
   const eyeGlowMat = useRef<THREE.MeshBasicMaterial | null>(null);
   if (!eyeGlowMat.current) {
@@ -616,7 +618,6 @@ function BossZombie({
     });
   }
 
-  // Falling limbs for boss
   const [fallingLimbs, setFallingLimbs] = useState<
     Array<{
       id: number;
@@ -729,12 +730,37 @@ function BossZombie({
 
     if (enemy.isHit) {
       hitFlashRef.current = Math.min(hitFlashRef.current + delta * 8, 1);
+      for (const mat of [
+        skinMat,
+        necroMat,
+        clothMat,
+        clothTornMat,
+        boneMat,
+        teethMat,
+      ]) {
+        if (mat)
+          mat.emissive.setRGB(
+            hitFlashRef.current * 0.6,
+            hitFlashRef.current * 0.1,
+            hitFlashRef.current * 0.1,
+          );
+      }
       if (hitFlashRef.current >= 0.9) {
         onHitFlashDone(enemy.id);
         hitFlashRef.current = 0;
       }
     } else {
       hitFlashRef.current = Math.max(hitFlashRef.current - delta * 8, 0);
+      for (const mat of [
+        skinMat,
+        necroMat,
+        clothMat,
+        clothTornMat,
+        boneMat,
+        teethMat,
+      ]) {
+        if (mat) mat.emissive.setRGB(0, 0, 0);
+      }
     }
 
     if (enemy.isDead) {
@@ -771,9 +797,6 @@ function BossZombie({
         <group ref={torsoRef} position={[0, 0.2, 0]} rotation={[0.28, 0, 0]}>
           {/* Main torso — wide and bulky */}
           <mesh material={skinMat} position={[0, 0, 0]}>
-            <boxGeometry args={[1.3, 1.4, 0.7]} />
-          </mesh>
-          <mesh material={outlineMat} position={[0, 0, 0]}>
             <boxGeometry args={[1.3, 1.4, 0.7]} />
           </mesh>
 
@@ -829,16 +852,10 @@ function BossZombie({
           <mesh material={necroMat} position={[-0.78, 0.5, 0]}>
             <boxGeometry args={[0.42, 0.38, 0.6]} />
           </mesh>
-          <mesh material={outlineMat} position={[-0.78, 0.5, 0]}>
-            <boxGeometry args={[0.42, 0.38, 0.6]} />
-          </mesh>
           <mesh material={boneMat} position={[-0.9, 0.72, 0]}>
             <boxGeometry args={[0.1, 0.22, 0.1]} />
           </mesh>
           <mesh material={necroMat} position={[0.72, 0.38, 0]}>
-            <boxGeometry args={[0.36, 0.3, 0.56]} />
-          </mesh>
-          <mesh material={outlineMat} position={[0.72, 0.38, 0]}>
             <boxGeometry args={[0.36, 0.3, 0.56]} />
           </mesh>
 
@@ -862,9 +879,6 @@ function BossZombie({
                 position={[0, 0, 0]}
                 userData={{ isHead: true }}
               >
-                <boxGeometry args={[0.92, 0.96, 0.82]} />
-              </mesh>
-              <mesh material={outlineThickMat} position={[0, 0, 0]}>
                 <boxGeometry args={[0.92, 0.96, 0.82]} />
               </mesh>
 
@@ -963,9 +977,6 @@ function BossZombie({
               <mesh material={bloodMat} position={[0.16, -0.6, 0.16]}>
                 <boxGeometry args={[0.06, 0.2, 0.03]} />
               </mesh>
-              <mesh material={outlineMat} position={[0, -0.55, 0]}>
-                <boxGeometry args={[0.42, 1.1, 0.42]} />
-              </mesh>
             </group>
           ) : (
             <mesh material={bloodMat} position={[-0.82, 0.4, 0]}>
@@ -995,9 +1006,6 @@ function BossZombie({
                   <boxGeometry args={[0.04, 0.18, 0.04]} />
                 </mesh>
               ))}
-              <mesh material={outlineMat} position={[0, -0.55, 0]}>
-                <boxGeometry args={[0.42, 1.1, 0.42]} />
-              </mesh>
             </group>
           ) : (
             <mesh material={bloodMat} position={[0.82, 0.4, 0]}>
@@ -1027,9 +1035,6 @@ function BossZombie({
             <mesh material={necroMat} position={[0, -1.1, 0.08]}>
               <boxGeometry args={[0.42, 0.24, 0.5]} />
             </mesh>
-            <mesh material={outlineMat} position={[0, -0.66, 0]}>
-              <boxGeometry args={[0.48, 1.1, 0.48]} />
-            </mesh>
           </group>
         ) : (
           <mesh material={bloodMat} position={[-0.32, -1.0, 0]}>
@@ -1048,9 +1053,6 @@ function BossZombie({
             </mesh>
             <mesh material={necroMat} position={[0, -1.1, 0.08]}>
               <boxGeometry args={[0.42, 0.24, 0.5]} />
-            </mesh>
-            <mesh material={outlineMat} position={[0, -0.66, 0]}>
-              <boxGeometry args={[0.48, 1.1, 0.48]} />
             </mesh>
           </group>
         ) : (
