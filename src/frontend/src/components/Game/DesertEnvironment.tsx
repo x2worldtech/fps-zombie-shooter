@@ -12,7 +12,6 @@ import JuggernogMachine from "./JuggernogMachine";
 import { MountainBarrier } from "./MountainBarrier";
 import { PackAPunchMachine } from "./PackAPunchMachine";
 import { PalmTree } from "./PalmTree";
-import { useOutlineMaterial } from "./ToonMaterial";
 
 interface DesertEnvironmentProps {
   upgradeTier?: number;
@@ -263,7 +262,6 @@ function IntactBuilding({
   const trimMat = usePBRMat(trimColor, 0.78);
   const accentMat = usePBRMat(accentColor, 0.65);
   const concreteMat = usePBRMat("#b0a898", 0.9);
-  const outlineMat = useOutlineMaterial(0.08);
 
   const parapetH = 0.5;
   const floorH = 3.2;
@@ -303,9 +301,6 @@ function IntactBuilding({
       {/* ── Main wall body ── */}
       <mesh material={wallMat} castShadow receiveShadow>
         <boxGeometry args={[width, height, depth]} />
-      </mesh>
-      <mesh material={outlineMat}>
-        <boxGeometry args={[width + 0.06, height + 0.06, depth + 0.06]} />
       </mesh>
 
       {/* ── Plinth / base band ── */}
@@ -557,7 +552,6 @@ function RuinedBuilding({
   const exposedMat = usePBRMat("#8a7060", 0.93);
   const steelMat = usePBRMat("#5a4a3a", 0.6, 0.4);
   const rubbleMat = usePBRMat("#7a6a55", 0.95);
-  const outlineMat = useOutlineMaterial(0.08);
 
   const wallSections = useMemo(
     () => [
@@ -572,9 +566,6 @@ function RuinedBuilding({
       {/* Base */}
       <mesh material={wallMat} castShadow receiveShadow>
         <boxGeometry args={[width, height, depth]} />
-      </mesh>
-      <mesh material={outlineMat}>
-        <boxGeometry args={[width + 0.06, height + 0.06, depth + 0.06]} />
       </mesh>
 
       {/* Broken upper wall sections */}
@@ -691,15 +682,11 @@ function Barrier({
 }) {
   const concreteMat = usePBRMat("#9e9585", 0.88);
   const darkMat = usePBRMat("#6e6358", 0.82);
-  const outlineMat = useOutlineMaterial(0.06);
 
   return (
     <group position={position}>
       <mesh material={concreteMat} castShadow receiveShadow>
         <boxGeometry args={[width, height, depth]} />
-      </mesh>
-      <mesh material={outlineMat}>
-        <boxGeometry args={[width + 0.04, height + 0.04, depth + 0.04]} />
       </mesh>
       <mesh material={darkMat} position={[0, height / 2 - 0.08, 0]}>
         <boxGeometry args={[width - 0.1, 0.16, depth - 0.1]} />
@@ -715,7 +702,6 @@ function Barrier({
 function RubblePile({ position }: { position: [number, number, number] }) {
   const toonMat = usePBRMat("#7a6a50", 0.95);
   const darkMat = usePBRMat("#5a4a35", 0.92);
-  const outlineMat = useOutlineMaterial(0.05);
 
   return (
     <group position={position}>
@@ -730,12 +716,6 @@ function RubblePile({ position }: { position: [number, number, number] }) {
         >
           <mesh
             material={i % 2 === 0 ? toonMat : darkMat}
-            scale={[0.45 + i * 0.18, 0.35 + i * 0.08, 0.45 + i * 0.12]}
-          >
-            <icosahedronGeometry args={[0.6, 0]} />
-          </mesh>
-          <mesh
-            material={outlineMat}
             scale={[0.45 + i * 0.18, 0.35 + i * 0.08, 0.45 + i * 0.12]}
           >
             <icosahedronGeometry args={[0.6, 0]} />

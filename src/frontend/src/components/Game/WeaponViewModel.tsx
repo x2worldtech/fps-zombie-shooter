@@ -2,7 +2,6 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { WeaponName } from "../../types/weapon";
-import { useOutlineMaterial, useToonMaterial } from "./ToonMaterial";
 
 interface WeaponViewModelProps {
   weapon: WeaponName;
@@ -870,7 +869,7 @@ function ShotgunModel({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ASSAULT RIFLE — AK-47 style machine gun
+// ASSAULT RIFLE — M4A1/HK416 style (realistic PBR materials, no cell shading)
 // ─────────────────────────────────────────────────────────────────────────────
 function AssaultRifleModel({
   recoilOffset,
@@ -883,14 +882,41 @@ function AssaultRifleModel({
 }) {
   const groupRef = useRef<THREE.Group>(null);
 
-  // Color palette: matte black receiver, dark wood furniture, tan/desert accents
-  const steelMat = useToonMaterial("#2e2e2e"); // matte black steel
-  const steelLtMat = useToonMaterial("#484848"); // lighter steel
-  const woodMat = useToonMaterial("#5c3317"); // AK wood furniture
-  const woodDarkMat = useToonMaterial("#3d2010"); // dark wood grain
-  const detailMat = useToonMaterial("#1a1a1a"); // very dark details
-  const chromeMat = useToonMaterial("#707070"); // chrome/bright metal
-  const outlineMat = useOutlineMaterial(0.025);
+  const { steelMat, steelLtMat, woodMat, woodDarkMat, detailMat, chromeMat } =
+    useMemo(() => {
+      return {
+        steelMat: new THREE.MeshStandardMaterial({
+          color: "#2e2e2e",
+          metalness: 0.95,
+          roughness: 0.15,
+        }),
+        steelLtMat: new THREE.MeshStandardMaterial({
+          color: "#484848",
+          metalness: 0.9,
+          roughness: 0.2,
+        }),
+        woodMat: new THREE.MeshStandardMaterial({
+          color: "#5c3317",
+          metalness: 0,
+          roughness: 0.85,
+        }),
+        woodDarkMat: new THREE.MeshStandardMaterial({
+          color: "#3d2010",
+          metalness: 0,
+          roughness: 0.9,
+        }),
+        detailMat: new THREE.MeshStandardMaterial({
+          color: "#1a1a1a",
+          metalness: 0.8,
+          roughness: 0.3,
+        }),
+        chromeMat: new THREE.MeshStandardMaterial({
+          color: "#707070",
+          metalness: 1.0,
+          roughness: 0.1,
+        }),
+      };
+    }, []);
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
@@ -911,9 +937,6 @@ function AssaultRifleModel({
       <mesh material={steelMat} position={[0, 0.02, -0.02]}>
         <boxGeometry args={[0.068, 0.075, 0.38]} />
       </mesh>
-      <mesh material={outlineMat} position={[0, 0.02, -0.02]}>
-        <boxGeometry args={[0.068, 0.075, 0.38]} />
-      </mesh>
       <GlowOverlay
         tier={upgradeTier}
         position={[0, 0.02, -0.02]}
@@ -922,9 +945,6 @@ function AssaultRifleModel({
 
       {/* Dust cover – hinged panel on top of receiver */}
       <mesh material={steelLtMat} position={[0, 0.062, -0.02]}>
-        <boxGeometry args={[0.065, 0.01, 0.28]} />
-      </mesh>
-      <mesh material={outlineMat} position={[0, 0.062, -0.02]}>
         <boxGeometry args={[0.065, 0.01, 0.28]} />
       </mesh>
 
@@ -937,15 +957,9 @@ function AssaultRifleModel({
       <mesh material={steelLtMat} position={[0.042, 0.025, 0.1]}>
         <boxGeometry args={[0.022, 0.018, 0.028]} />
       </mesh>
-      <mesh material={outlineMat} position={[0.042, 0.025, 0.1]}>
-        <boxGeometry args={[0.022, 0.018, 0.028]} />
-      </mesh>
 
       {/* Rear sight block */}
       <mesh material={steelLtMat} position={[0, 0.072, 0.12]}>
-        <boxGeometry args={[0.03, 0.022, 0.035]} />
-      </mesh>
-      <mesh material={outlineMat} position={[0, 0.072, 0.12]}>
         <boxGeometry args={[0.03, 0.022, 0.035]} />
       </mesh>
 
@@ -956,16 +970,10 @@ function AssaultRifleModel({
       <mesh material={chromeMat} position={[0, 0.092, -0.2]}>
         <boxGeometry args={[0.006, 0.01, 0.006]} />
       </mesh>
-      <mesh material={outlineMat} position={[0, 0.075, -0.2]}>
-        <boxGeometry args={[0.022, 0.04, 0.022]} />
-      </mesh>
 
       {/* ── HANDGUARD ── */}
       {/* Upper handguard – wood */}
       <mesh material={woodMat} position={[0, 0.04, -0.19]}>
-        <boxGeometry args={[0.065, 0.038, 0.18]} />
-      </mesh>
-      <mesh material={outlineMat} position={[0, 0.04, -0.19]}>
         <boxGeometry args={[0.065, 0.038, 0.18]} />
       </mesh>
       <GlowOverlay
@@ -976,9 +984,6 @@ function AssaultRifleModel({
 
       {/* Lower handguard – wood */}
       <mesh material={woodMat} position={[0, -0.01, -0.19]}>
-        <boxGeometry args={[0.065, 0.032, 0.18]} />
-      </mesh>
-      <mesh material={outlineMat} position={[0, -0.01, -0.19]}>
         <boxGeometry args={[0.065, 0.032, 0.18]} />
       </mesh>
 
@@ -996,9 +1001,6 @@ function AssaultRifleModel({
 
       {/* Handguard retaining ring (front) */}
       <mesh material={steelMat} position={[0, 0.02, -0.285]}>
-        <boxGeometry args={[0.072, 0.075, 0.018]} />
-      </mesh>
-      <mesh material={outlineMat} position={[0, 0.02, -0.285]}>
         <boxGeometry args={[0.072, 0.075, 0.018]} />
       </mesh>
 
@@ -1020,13 +1022,6 @@ function AssaultRifleModel({
       >
         <cylinderGeometry args={[0.016, 0.016, 0.26, 10]} />
       </mesh>
-      <mesh
-        material={outlineMat}
-        position={[0, 0.02, -0.32]}
-        rotation={[Math.PI / 2, 0, 0]}
-      >
-        <cylinderGeometry args={[0.016, 0.016, 0.26, 10]} />
-      </mesh>
       <GlowOverlay
         tier={upgradeTier}
         position={[0, 0.02, -0.32]}
@@ -1037,13 +1032,6 @@ function AssaultRifleModel({
       {/* Main flash hider body */}
       <mesh
         material={steelLtMat}
-        position={[0, 0.02, -0.46]}
-        rotation={[Math.PI / 2, 0, 0]}
-      >
-        <cylinderGeometry args={[0.02, 0.018, 0.04, 8]} />
-      </mesh>
-      <mesh
-        material={outlineMat}
         position={[0, 0.02, -0.46]}
         rotation={[Math.PI / 2, 0, 0]}
       >
@@ -1070,13 +1058,6 @@ function AssaultRifleModel({
       {/* Main grip body – angled */}
       <mesh
         material={steelMat}
-        position={[0, -0.065, 0.1]}
-        rotation={[0.25, 0, 0]}
-      >
-        <boxGeometry args={[0.055, 0.115, 0.065]} />
-      </mesh>
-      <mesh
-        material={outlineMat}
         position={[0, -0.065, 0.1]}
         rotation={[0.25, 0, 0]}
       >
@@ -1110,9 +1091,6 @@ function AssaultRifleModel({
       <mesh material={steelMat} position={[0, 0.005, -0.03]}>
         <boxGeometry args={[0.055, 0.06, 0.01]} />
       </mesh>
-      <mesh material={outlineMat} position={[0, -0.025, 0.02]}>
-        <boxGeometry args={[0.055, 0.01, 0.1]} />
-      </mesh>
 
       {/* Trigger */}
       <mesh
@@ -1126,9 +1104,6 @@ function AssaultRifleModel({
       {/* ── CURVED MAGAZINE (AK-style) ── */}
       {/* Upper magazine body – connects to receiver */}
       <mesh material={steelMat} position={[0, -0.07, 0.04]}>
-        <boxGeometry args={[0.052, 0.06, 0.075]} />
-      </mesh>
-      <mesh material={outlineMat} position={[0, -0.07, 0.04]}>
         <boxGeometry args={[0.052, 0.06, 0.075]} />
       </mesh>
       <GlowOverlay
@@ -1145,24 +1120,10 @@ function AssaultRifleModel({
       >
         <boxGeometry args={[0.05, 0.075, 0.065]} />
       </mesh>
-      <mesh
-        material={outlineMat}
-        position={[0, -0.115, 0.01]}
-        rotation={[0.35, 0, 0]}
-      >
-        <boxGeometry args={[0.05, 0.075, 0.065]} />
-      </mesh>
 
       {/* Magazine base plate */}
       <mesh
         material={steelLtMat}
-        position={[0, -0.155, -0.01]}
-        rotation={[0.35, 0, 0]}
-      >
-        <boxGeometry args={[0.053, 0.012, 0.068]} />
-      </mesh>
-      <mesh
-        material={outlineMat}
         position={[0, -0.155, -0.01]}
         rotation={[0.35, 0, 0]}
       >
@@ -1187,9 +1148,6 @@ function AssaultRifleModel({
       <mesh material={woodMat} position={[0, -0.01, 0.27]}>
         <boxGeometry args={[0.055, 0.07, 0.2]} />
       </mesh>
-      <mesh material={outlineMat} position={[0, -0.01, 0.27]}>
-        <boxGeometry args={[0.055, 0.07, 0.2]} />
-      </mesh>
       <GlowOverlay
         tier={upgradeTier}
         position={[0, -0.01, 0.27]}
@@ -1203,9 +1161,6 @@ function AssaultRifleModel({
 
       {/* Butt plate */}
       <mesh material={detailMat} position={[0, -0.01, 0.385]}>
-        <boxGeometry args={[0.055, 0.072, 0.01]} />
-      </mesh>
-      <mesh material={outlineMat} position={[0, -0.01, 0.385]}>
         <boxGeometry args={[0.055, 0.072, 0.01]} />
       </mesh>
 
