@@ -441,3 +441,83 @@ export function waveClear(): void {
     });
   } catch (_) {}
 }
+
+export function sniperShot(): void {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    // === Layer 1: Massive sub-bass thud (the "earth-shaking" hit) ===
+    const subOsc = ctx.createOscillator();
+    const subGain = ctx.createGain();
+    subOsc.type = "sine";
+    subOsc.frequency.setValueAtTime(60, now);
+    subOsc.frequency.exponentialRampToValueAtTime(18, now + 0.35);
+    subGain.gain.setValueAtTime(2.2, now);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    subOsc.connect(subGain);
+    subGain.connect(ctx.destination);
+    subOsc.start(now);
+    subOsc.stop(now + 0.4);
+
+    // === Layer 2: Deep mid-range body boom ===
+    const midOsc = ctx.createOscillator();
+    const midGain = ctx.createGain();
+    midOsc.type = "triangle";
+    midOsc.frequency.setValueAtTime(140, now);
+    midOsc.frequency.exponentialRampToValueAtTime(35, now + 0.3);
+    midGain.gain.setValueAtTime(1.6, now);
+    midGain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+    midOsc.connect(midGain);
+    midGain.connect(ctx.destination);
+    midOsc.start(now);
+    midOsc.stop(now + 0.35);
+
+    // === Layer 3: Sharp supersonic crack (the distinctive sniper "whip") ===
+    const crackNoise = createNoise(ctx, 0.05);
+    const crackFilter = ctx.createBiquadFilter();
+    crackFilter.type = "highpass";
+    crackFilter.frequency.setValueAtTime(5500, now);
+    const crackGain = ctx.createGain();
+    crackGain.gain.setValueAtTime(1.8, now);
+    crackGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+    crackNoise.connect(crackFilter);
+    crackFilter.connect(crackGain);
+    crackGain.connect(ctx.destination);
+    crackNoise.start(now);
+    crackNoise.stop(now + 0.05);
+
+    // === Layer 4: Long low-pass noise tail (the thunderous echo/boom) ===
+    const bodyNoise = createNoise(ctx, 0.55);
+    const bodyFilter = ctx.createBiquadFilter();
+    bodyFilter.type = "lowpass";
+    bodyFilter.frequency.setValueAtTime(2200, now);
+    bodyFilter.frequency.exponentialRampToValueAtTime(80, now + 0.5);
+    bodyFilter.Q.value = 1.5;
+    const bodyGain = ctx.createGain();
+    bodyGain.gain.setValueAtTime(1.8, now);
+    bodyGain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+    bodyNoise.connect(bodyFilter);
+    bodyFilter.connect(bodyGain);
+    bodyGain.connect(ctx.destination);
+    bodyNoise.start(now);
+    bodyNoise.stop(now + 0.55);
+
+    // === Layer 5: Bolt action mechanical click (delayed, after firing) ===
+    const boltNoise = createNoise(ctx, 0.06);
+    const boltFilter = ctx.createBiquadFilter();
+    boltFilter.type = "bandpass";
+    boltFilter.frequency.setValueAtTime(1200, now + 0.18);
+    boltFilter.Q.value = 5.0;
+    const boltGain = ctx.createGain();
+    boltGain.gain.setValueAtTime(0, now);
+    boltGain.gain.setValueAtTime(0.55, now + 0.18);
+    boltGain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+    boltNoise.connect(boltFilter);
+    boltFilter.connect(boltGain);
+    boltGain.connect(ctx.destination);
+    boltNoise.start(now + 0.18);
+    boltNoise.stop(now + 0.24);
+  } catch (_) {}
+}

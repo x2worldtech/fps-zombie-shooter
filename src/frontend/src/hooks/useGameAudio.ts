@@ -6,6 +6,7 @@ import {
   pistolShot,
   playerHit,
   shotgunShot,
+  sniperShot,
   unlockAudio,
   waveClear,
   waveStart,
@@ -24,6 +25,9 @@ export function useGameAudio() {
         break;
       case "assault_rifle":
         assaultRifleShot();
+        break;
+      case "sniper_rifle":
+        sniperShot();
         break;
     }
   }, []);

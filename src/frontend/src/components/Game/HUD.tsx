@@ -7,6 +7,7 @@ import {
   WEAPON_CONFIGS,
   type WeaponState,
 } from "../../types/weapon";
+import { SniperScope } from "./SniperScope";
 
 interface HUDProps {
   health: number;
@@ -22,6 +23,7 @@ interface HUDProps {
   nearJuggernog?: boolean;
   upgradeMessage: string | null;
   juggernogPurchaseCount?: number;
+  isAiming?: boolean;
 }
 
 function HealthBar({
@@ -115,9 +117,15 @@ function AmmoDisplay({ weaponState }: { weaponState: WeaponState }) {
         )}
       </div>
       <div className="flex gap-1">
-        {[1, 2, 3].map((n) => {
+        {[1, 2, 3, 4].map((n) => {
           const wName =
-            n === 1 ? "pistol" : n === 2 ? "shotgun" : "assault_rifle";
+            n === 1
+              ? "pistol"
+              : n === 2
+                ? "shotgun"
+                : n === 3
+                  ? "assault_rifle"
+                  : "sniper_rifle";
           const isActive = weaponState.currentWeapon === wName;
           return (
             <div
@@ -410,6 +418,112 @@ function UpgradeMessage({ message }: { message: string | null }) {
   );
 }
 
+// CoD-style tally marks for rounds 1-5
+function TallyMarks({ round }: { round: number }) {
+  // Each group of 5: 4 vertical + 1 diagonal cross
+  const tallies: { x1: number; y1: number; x2: number; y2: number }[] = [];
+
+  const markCount = Math.min(round, 5);
+  const W = 14; // spacing between marks
+  const totalWidth = markCount <= 4 ? markCount * W : 4 * W + 18;
+
+  for (let i = 0; i < markCount; i++) {
+    if (i < 4) {
+      // vertical tally with slight random tilt
+      const offsetX = i * W + 6;
+      const tilt = (i % 2 === 0 ? 1 : -1) * 2;
+      tallies.push({
+        x1: offsetX - tilt,
+        y1: 3,
+        x2: offsetX + tilt,
+        y2: 29,
+      });
+    } else {
+      // 5th mark: diagonal cross over first 4
+      tallies.push({
+        x1: 0,
+        y1: 28,
+        x2: 4 * W + 2,
+        y2: 4,
+      });
+    }
+  }
+
+  return (
+    <svg
+      width={totalWidth + 10}
+      height={36}
+      style={{ overflow: "visible", display: "block" }}
+    >
+      <title>Round tally marks</title>
+      {tallies.map((t) => (
+        <line
+          key={`${t.x1}-${t.y1}-${t.x2}-${t.y2}`}
+          x1={t.x1}
+          y1={t.y1}
+          x2={t.x2}
+          y2={t.y2}
+          stroke="#8b0000"
+          strokeWidth="3"
+          strokeLinecap="round"
+          style={{ filter: "drop-shadow(0 0 4px #8b000099)" }}
+        />
+      ))}
+    </svg>
+  );
+}
+
+// CoD-style round counter — top-left
+function RoundCounter({ round }: { round: number }) {
+  const useTally = round >= 1 && round <= 5;
+
+  return (
+    <div
+      className="absolute top-4 left-4 flex flex-col items-start"
+      style={{ zIndex: 15 }}
+    >
+      <div
+        className="px-3 py-2"
+        style={{
+          background: "rgba(0,0,0,0.6)",
+          border: "1px solid #3a0000",
+          boxShadow: "0 0 12px #8b000044",
+        }}
+      >
+        <div
+          className="hud-text"
+          style={{
+            color: "#8b0000",
+            fontSize: "0.6rem",
+            letterSpacing: "0.2em",
+            marginBottom: "4px",
+            textShadow: "0 0 6px #8b000088",
+          }}
+        >
+          ROUND
+        </div>
+        {useTally ? (
+          <TallyMarks round={round} />
+        ) : (
+          <div
+            className="hud-text"
+            style={{
+              color: "#8b0000",
+              fontSize: "2.2rem",
+              lineHeight: 1,
+              textShadow: "0 0 8px #8b000088, 0 0 16px #8b000044",
+              fontWeight: "bold",
+              letterSpacing: "0.05em",
+            }}
+          >
+            {round}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function HUD({
   health,
   maxHealth,
@@ -424,6 +538,7 @@ export function HUD({
   nearJuggernog = false,
   upgradeMessage,
   juggernogPurchaseCount = 0,
+  isAiming = false,
 }: HUDProps) {
   // Re-render notifications every frame for smooth animation
   const [, forceUpdate] = useState(0);
@@ -457,19 +572,11 @@ export function HUD({
         />
       )}
 
-      {/* Top center - Wave & Score */}
+      {/* Top left - CoD-style Round Counter */}
+      <RoundCounter round={waveState.wave} />
+
+      {/* Top center - Score & Kill streak */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1">
-        <div
-          className="hud-text text-2xl px-4 py-1"
-          style={{
-            background: "rgba(10,5,0,0.75)",
-            border: "2px solid #0a0505",
-            boxShadow: "3px 3px 0 #0a0505",
-            color: "#ffcc00",
-          }}
-        >
-          WAVE {waveState.wave}
-        </div>
         <div
           className="hud-text text-xl px-3 py-0.5"
           style={{
@@ -564,8 +671,15 @@ export function HUD({
         <AmmoDisplay weaponState={weaponState} />
       </div>
 
-      {/* Crosshair */}
-      <Crosshair />
+      {/* Crosshair - hidden when sniping */}
+      {!(weaponState.currentWeapon === "sniper_rifle" && isAiming) && (
+        <Crosshair />
+      )}
+
+      {/* Sniper scope overlay */}
+      {weaponState.currentWeapon === "sniper_rifle" && isAiming && (
+        <SniperScope />
+      )}
 
       {/* Points popup notifications */}
       <PointsPopup notifications={pointsNotifications} />

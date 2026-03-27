@@ -31,26 +31,14 @@ export function WaveOverlay({ waveState }: WaveOverlayProps) {
             <div
               className="font-bangers text-5xl"
               style={{
-                color: "#ff8800",
-                WebkitTextStroke: "2px #0a0505",
-                textShadow: "3px 3px 0 #0a0505",
-                letterSpacing: "0.05em",
+                color: "#8b0000",
+                WebkitTextStroke: "1px #0a0505",
+                textShadow: "0 0 12px #8b000088, 3px 3px 0 #0a0505",
+                letterSpacing: "0.08em",
               }}
             >
-              WAVE {waveState.wave} INCOMING!
+              ROUND {waveState.wave}
             </div>
-            {waveState.hasBoss && (
-              <div
-                className="font-bangers text-2xl"
-                style={{
-                  color: "#ff2200",
-                  WebkitTextStroke: "1px #0a0505",
-                  textShadow: "2px 2px 0 #0a0505",
-                }}
-              >
-                ⚠ BOSS ZOMBIE INCOMING ⚠
-              </div>
-            )}
             <div
               className="font-bangers text-8xl"
               style={{
@@ -61,10 +49,6 @@ export function WaveOverlay({ waveState }: WaveOverlayProps) {
               }}
             >
               {waveState.countdown}
-            </div>
-            <div className="toon-text text-lg" style={{ color: "#cc8844" }}>
-              {waveState.enemyCount} ZOMBIES +{" "}
-              {waveState.hasBoss ? "1 BOSS" : "0 BOSSES"}
             </div>
           </>
         )}
@@ -80,10 +64,10 @@ export function WaveOverlay({ waveState }: WaveOverlayProps) {
                 letterSpacing: "0.05em",
               }}
             >
-              WAVE CLEARED!
+              ROUND CLEAR
             </div>
             <div className="toon-text text-xl" style={{ color: "#ffcc88" }}>
-              Next wave incoming...
+              Next round incoming...
             </div>
           </>
         )}

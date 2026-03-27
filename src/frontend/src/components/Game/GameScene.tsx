@@ -185,6 +185,7 @@ export function GameScene({ onGameOver }: GameSceneProps) {
     switchWeapon,
     upgradeWeapon,
     getEffectiveDamage,
+    isAiming,
   } = useWeaponSystem();
   const {
     enemies,
@@ -586,12 +587,14 @@ export function GameScene({ onGameOver }: GameSceneProps) {
           isPaused={isPaused}
         />
 
-        <WeaponViewModel
-          weapon={weaponState.currentWeapon}
-          recoilOffset={weaponState.recoilOffset}
-          isReloading={weaponState.isReloading}
-          upgradeTier={weaponState.upgradeTier}
-        />
+        {!(weaponState.currentWeapon === "sniper_rifle" && isAiming) && (
+          <WeaponViewModel
+            weapon={weaponState.currentWeapon}
+            recoilOffset={weaponState.recoilOffset}
+            isReloading={weaponState.isReloading}
+            upgradeTier={weaponState.upgradeTier}
+          />
+        )}
 
         <RaycastShooter onHit={handleEnemyHit} isActive={isGameActive} />
 
@@ -653,6 +656,7 @@ export function GameScene({ onGameOver }: GameSceneProps) {
         nearJuggernog={nearJuggernog}
         upgradeMessage={upgradeMessage}
         juggernogPurchaseCount={juggernogSystem.juggernogPurchaseCount}
+        isAiming={isAiming}
       />
 
       <WaveOverlay waveState={waveState} />

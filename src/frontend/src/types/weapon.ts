@@ -1,4 +1,8 @@
-export type WeaponName = "pistol" | "shotgun" | "assault_rifle";
+export type WeaponName =
+  | "pistol"
+  | "shotgun"
+  | "assault_rifle"
+  | "sniper_rifle";
 
 export interface WeaponConfig {
   name: WeaponName;
@@ -67,5 +71,18 @@ export const WEAPON_CONFIGS: Record<WeaponName, WeaponConfig> = {
     pellets: 1,
     color: "#4a4a4a",
     barrelLength: 0.6,
+  },
+  sniper_rifle: {
+    name: "sniper_rifle",
+    displayName: "SNIPER RIFLE",
+    fireRate: 0.5,
+    damage: 150,
+    spread: 0.005,
+    magazineSize: 10,
+    reserveAmmoMax: 40,
+    reloadTime: 2.5,
+    pellets: 1,
+    color: "#2a2a2a",
+    barrelLength: 1.2,
   },
 };

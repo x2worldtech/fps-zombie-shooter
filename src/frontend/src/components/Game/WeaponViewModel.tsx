@@ -1181,6 +1181,323 @@ function AssaultRifleModel({
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SNIPER RIFLE — AWP/L96/Remington 700 style (bolt-action, realistic PBR)
+// ─────────────────────────────────────────────────────────────────────────────
+function SniperRifleModel({
+  recoilOffset,
+  isReloading,
+  upgradeTier,
+}: {
+  recoilOffset: number;
+  isReloading: boolean;
+  upgradeTier: number;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+
+  const {
+    steelMat,
+    steelDarkMat,
+    steelLightMat,
+    stockMat,
+    scopeMat,
+    scopeGlassMat,
+    brassRingMat,
+    rubberMat,
+  } = useMemo(
+    () => ({
+      steelMat: new THREE.MeshStandardMaterial({
+        color: "#1e2022",
+        metalness: 0.98,
+        roughness: 0.12,
+      }),
+      steelDarkMat: new THREE.MeshStandardMaterial({
+        color: "#111315",
+        metalness: 1.0,
+        roughness: 0.1,
+      }),
+      steelLightMat: new THREE.MeshStandardMaterial({
+        color: "#3a3d42",
+        metalness: 0.9,
+        roughness: 0.2,
+      }),
+      stockMat: new THREE.MeshStandardMaterial({
+        color: "#1a1a1a",
+        metalness: 0.0,
+        roughness: 0.85,
+      }),
+      scopeMat: new THREE.MeshStandardMaterial({
+        color: "#111111",
+        metalness: 0.7,
+        roughness: 0.2,
+      }),
+      scopeGlassMat: new THREE.MeshStandardMaterial({
+        color: "#0a1a1a",
+        metalness: 0.3,
+        roughness: 0.05,
+        transparent: true,
+        opacity: 0.75,
+      }),
+      brassRingMat: new THREE.MeshStandardMaterial({
+        color: "#b8902a",
+        metalness: 0.9,
+        roughness: 0.15,
+      }),
+      rubberMat: new THREE.MeshStandardMaterial({
+        color: "#0d0d0d",
+        metalness: 0.0,
+        roughness: 1.0,
+      }),
+    }),
+    [],
+  );
+
+  useFrame((_, delta) => {
+    if (!groupRef.current) return;
+    const targetY = -0.27 - recoilOffset * 0.45;
+    const targetZ = -0.72 + recoilOffset * 0.1;
+    const reloadBob = isReloading ? Math.sin(Date.now() * 0.004) * 0.04 : 0;
+    groupRef.current.position.y +=
+      (targetY + reloadBob - groupRef.current.position.y) *
+      Math.min(delta * 12, 1);
+    groupRef.current.position.z +=
+      (targetZ - groupRef.current.position.z) * Math.min(delta * 12, 1);
+    groupRef.current.rotation.x +=
+      (-recoilOffset * 0.4 - groupRef.current.rotation.x) *
+      Math.min(delta * 12, 1);
+  });
+
+  return (
+    <group ref={groupRef} position={[0.18, -0.27, -0.72]}>
+      {/* STOCK */}
+      <mesh material={stockMat} position={[0, 0.01, 0.38]}>
+        <boxGeometry args={[0.065, 0.09, 0.32]} />
+      </mesh>
+      <GlowOverlay
+        tier={upgradeTier}
+        position={[0, 0.01, 0.38]}
+        args={[0.065, 0.09, 0.32]}
+      />
+      <mesh material={stockMat} position={[0, 0.06, 0.28]}>
+        <boxGeometry args={[0.062, 0.025, 0.22]} />
+      </mesh>
+      <mesh material={rubberMat} position={[0, 0.01, 0.545]}>
+        <boxGeometry args={[0.068, 0.095, 0.022]} />
+      </mesh>
+      <mesh
+        material={stockMat}
+        position={[0, -0.055, 0.21]}
+        rotation={[0.35, 0, 0]}
+      >
+        <boxGeometry args={[0.058, 0.085, 0.072]} />
+      </mesh>
+
+      {/* RECEIVER */}
+      <mesh material={steelDarkMat} position={[0, 0.015, 0.08]}>
+        <boxGeometry args={[0.068, 0.07, 0.22]} />
+      </mesh>
+      <GlowOverlay
+        tier={upgradeTier}
+        position={[0, 0.015, 0.08]}
+        args={[0.068, 0.07, 0.22]}
+      />
+      <mesh material={steelMat} position={[0, 0.055, 0.08]}>
+        <boxGeometry args={[0.022, 0.012, 0.22]} />
+      </mesh>
+      {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+        <mesh
+          key={`rs-${i}`}
+          material={steelDarkMat}
+          position={[0, 0.057, -0.04 + i * 0.03]}
+        >
+          {/* biome-ignore lint/suspicious/noArrayIndexKey: static geometry */}
+          <boxGeometry args={[0.024, 0.006, 0.008]} />
+        </mesh>
+      ))}
+      <mesh material={steelMat} position={[0, -0.028, 0.06]}>
+        <boxGeometry args={[0.056, 0.01, 0.1]} />
+      </mesh>
+      <mesh material={steelMat} position={[0, 0.0, 0.01]}>
+        <boxGeometry args={[0.056, 0.06, 0.01]} />
+      </mesh>
+      <mesh
+        material={steelLightMat}
+        position={[0, -0.012, 0.04]}
+        rotation={[0.25, 0, 0]}
+      >
+        <boxGeometry args={[0.008, 0.04, 0.007]} />
+      </mesh>
+      <mesh material={steelMat} position={[0, -0.075, 0.07]}>
+        <boxGeometry args={[0.056, 0.065, 0.085]} />
+      </mesh>
+      <GlowOverlay
+        tier={upgradeTier}
+        position={[0, -0.075, 0.07]}
+        args={[0.056, 0.065, 0.085]}
+      />
+      <mesh material={steelLightMat} position={[0, -0.113, 0.07]}>
+        <boxGeometry args={[0.058, 0.01, 0.088]} />
+      </mesh>
+
+      {/* BOLT HANDLE */}
+      <mesh
+        material={steelLightMat}
+        position={[0.042, 0.015, 0.095]}
+        rotation={[0, 0, Math.PI / 2]}
+      >
+        <cylinderGeometry args={[0.008, 0.008, 0.035, 8]} />
+      </mesh>
+      <mesh material={steelMat} position={[0.065, -0.005, 0.095]}>
+        <sphereGeometry args={[0.014, 10, 10]} />
+      </mesh>
+
+      {/* BARREL */}
+      <mesh
+        material={steelDarkMat}
+        position={[0, 0.015, -0.38]}
+        rotation={[Math.PI / 2, 0, 0]}
+      >
+        <cylinderGeometry args={[0.022, 0.018, 0.78, 12]} />
+      </mesh>
+      <GlowOverlay
+        tier={upgradeTier}
+        position={[0, 0.015, -0.38]}
+        args={[0.044, 0.044, 0.78]}
+      />
+      <mesh
+        material={steelLightMat}
+        position={[0, 0.015, -0.79]}
+        rotation={[Math.PI / 2, 0, 0]}
+      >
+        <cylinderGeometry args={[0.028, 0.025, 0.06, 10]} />
+      </mesh>
+      <mesh
+        material={steelMat}
+        position={[0, 0.015, -0.822]}
+        rotation={[Math.PI / 2, 0, 0]}
+      >
+        <cylinderGeometry args={[0.024, 0.024, 0.008, 10]} />
+      </mesh>
+
+      {/* BIPOD (folded) */}
+      <mesh material={steelMat} position={[0, 0.004, -0.22]}>
+        <boxGeometry args={[0.032, 0.018, 0.03]} />
+      </mesh>
+      <mesh
+        material={steelDarkMat}
+        position={[-0.018, -0.02, -0.22]}
+        rotation={[0.2, 0, 0.4]}
+      >
+        <boxGeometry args={[0.006, 0.055, 0.007]} />
+      </mesh>
+      <mesh
+        material={steelDarkMat}
+        position={[0.018, -0.02, -0.22]}
+        rotation={[0.2, 0, -0.4]}
+      >
+        <boxGeometry args={[0.006, 0.055, 0.007]} />
+      </mesh>
+
+      {/* SCOPE TUBE */}
+      <mesh
+        material={scopeMat}
+        position={[0, 0.095, -0.04]}
+        rotation={[Math.PI / 2, 0, 0]}
+      >
+        <cylinderGeometry args={[0.028, 0.028, 0.44, 16]} />
+      </mesh>
+      <GlowOverlay
+        tier={upgradeTier}
+        position={[0, 0.095, -0.04]}
+        args={[0.056, 0.056, 0.44]}
+      />
+      {/* Objective bell */}
+      <mesh
+        material={scopeMat}
+        position={[0, 0.095, -0.3]}
+        rotation={[Math.PI / 2, 0, 0]}
+      >
+        <cylinderGeometry args={[0.042, 0.028, 0.08, 16]} />
+      </mesh>
+      <mesh
+        material={scopeGlassMat}
+        position={[0, 0.095, -0.342]}
+        rotation={[Math.PI / 2, 0, 0]}
+      >
+        <cylinderGeometry args={[0.04, 0.04, 0.008, 16]} />
+      </mesh>
+      <mesh
+        material={brassRingMat}
+        position={[0, 0.095, -0.346]}
+        rotation={[Math.PI / 2, 0, 0]}
+      >
+        <cylinderGeometry args={[0.043, 0.043, 0.005, 16]} />
+      </mesh>
+      {/* Eyepiece bell */}
+      <mesh
+        material={scopeMat}
+        position={[0, 0.095, 0.22]}
+        rotation={[Math.PI / 2, 0, 0]}
+      >
+        <cylinderGeometry args={[0.036, 0.028, 0.07, 16]} />
+      </mesh>
+      <mesh
+        material={scopeGlassMat}
+        position={[0, 0.095, 0.258]}
+        rotation={[Math.PI / 2, 0, 0]}
+      >
+        <cylinderGeometry args={[0.033, 0.033, 0.008, 16]} />
+      </mesh>
+      {/* Elevation turret */}
+      <mesh material={steelLightMat} position={[0, 0.127, 0.03]}>
+        <cylinderGeometry args={[0.012, 0.012, 0.024, 10]} />
+      </mesh>
+      <mesh material={rubberMat} position={[0, 0.14, 0.03]}>
+        <cylinderGeometry args={[0.011, 0.011, 0.006, 10]} />
+      </mesh>
+      {/* Windage turret */}
+      <mesh
+        material={steelLightMat}
+        position={[0.04, 0.095, 0.03]}
+        rotation={[0, 0, Math.PI / 2]}
+      >
+        <cylinderGeometry args={[0.012, 0.012, 0.022, 10]} />
+      </mesh>
+      <mesh
+        material={rubberMat}
+        position={[0.053, 0.095, 0.03]}
+        rotation={[0, 0, Math.PI / 2]}
+      >
+        <cylinderGeometry args={[0.011, 0.011, 0.005, 10]} />
+      </mesh>
+      {/* Scope rings */}
+      {[-0.08, 0.14].map((zOff, i) => (
+        <mesh
+          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
+          key={`sr-${i}`}
+          material={steelMat}
+          position={[0, 0.075, zOff]}
+          rotation={[Math.PI / 2, 0, 0]}
+        >
+          <cylinderGeometry args={[0.032, 0.032, 0.018, 14]} />
+        </mesh>
+      ))}
+      {[-0.08, 0.14].map((zOff, i) => (
+        <mesh
+          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
+          key={`rb-${i}`}
+          material={steelDarkMat}
+          position={[0, 0.059, zOff]}
+        >
+          <boxGeometry args={[0.028, 0.012, 0.022]} />
+        </mesh>
+      ))}
+
+      <GoldSparkles active={upgradeTier === 3} />
+    </group>
+  );
+}
+
 export function WeaponViewModel({
   weapon,
   recoilOffset,
@@ -1214,6 +1531,13 @@ export function WeaponViewModel({
       )}
       {weapon === "assault_rifle" && (
         <AssaultRifleModel
+          recoilOffset={recoilOffset}
+          isReloading={isReloading}
+          upgradeTier={upgradeTier}
+        />
+      )}
+      {weapon === "sniper_rifle" && (
+        <SniperRifleModel
           recoilOffset={recoilOffset}
           isReloading={isReloading}
           upgradeTier={upgradeTier}

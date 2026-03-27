@@ -7,7 +7,12 @@ import {
   type WeaponState,
 } from "../types/weapon";
 
-const WEAPON_ORDER: WeaponName[] = ["pistol", "shotgun", "assault_rifle"];
+const WEAPON_ORDER: WeaponName[] = [
+  "pistol",
+  "shotgun",
+  "assault_rifle",
+  "sniper_rifle",
+];
 
 export function useWeaponSystem() {
   const [weaponState, setWeaponState] = useState<WeaponState>({
@@ -20,6 +25,8 @@ export function useWeaponSystem() {
     recoilOffset: 0,
     upgradeTier: 0,
   });
+
+  const [isAiming, setIsAiming] = useState(false);
 
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recoilTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -36,6 +43,7 @@ export function useWeaponSystem() {
     }
     const config = WEAPON_CONFIGS[weapon];
     lastFireTimeRef.current = 0; // reset cooldown on weapon switch
+    setIsAiming(false); // cancel aiming when switching weapons
     setWeaponState((prev) => ({
       ...prev,
       currentWeapon: weapon,
@@ -139,6 +147,7 @@ export function useWeaponSystem() {
       if (e.key === "1") switchWeapon("pistol");
       if (e.key === "2") switchWeapon("shotgun");
       if (e.key === "3") switchWeapon("assault_rifle");
+      if (e.key === "4") switchWeapon("sniper_rifle");
       if (e.key === "r" || e.key === "R") reload();
     };
 
@@ -150,11 +159,29 @@ export function useWeaponSystem() {
       switchWeapon(WEAPON_ORDER[nextIdx]);
     };
 
+    const handleMouseDown = (e: MouseEvent) => {
+      if (e.button === 2) {
+        if (stateRef.current.currentWeapon === "sniper_rifle") {
+          setIsAiming(true);
+        }
+      }
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      if (e.button === 2) {
+        setIsAiming(false);
+      }
+    };
+
     window.addEventListener("keydown", handleKey);
     window.addEventListener("wheel", handleWheel);
+    window.addEventListener("mousedown", handleMouseDown);
+    window.addEventListener("mouseup", handleMouseUp);
     return () => {
       window.removeEventListener("keydown", handleKey);
       window.removeEventListener("wheel", handleWheel);
+      window.removeEventListener("mousedown", handleMouseDown);
+      window.removeEventListener("mouseup", handleMouseUp);
     };
   }, [switchWeapon, reload]);
 
@@ -166,5 +193,7 @@ export function useWeaponSystem() {
     switchWeapon,
     upgradeWeapon,
     getEffectiveDamage,
+    isAiming,
+    setIsAiming,
   };
 }
