@@ -1,11 +1,9 @@
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import { useGetOrCreateProfile } from "../hooks/useQueries";
 import {
-  calculateLevel,
   getProgressToNextLevel,
   getXpForCurrentLevel,
   getXpForNextLevel,
-  levelXpThresholds,
 } from "../utils/levelSystem";
 
 interface PlayerProfileProps {
@@ -21,25 +19,34 @@ function StatCard({
     <div
       className="flex flex-col items-center gap-1 px-4 py-3"
       style={{
-        background: "rgba(20,8,0,0.85)",
-        border: "2px solid #2a1000",
-        boxShadow: "3px 3px 0 #0a0505",
+        background: "rgba(255,255,255,0.04)",
+        border: "1px solid rgba(255,255,255,0.09)",
+        boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
       }}
     >
-      <span className="text-2xl">{icon}</span>
+      <span style={{ fontSize: "1.25rem", lineHeight: 1 }}>{icon}</span>
       <span
-        className="font-bangers text-2xl"
         style={{
-          color: "#ffcc00",
-          WebkitTextStroke: "1px #0a0505",
-          letterSpacing: "0.05em",
+          fontFamily: "'Oswald', sans-serif",
+          fontWeight: 700,
+          fontSize: "1.6rem",
+          color: "#FF7A00",
+          letterSpacing: "0.04em",
+          lineHeight: 1.1,
         }}
       >
         {typeof value === "number" ? value.toLocaleString() : value}
       </span>
       <span
-        className="font-oswald text-xs uppercase tracking-widest text-center"
-        style={{ color: "#cc8844" }}
+        style={{
+          fontFamily: "'Sora', system-ui, sans-serif",
+          fontWeight: 400,
+          fontSize: "0.7rem",
+          letterSpacing: "0.1em",
+          textTransform: "uppercase",
+          color: "rgba(255,255,255,0.4)",
+          textAlign: "center",
+        }}
       >
         {label}
       </span>
@@ -71,63 +78,55 @@ export function PlayerProfile({ onBack }: PlayerProfileProps) {
       className="relative w-full h-full flex flex-col items-center justify-center overflow-hidden"
       style={{
         background:
-          "linear-gradient(180deg, #1a0800 0%, #2d1200 40%, #1a0800 100%)",
+          "radial-gradient(ellipse at 50% 30%, rgba(120,10,10,0.12) 0%, #060606 60%)",
       }}
     >
-      {/* Background decorative elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {[...Array(8)].map((_, i) => (
-          <div
-            // biome-ignore lint/suspicious/noArrayIndexKey: static geometry array
-            key={i}
-            className="absolute bottom-0"
-            style={{
-              left: `${i * 13 + 2}%`,
-              width: `${60 + (i % 3) * 30}px`,
-              height: `${80 + (i % 4) * 60}px`,
-              background: "rgba(10,5,0,0.8)",
-              border: "2px solid rgba(20,10,0,0.9)",
-            }}
-          />
-        ))}
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(ellipse at 50% 30%, rgba(180,80,20,0.2) 0%, transparent 70%)",
-          }}
-        />
-      </div>
+      {/* Scan-line texture */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px)",
+          zIndex: 0,
+        }}
+      />
 
       <div
-        className="relative z-10 flex flex-col items-center gap-6 px-8 py-8 w-full max-w-lg overflow-y-auto"
+        className="relative z-10 flex flex-col items-center gap-5 px-8 py-8 w-full max-w-lg overflow-y-auto"
         style={{
-          background: "rgba(8,2,0,0.95)",
-          border: "4px solid #0a0505",
-          boxShadow: "8px 8px 0 #0a0505",
+          background: "rgba(255,255,255,0.03)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          boxShadow:
+            "0 4px 40px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.04)",
           maxHeight: "90vh",
         }}
       >
         {/* Header */}
-        <div className="w-full flex flex-col items-center gap-1">
+        <div className="w-full flex flex-col items-center gap-2">
           <div
-            className="font-bangers text-5xl text-center"
             style={{
-              color: "#ff8800",
-              WebkitTextStroke: "3px #0a0505",
-              textShadow: "4px 4px 0 #0a0505",
-              letterSpacing: "0.05em",
+              fontFamily: "'Oswald', sans-serif",
+              fontWeight: 700,
+              fontSize: "2.6rem",
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "rgba(255,255,255,0.95)",
+              textShadow:
+                "0 0 30px rgba(255,100,0,0.25), 0 2px 8px rgba(0,0,0,0.8)",
             }}
           >
-            👤 PLAYER PROFILE
+            PLAYER PROFILE
           </div>
+
           {identity && (
             <div
-              className="font-oswald text-xs px-3 py-1 mt-1"
               style={{
-                background: "rgba(20,8,0,0.9)",
-                border: "1px solid #cc8800",
-                color: "#cc8844",
+                fontFamily: "'Sora', system-ui, sans-serif",
+                fontSize: "0.72rem",
+                padding: "4px 12px",
+                background: "rgba(255,122,0,0.08)",
+                border: "1px solid rgba(255,122,0,0.3)",
+                color: "rgba(255,122,0,0.75)",
                 letterSpacing: "0.05em",
               }}
             >
@@ -136,22 +135,43 @@ export function PlayerProfile({ onBack }: PlayerProfileProps) {
           )}
         </div>
 
+        {/* Divider */}
+        <div
+          style={{
+            width: "100%",
+            height: "1px",
+            background:
+              "linear-gradient(90deg, transparent, rgba(255,122,0,0.5), transparent)",
+          }}
+        />
+
         {/* Loading / Error states */}
         {isLoading && (
           <div
-            className="font-bangers text-2xl"
-            style={{ color: "#cc8844", letterSpacing: "0.05em" }}
+            data-ocid="profile.loading_state"
+            style={{
+              fontFamily: "'Sora', system-ui, sans-serif",
+              fontSize: "1rem",
+              color: "rgba(255,255,255,0.5)",
+              letterSpacing: "0.05em",
+              animation: "pulse 1.5s ease-in-out infinite",
+            }}
           >
-            ⏳ LOADING PROFILE...
+            LOADING PROFILE...
           </div>
         )}
 
         {isError && (
           <div
-            className="font-bangers text-xl text-center"
-            style={{ color: "#ff4444" }}
+            data-ocid="profile.error_state"
+            style={{
+              fontFamily: "'Sora', system-ui, sans-serif",
+              fontSize: "0.9rem",
+              color: "#ff4444",
+              textAlign: "center",
+            }}
           >
-            ✗ COULD NOT LOAD PROFILE
+            COULD NOT LOAD PROFILE
           </div>
         )}
 
@@ -161,26 +181,32 @@ export function PlayerProfile({ onBack }: PlayerProfileProps) {
             <div
               className="w-full flex flex-col items-center gap-3 px-6 py-5"
               style={{
-                background: "rgba(20,8,0,0.85)",
-                border: "3px solid #cc8800",
-                boxShadow: "4px 4px 0 #0a0505",
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,122,0,0.25)",
+                boxShadow: "0 0 20px rgba(255,122,0,0.06)",
               }}
             >
               <div className="flex items-baseline gap-3">
                 <span
-                  className="font-bangers text-6xl"
                   style={{
-                    color: "#ffcc00",
-                    WebkitTextStroke: "2px #0a0505",
-                    textShadow: "4px 4px 0 #0a0505",
-                    letterSpacing: "0.05em",
+                    fontFamily: "'Oswald', sans-serif",
+                    fontWeight: 700,
+                    fontSize: "4rem",
+                    color: "#FF7A00",
+                    letterSpacing: "0.04em",
+                    lineHeight: 1,
+                    textShadow: "0 0 20px rgba(255,122,0,0.4)",
                   }}
                 >
                   LVL {currentLevel}
                 </span>
                 <span
-                  className="font-bangers text-2xl"
-                  style={{ color: "#cc8844", letterSpacing: "0.05em" }}
+                  style={{
+                    fontFamily: "'Oswald', sans-serif",
+                    fontWeight: 400,
+                    fontSize: "1.4rem",
+                    color: "rgba(255,255,255,0.3)",
+                  }}
                 >
                   / 55
                 </span>
@@ -190,26 +216,35 @@ export function PlayerProfile({ onBack }: PlayerProfileProps) {
               <div className="w-full flex flex-col gap-1">
                 <div className="flex justify-between items-center">
                   <span
-                    className="font-oswald text-xs"
-                    style={{ color: "#cc8844", letterSpacing: "0.05em" }}
+                    style={{
+                      fontFamily: "'Sora', system-ui, sans-serif",
+                      fontSize: "0.72rem",
+                      color: "rgba(255,255,255,0.45)",
+                      letterSpacing: "0.04em",
+                    }}
                   >
                     {isMaxLevel
                       ? "MAX LEVEL"
                       : `XP: ${xpInCurrentLevel.toLocaleString()} / ${xpNeededForLevel.toLocaleString()}`}
                   </span>
                   <span
-                    className="font-oswald text-xs"
-                    style={{ color: "#ff8800" }}
+                    style={{
+                      fontFamily: "'Oswald', sans-serif",
+                      fontWeight: 600,
+                      fontSize: "0.8rem",
+                      color: "#FF7A00",
+                    }}
                   >
                     {isMaxLevel ? "100%" : `${Math.round(progress)}%`}
                   </span>
                 </div>
+                {/* Track */}
                 <div
-                  className="w-full h-4 relative overflow-hidden"
+                  className="w-full relative overflow-hidden"
                   style={{
-                    background: "rgba(10,5,0,0.9)",
-                    border: "2px solid #2a1000",
-                    boxShadow: "inset 2px 2px 0 rgba(0,0,0,0.5)",
+                    height: "6px",
+                    background: "rgba(255,255,255,0.07)",
+                    border: "1px solid rgba(255,255,255,0.08)",
                   }}
                 >
                   <div
@@ -217,17 +252,20 @@ export function PlayerProfile({ onBack }: PlayerProfileProps) {
                     style={{
                       width: `${isMaxLevel ? 100 : progress}%`,
                       background: isMaxLevel
-                        ? "linear-gradient(90deg, #ffcc00, #ff8800)"
-                        : "linear-gradient(90deg, #ff8800, #ffcc00)",
-                      boxShadow: "0 0 8px rgba(255,180,0,0.6)",
+                        ? "linear-gradient(90deg, #FF7A00, #ffcc00)"
+                        : "linear-gradient(90deg, #cc4400, #FF7A00)",
+                      boxShadow: "0 0 8px rgba(255,122,0,0.5)",
                     }}
                   />
                 </div>
                 {!isMaxLevel && (
                   <div className="text-right">
                     <span
-                      className="font-oswald text-xs"
-                      style={{ color: "#886644" }}
+                      style={{
+                        fontFamily: "'Sora', system-ui, sans-serif",
+                        fontSize: "0.68rem",
+                        color: "rgba(255,255,255,0.28)",
+                      }}
                     >
                       {(xpForNext - totalXP).toLocaleString()} XP to next level
                     </span>
@@ -236,42 +274,49 @@ export function PlayerProfile({ onBack }: PlayerProfileProps) {
               </div>
             </div>
 
+            {/* Stats label */}
+            <div
+              style={{
+                fontFamily: "'Oswald', sans-serif",
+                fontWeight: 600,
+                fontSize: "0.75rem",
+                letterSpacing: "0.2em",
+                textTransform: "uppercase",
+                color: "rgba(255,255,255,0.3)",
+                alignSelf: "flex-start",
+              }}
+            >
+              CAREER STATS
+            </div>
+
             {/* Stats grid */}
-            <div className="w-full">
-              <div
-                className="font-bangers text-xl text-center mb-3"
-                style={{ color: "#cc8844", letterSpacing: "0.1em" }}
-              >
-                ── CAREER STATS ──
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+            <div className="w-full grid grid-cols-2 gap-2">
+              <StatCard
+                label="Total Kills"
+                value={Number(profile.totalKills)}
+                icon="💀"
+              />
+              <StatCard
+                label="Total Rounds"
+                value={Number(profile.totalRounds)}
+                icon="🌊"
+              />
+              <StatCard
+                label="Headshots"
+                value={Number(profile.totalHeadshots)}
+                icon="🎯"
+              />
+              <StatCard
+                label="Shots Fired"
+                value={Number(profile.totalShots)}
+                icon="🔫"
+              />
+              <div className="col-span-2">
                 <StatCard
-                  label="Total Kills"
-                  value={Number(profile.totalKills)}
-                  icon="💀"
+                  label="Total Points (XP)"
+                  value={Number(profile.totalPoints)}
+                  icon="⭐"
                 />
-                <StatCard
-                  label="Total Rounds"
-                  value={Number(profile.totalRounds)}
-                  icon="🌊"
-                />
-                <StatCard
-                  label="Headshots"
-                  value={Number(profile.totalHeadshots)}
-                  icon="🎯"
-                />
-                <StatCard
-                  label="Shots Fired"
-                  value={Number(profile.totalShots)}
-                  icon="🔫"
-                />
-                <div className="col-span-2">
-                  <StatCard
-                    label="Total Points (XP)"
-                    value={Number(profile.totalPoints)}
-                    icon="⭐"
-                  />
-                </div>
               </div>
             </div>
 
@@ -280,19 +325,29 @@ export function PlayerProfile({ onBack }: PlayerProfileProps) {
               <div
                 className="w-full flex justify-between items-center px-4 py-2"
                 style={{
-                  background: "rgba(20,8,0,0.7)",
-                  border: "1px solid #2a1000",
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px solid rgba(255,255,255,0.07)",
                 }}
               >
                 <span
-                  className="font-bangers text-lg"
-                  style={{ color: "#cc8844", letterSpacing: "0.05em" }}
+                  style={{
+                    fontFamily: "'Oswald', sans-serif",
+                    fontWeight: 600,
+                    fontSize: "0.85rem",
+                    letterSpacing: "0.08em",
+                    color: "rgba(255,255,255,0.5)",
+                    textTransform: "uppercase",
+                  }}
                 >
-                  HEADSHOT ACCURACY
+                  Headshot Accuracy
                 </span>
                 <span
-                  className="font-bangers text-xl"
-                  style={{ color: "#ffaa44" }}
+                  style={{
+                    fontFamily: "'Oswald', sans-serif",
+                    fontWeight: 700,
+                    fontSize: "1.1rem",
+                    color: "#FF7A00",
+                  }}
                 >
                   {Number(profile.totalShots) > 0
                     ? `${Math.round((Number(profile.totalHeadshots) / Number(profile.totalKills || 1)) * 100)}%`
@@ -303,10 +358,21 @@ export function PlayerProfile({ onBack }: PlayerProfileProps) {
           </>
         )}
 
+        {/* Divider */}
+        <div
+          style={{
+            width: "100%",
+            height: "1px",
+            background:
+              "linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)",
+          }}
+        />
+
         {/* Back button */}
         <button
           type="button"
-          className="toon-btn toon-btn-red w-full mt-2"
+          className="cod-premium-btn-danger w-full"
+          data-ocid="profile.back.button"
           onClick={onBack}
         >
           ← BACK TO MENU

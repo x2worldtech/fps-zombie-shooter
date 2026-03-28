@@ -22,53 +22,87 @@ export function ControlsScreen({ onBack }: ControlsScreenProps) {
       className="relative w-full h-full flex flex-col items-center justify-center overflow-hidden"
       style={{
         background:
-          "linear-gradient(180deg, #1a0800 0%, #2d1200 40%, #1a0800 100%)",
+          "radial-gradient(ellipse at 50% 30%, rgba(120,10,10,0.12) 0%, #060606 60%)",
       }}
     >
+      {/* Subtle scan-line texture */}
       <div
-        className="flex flex-col items-center gap-6 px-10 py-8 w-full max-w-lg"
+        className="absolute inset-0 pointer-events-none"
         style={{
-          background: "rgba(10,5,0,0.92)",
-          border: "4px solid #0a0505",
-          boxShadow: "8px 8px 0 #0a0505",
+          backgroundImage:
+            "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px)",
+          zIndex: 0,
+        }}
+      />
+
+      <div
+        className="relative z-10 flex flex-col items-center gap-6 px-10 py-8 w-full max-w-lg"
+        style={{
+          background: "rgba(255,255,255,0.03)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          boxShadow:
+            "0 4px 40px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.04)",
         }}
       >
+        {/* Title */}
         <div
-          className="font-bangers text-5xl"
           style={{
-            color: "#ff8800",
-            WebkitTextStroke: "2px #0a0505",
-            textShadow: "4px 4px 0 #0a0505",
-            letterSpacing: "0.1em",
+            fontFamily: "'Oswald', sans-serif",
+            fontWeight: 700,
+            fontSize: "2.8rem",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: "rgba(255,255,255,0.95)",
+            textShadow:
+              "0 0 30px rgba(255,100,0,0.25), 0 2px 8px rgba(0,0,0,0.8)",
           }}
         >
           CONTROLS
         </div>
 
+        {/* Divider */}
+        <div
+          style={{
+            width: "100%",
+            height: "1px",
+            background:
+              "linear-gradient(90deg, transparent, rgba(255,122,0,0.5), transparent)",
+          }}
+        />
+
+        {/* Control rows */}
         <div className="w-full flex flex-col gap-2">
           {controls.map(({ key, action }) => (
             <div
               key={key}
               className="flex items-center justify-between px-4 py-2"
               style={{
-                background: "rgba(30,15,0,0.8)",
-                border: "2px solid #2a1500",
+                background: "rgba(255,255,255,0.03)",
+                border: "1px solid rgba(255,255,255,0.07)",
+                transition: "background 0.1s",
               }}
             >
               <span
-                className="font-bangers text-xl"
                 style={{
-                  color: "#ffcc00",
-                  WebkitTextStroke: "1px #0a0505",
-                  letterSpacing: "0.05em",
+                  fontFamily: "'Oswald', sans-serif",
+                  fontWeight: 700,
+                  fontSize: "1rem",
+                  letterSpacing: "0.1em",
+                  color: "#FF7A00",
                   minWidth: "140px",
+                  textTransform: "uppercase",
                 }}
               >
                 {key}
               </span>
               <span
-                className="toon-text text-base"
-                style={{ color: "#cc8844" }}
+                style={{
+                  fontFamily: "'Sora', system-ui, sans-serif",
+                  fontWeight: 400,
+                  fontSize: "0.875rem",
+                  color: "rgba(255,255,255,0.6)",
+                  letterSpacing: "0.02em",
+                }}
               >
                 {action}
               </span>
@@ -76,9 +110,20 @@ export function ControlsScreen({ onBack }: ControlsScreenProps) {
           ))}
         </div>
 
+        {/* Divider */}
+        <div
+          style={{
+            width: "100%",
+            height: "1px",
+            background:
+              "linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)",
+          }}
+        />
+
         <button
           type="button"
-          className="toon-btn toon-btn-red w-48"
+          className="cod-premium-btn-danger w-48"
+          data-ocid="controls.back.button"
           onClick={onBack}
         >
           ← BACK

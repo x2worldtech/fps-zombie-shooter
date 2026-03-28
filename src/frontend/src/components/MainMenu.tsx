@@ -9,24 +9,71 @@ interface MainMenuProps {
   onShowProfile: () => void;
 }
 
-const BLOOD_DRIPS = Array.from({ length: 14 }, (_, i) => ({
+// ── STAR FIELD ──
+const STARS = Array.from({ length: 120 }, (_, i) => ({
   id: i,
-  left: `${(i * 7.3 + 2) % 98}%`,
-  height: `${40 + ((i * 17) % 80)}px`,
-  width: `${3 + (i % 4)}px`,
-  delay: `${(i * 0.6) % 4}s`,
-  duration: `${8 + (i % 5)}s`,
-  opacity: 0.55 + (i % 4) * 0.1,
+  left: ((i * 137.5 + 11) % 100).toFixed(2),
+  top: ((i * 97.3 + 7) % 100).toFixed(2),
+  size: 1 + (i % 2),
+  opacity: (0.2 + ((i * 3) % 7) * 0.09).toFixed(2),
+  twinkle: i % 5 === 0, // every 5th star twinkles
+  twinkleDuration: (2.5 + (i % 8) * 0.4).toFixed(1),
+  twinkleDelay: ((i * 0.23) % 4).toFixed(1),
 }));
 
-const ASH_PARTICLES = Array.from({ length: 28 }, (_, i) => ({
-  id: i,
-  left: `${(i * 3.7 + 1) % 100}%`,
-  size: 1 + (i % 3),
-  delay: `${(i * 0.35) % 7}s`,
-  duration: `${9 + (i % 7)}s`,
-  opacity: 0.12 + (i % 5) * 0.06,
-}));
+// ── ASTEROID SHAPES ──
+const ASTEROID_SHAPES = [
+  "polygon(20% 0%, 80% 5%, 100% 30%, 95% 75%, 75% 100%, 30% 98%, 5% 70%, 0% 25%)",
+  "polygon(15% 5%, 70% 0%, 100% 25%, 90% 80%, 60% 100%, 20% 95%, 0% 60%, 5% 20%)",
+  "polygon(50% 0%, 90% 20%, 100% 60%, 80% 100%, 30% 90%, 0% 50%, 10% 10%)",
+  "polygon(25% 0%, 85% 10%, 100% 45%, 85% 90%, 45% 100%, 5% 75%, 0% 30%)",
+  "polygon(40% 0%, 90% 15%, 100% 55%, 70% 100%, 20% 85%, 0% 40%, 15% 5%)",
+  "polygon(10% 15%, 60% 0%, 100% 20%, 95% 70%, 65% 100%, 15% 95%, 0% 55%, 5% 15%)",
+  "polygon(30% 0%, 75% 5%, 100% 35%, 90% 80%, 55% 100%, 10% 90%, 0% 50%, 8% 18%)",
+  "polygon(45% 2%, 88% 18%, 98% 58%, 72% 98%, 22% 92%, 2% 62%, 12% 18%)",
+];
+
+const ASTEROID_GRADIENTS = [
+  "radial-gradient(ellipse at 30% 28%, #5a5250 0%, #2e2a28 55%, #161412 100%)",
+  "radial-gradient(ellipse at 38% 32%, #504840 0%, #28221e 55%, #121008 100%)",
+  "radial-gradient(ellipse at 42% 26%, #484442 0%, #2a2826 55%, #181614 100%)",
+  "radial-gradient(ellipse at 28% 35%, #524c48 0%, #302c28 55%, #1c1816 100%)",
+  "radial-gradient(ellipse at 36% 30%, #464240 0%, #262220 55%, #141210 100%)",
+];
+
+// ── ASTEROID OBJECTS ──
+const ASTEROIDS = Array.from({ length: 25 }, (_, i) => {
+  const isLarge = i < 5;
+  const isMedium = i >= 5 && i < 15;
+  const size = isLarge
+    ? 65 + ((i * 19) % 56)
+    : isMedium
+      ? 26 + ((i * 13) % 30)
+      : 8 + ((i * 7) % 13);
+  const driftVariant = i % 8;
+  const duration = isLarge
+    ? 40 + ((i * 11) % 25)
+    : isMedium
+      ? 25 + ((i * 7) % 20)
+      : 15 + ((i * 5) % 12);
+  const delay = -((i * 5.3) % duration);
+  return {
+    id: i,
+    left: ((i * 83 + 9) % 95).toFixed(1),
+    top: ((i * 67 + 13) % 90).toFixed(1),
+    size,
+    shape: ASTEROID_SHAPES[i % ASTEROID_SHAPES.length],
+    gradient: ASTEROID_GRADIENTS[i % ASTEROID_GRADIENTS.length],
+    driftVariant,
+    duration,
+    delay,
+    boxShadow: isLarge
+      ? "inset -4px -4px 12px rgba(0,0,0,0.7), inset 2px 2px 6px rgba(255,255,255,0.05)"
+      : isMedium
+        ? "inset -2px -2px 6px rgba(0,0,0,0.6)"
+        : "inset -1px -1px 3px rgba(0,0,0,0.5)",
+  };
+});
 
 export function MainMenu({
   onStartGame,
@@ -39,11 +86,36 @@ export function MainMenu({
   const isAuthenticated = !!identity;
   const isLoggingIn = loginStatus === "logging-in";
   const [mounted, setMounted] = useState(false);
-  const titleRef = useRef<HTMLDivElement>(null);
+  const [activeItem, setActiveItem] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    const t = setTimeout(() => setMounted(true), 60);
+    const t = setTimeout(() => setMounted(true), 80);
     return () => clearTimeout(t);
+  }, []);
+
+  // Auto-play main menu music
+  useEffect(() => {
+    const audio = new Audio("/assets/audio/Zombie3ogg-3.ogg");
+    audio.loop = true;
+    audio.volume = 0.45;
+    audioRef.current = audio;
+    const playPromise = audio.play();
+    if (playPromise) {
+      playPromise.catch(() => {
+        const unlock = () => {
+          audio.play().catch(() => {});
+          document.removeEventListener("click", unlock);
+          document.removeEventListener("keydown", unlock);
+        };
+        document.addEventListener("click", unlock);
+        document.addEventListener("keydown", unlock);
+      });
+    }
+    return () => {
+      audio.pause();
+      audio.src = "";
+    };
   }, []);
 
   const handleAuth = async () => {
@@ -62,323 +134,238 @@ export function MainMenu({
     }
   };
 
-  const truncatePrincipal = (principal: string) => {
-    if (principal.length <= 12) return principal;
-    return `${principal.slice(0, 6)}...${principal.slice(-4)}`;
-  };
+  const menuItems = [
+    { label: "START GAME", action: onStartGame, primary: true },
+    { label: "LEADERBOARD", action: onShowLeaderboard },
+    ...(isAuthenticated
+      ? [{ label: "MY PROFILE", action: onShowProfile }]
+      : []),
+    { label: "CONTROLS", action: onShowControls },
+    {
+      label: isLoggingIn
+        ? "SIGNING IN..."
+        : isAuthenticated
+          ? "SIGN OUT"
+          : "SIGN IN",
+      action: handleAuth,
+      muted: true,
+    },
+  ];
 
   return (
     <div
-      className="relative w-full h-full flex flex-col items-center justify-center overflow-hidden"
-      style={{ background: "#080400" }}
+      className="relative w-full h-full overflow-hidden"
+      style={{ background: "#03040a" }}
     >
-      {/* BACKGROUND */}
+      {/* ── DEEP SPACE NEBULA GLOW ── */}
       <div
-        className="absolute inset-0 z-0"
-        style={{
-          backgroundImage:
-            "url(/assets/generated/menu-bg-banner.dim_1920x1080.png)",
-          backgroundSize: "cover",
-          backgroundPosition: "center top",
-          backgroundRepeat: "no-repeat",
-          filter: "brightness(0.4) saturate(0.8)",
-        }}
-      />
-
-      {/* DARK OVERLAY — deep cinematic black */}
-      <div
-        className="absolute inset-0 z-1 pointer-events-none"
+        className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse 90% 80% at 50% 35%, rgba(10,2,0,0.3) 0%, rgba(5,1,0,0.75) 60%, rgba(2,0,0,0.97) 100%)",
+            "radial-gradient(ellipse 80% 60% at 65% 40%, rgba(30,20,80,0.18) 0%, rgba(15,8,40,0.10) 40%, transparent 70%)",
+          zIndex: 0,
         }}
       />
-
-      {/* BOTTOM FADE */}
+      {/* secondary subtle nebula */}
       <div
-        className="absolute bottom-0 left-0 right-0 z-1 pointer-events-none"
+        className="absolute inset-0 pointer-events-none"
         style={{
-          height: "40%",
-          background: "linear-gradient(to top, #040100 0%, transparent 100%)",
-        }}
-      />
-
-      {/* TOP FADE */}
-      <div
-        className="absolute top-0 left-0 right-0 z-1 pointer-events-none"
-        style={{
-          height: "25%",
           background:
-            "linear-gradient(to bottom, #040100 0%, transparent 100%)",
+            "radial-gradient(ellipse 50% 40% at 80% 70%, rgba(60,10,80,0.08) 0%, transparent 60%)",
+          zIndex: 0,
         }}
       />
 
-      {/* SCAN LINES */}
+      {/* ── STAR FIELD ── */}
       <div
-        className="absolute inset-0 z-2 pointer-events-none"
-        style={{
-          backgroundImage:
-            "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px)",
-        }}
-      />
-
-      {/* BLOOD DRIPS — top */}
-      <div className="absolute top-0 left-0 right-0 z-3 pointer-events-none overflow-hidden">
-        {BLOOD_DRIPS.map((d) => (
+        className="absolute inset-0 pointer-events-none overflow-hidden"
+        style={{ zIndex: 1 }}
+      >
+        {STARS.map((s) => (
           <div
-            key={d.id}
-            className="menu-blood-drip absolute top-0 rounded-b-full"
+            key={s.id}
+            className="absolute rounded-full"
             style={{
-              left: d.left,
-              width: `${d.width}px`,
-              height: `${d.height}px`,
-              background:
-                "linear-gradient(to bottom, rgba(140,0,0,0.9) 0%, rgba(80,0,0,0.6) 70%, transparent 100%)",
-              animationDelay: d.delay,
-              animationDuration: d.duration,
-              opacity: d.opacity,
+              left: `${s.left}%`,
+              top: `${s.top}%`,
+              width: `${s.size}px`,
+              height: `${s.size}px`,
+              background: s.id % 7 === 0 ? "#a8c8ff" : "#ffffff",
+              opacity: Number(s.opacity),
+              animation: s.twinkle
+                ? `star-twinkle ${s.twinkleDuration}s ease-in-out ${s.twinkleDelay}s infinite`
+                : undefined,
             }}
           />
         ))}
       </div>
 
-      {/* ASH PARTICLES */}
-      <div className="absolute inset-0 z-4 pointer-events-none overflow-hidden">
-        {ASH_PARTICLES.map((p) => (
+      {/* ── ASTEROID FIELD ── */}
+      <div
+        className="absolute inset-0 pointer-events-none overflow-hidden"
+        style={{ zIndex: 2 }}
+      >
+        {ASTEROIDS.map((a) => (
           <div
-            key={p.id}
-            className="menu-ash absolute rounded-full"
+            key={a.id}
+            className="absolute"
             style={{
-              left: p.left,
-              bottom: "-10px",
-              width: `${p.size}px`,
-              height: `${p.size}px`,
-              background: `rgba(200, 80, 20, ${p.opacity})`,
-              animationDelay: p.delay,
-              animationDuration: p.duration,
+              left: `${a.left}%`,
+              top: `${a.top}%`,
+              width: `${a.size}px`,
+              height: `${a.size}px`,
+              background: a.gradient,
+              clipPath: a.shape,
+              boxShadow: a.boxShadow,
+              animationName: `ast-drift-${a.driftVariant}`,
+              animationDuration: `${a.duration}s`,
+              animationDelay: `${a.delay}s`,
+              animationTimingFunction: "linear",
+              animationIterationCount: "infinite",
+              willChange: "transform",
             }}
           />
         ))}
       </div>
 
-      {/* SCREEN FLICKER */}
+      {/* ── DARK VIGNETTE edges ── */}
       <div
-        className="menu-flicker absolute inset-0 z-3 pointer-events-none"
-        style={{ background: "rgba(180,20,0,0.012)" }}
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(ellipse 110% 100% at 50% 50%, transparent 35%, rgba(0,0,0,0.65) 75%, rgba(0,0,0,0.95) 100%)",
+          zIndex: 3,
+        }}
       />
 
-      {/* ── AUTH — top right ── */}
-      <div className="absolute top-5 right-5 z-20 flex flex-col items-end gap-2">
-        {isAuthenticated && identity && (
+      {/* ── MAIN CONTENT — left-aligned ── */}
+      <div
+        className="absolute inset-0 flex flex-col justify-center"
+        style={{ paddingLeft: "clamp(40px, 8vw, 120px)", zIndex: 10 }}
+      >
+        {/* TITLE BLOCK */}
+        <div
+          style={{
+            opacity: mounted ? 1 : 0,
+            transform: mounted ? "translateY(0)" : "translateY(-20px)",
+            transition: "opacity 0.6s ease, transform 0.6s ease",
+            marginBottom: "clamp(24px, 4vh, 48px)",
+          }}
+        >
           <div
             style={{
               fontFamily: "'Oswald', sans-serif",
-              fontSize: "0.72rem",
-              fontWeight: 600,
-              letterSpacing: "0.08em",
-              color: "rgba(255,200,80,0.85)",
-              background: "rgba(0,0,0,0.75)",
-              border: "1px solid rgba(180,100,0,0.5)",
-              padding: "4px 10px",
+              fontWeight: 700,
+              fontSize: "clamp(2.8rem, 7vw, 5.5rem)",
+              lineHeight: 1.0,
+              letterSpacing: "0.04em",
+              color: "rgba(255,255,255,0.92)",
+              textTransform: "uppercase",
+              textShadow:
+                "2px 2px 12px rgba(0,0,0,0.9), 0 0 30px rgba(0,0,0,0.6)",
             }}
           >
-            {truncatePrincipal(identity.getPrincipal().toString())}
+            DESERT
           </div>
-        )}
-        <button
-          type="button"
-          onClick={handleAuth}
-          disabled={isLoggingIn}
-          className="menu-auth-btn"
-          style={{
-            fontFamily: "'Oswald', sans-serif",
-            fontWeight: 700,
-            fontSize: "0.78rem",
-            letterSpacing: "0.14em",
-            textTransform: "uppercase",
-            padding: "6px 16px",
-            background: isAuthenticated
-              ? "rgba(5,0,0,0.9)"
-              : "rgba(120,10,0,0.88)",
-            border: `1px solid ${isAuthenticated ? "rgba(180,30,0,0.7)" : "rgba(220,40,0,0.85)"}`,
-            color: isAuthenticated ? "rgba(200,60,40,0.9)" : "#ff9977",
-            cursor: isLoggingIn ? "not-allowed" : "pointer",
-            opacity: isLoggingIn ? 0.5 : 1,
-            transition: "all 0.15s",
-            boxShadow: isAuthenticated ? "none" : "0 0 10px rgba(200,30,0,0.3)",
-          }}
-        >
-          {isLoggingIn
-            ? "SIGNING IN..."
-            : isAuthenticated
-              ? "SIGN OUT"
-              : "SIGN IN"}
-        </button>
-      </div>
-
-      {/* ── TITLE ── */}
-      <div
-        ref={titleRef}
-        className={`relative z-10 flex flex-col items-center mb-10 transition-all duration-800 ${
-          mounted ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-10"
-        }`}
-      >
-        {/* Title glow ambient */}
-        <div
-          className="menu-title-pulse absolute pointer-events-none"
-          style={{
-            inset: "-40px",
-            background:
-              "radial-gradient(ellipse 80% 70% at 50% 50%, rgba(200,20,0,0.22) 0%, transparent 70%)",
-            filter: "blur(24px)",
-          }}
-        />
-
-        {/* Main title */}
-        <div
-          style={{
-            fontFamily: "'Bangers', cursive",
-            fontSize: "clamp(5rem, 15vw, 10rem)",
-            lineHeight: 0.9,
-            letterSpacing: "0.04em",
-            color: "#d42000",
-            WebkitTextStroke: "2px #000",
-            textShadow:
-              "0 0 40px rgba(220,20,0,0.9), 0 0 80px rgba(180,0,0,0.55), 4px 4px 0 #000, -1px -1px 0 #000",
-            position: "relative",
-            textAlign: "center",
-          }}
-        >
-          DESERT
-        </div>
-        <div
-          style={{
-            fontFamily: "'Bangers', cursive",
-            fontSize: "clamp(5rem, 15vw, 10rem)",
-            lineHeight: 0.9,
-            letterSpacing: "0.04em",
-            color: "#ff6600",
-            WebkitTextStroke: "2px #000",
-            textShadow:
-              "0 0 35px rgba(255,80,0,0.8), 0 0 70px rgba(220,40,0,0.4), 4px 4px 0 #000, -1px -1px 0 #000",
-            position: "relative",
-            textAlign: "center",
-          }}
-        >
-          DEAD
-        </div>
-
-        {/* Subtitle */}
-        <div
-          style={{
-            marginTop: "8px",
-            fontFamily: "'Oswald', sans-serif",
-            fontWeight: 700,
-            fontSize: "clamp(0.7rem, 2vw, 1rem)",
-            letterSpacing: "0.4em",
-            color: "rgba(200,80,30,0.8)",
-            textTransform: "uppercase",
-          }}
-        >
-          FPS ZOMBIE SHOOTER
-        </div>
-
-        {/* Horizontal rule */}
-        <div
-          style={{
-            marginTop: "14px",
-            width: "clamp(180px, 35vw, 280px)",
-            height: "1px",
-            background:
-              "linear-gradient(to right, transparent, rgba(200,30,0,0.9), rgba(255,80,0,0.7), rgba(200,30,0,0.9), transparent)",
-            boxShadow: "0 0 8px rgba(220,30,0,0.6)",
-          }}
-        />
-      </div>
-
-      {/* ── MENU BUTTONS ── */}
-      <div
-        className={`relative z-10 flex flex-col gap-3 items-center transition-all duration-700 delay-200 ${
-          mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"
-        }`}
-      >
-        {/* PRIMARY: START GAME */}
-        <button
-          type="button"
-          className="menu-primary-btn"
-          onClick={onStartGame}
-        >
-          <span className="menu-primary-btn-shine" />
-          <span className="menu-primary-btn-label">▶ START GAME</span>
-        </button>
-
-        {/* SECONDARY buttons */}
-        <button
-          type="button"
-          className="menu-secondary-btn"
-          onClick={onShowLeaderboard}
-        >
-          <span className="menu-secondary-btn-icon">🏆</span>
-          <span>LEADERBOARD</span>
-        </button>
-
-        {isAuthenticated && (
-          <button
-            type="button"
-            className="menu-secondary-btn menu-secondary-btn--blue"
-            onClick={onShowProfile}
+          <div
+            style={{
+              fontFamily: "'Oswald', sans-serif",
+              fontWeight: 700,
+              fontSize: "clamp(4rem, 11vw, 8.5rem)",
+              lineHeight: 0.92,
+              letterSpacing: "0.03em",
+              color: "#ffffff",
+              textTransform: "uppercase",
+              textShadow:
+                "3px 3px 16px rgba(0,0,0,0.95), 0 0 40px rgba(0,0,0,0.7)",
+            }}
           >
-            <span className="menu-secondary-btn-icon">👤</span>
-            <span>MY PROFILE</span>
-          </button>
-        )}
+            DEAD
+          </div>
+          <div
+            style={{
+              marginTop: "10px",
+              fontFamily: "'Oswald', sans-serif",
+              fontWeight: 400,
+              fontSize: "clamp(0.65rem, 1.4vw, 0.9rem)",
+              letterSpacing: "0.35em",
+              color: "rgba(255,255,255,0.35)",
+              textTransform: "uppercase",
+            }}
+          >
+            FPS ZOMBIE SHOOTER
+          </div>
+        </div>
 
-        <button
-          type="button"
-          className="menu-secondary-btn menu-secondary-btn--dim"
-          onClick={onShowControls}
+        {/* MENU ITEMS — plain text CoD style */}
+        <nav
+          style={{
+            opacity: mounted ? 1 : 0,
+            transform: mounted ? "translateY(0)" : "translateY(16px)",
+            transition: "opacity 0.6s ease 0.2s, transform 0.6s ease 0.2s",
+          }}
         >
-          <span className="menu-secondary-btn-icon">🎮</span>
-          <span>CONTROLS</span>
-        </button>
+          {menuItems.map((item, idx) => (
+            <button
+              key={item.label}
+              type="button"
+              data-ocid={`menu.${item.label.toLowerCase().replace(/[^a-z0-9]/g, "_")}.button`}
+              className="cod-menu-item"
+              style={{
+                color:
+                  idx === 0 || activeItem === idx
+                    ? "#FF7A00"
+                    : item.muted
+                      ? "rgba(255,255,255,0.35)"
+                      : "rgba(255,255,255,0.82)",
+                fontSize:
+                  idx === 0
+                    ? "clamp(1.6rem, 3.5vw, 2.3rem)"
+                    : "clamp(1.2rem, 2.5vw, 1.75rem)",
+              }}
+              onMouseEnter={() => setActiveItem(idx)}
+              onMouseLeave={() => setActiveItem(0)}
+              onClick={item.action}
+              disabled={isLoggingIn && item.muted}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
       </div>
 
-      {/* tagline */}
+      {/* ── BOTTOM HINT BAR ── */}
       <div
-        className={`relative z-10 mt-8 transition-all duration-700 delay-400 ${
-          mounted ? "opacity-100" : "opacity-0"
-        }`}
+        className="absolute bottom-0 left-0 right-0"
         style={{
-          fontFamily: "'Oswald', sans-serif",
-          fontSize: "0.68rem",
-          letterSpacing: "0.28em",
-          color: "rgba(150,40,20,0.65)",
-          textTransform: "uppercase",
+          padding: "12px clamp(40px, 8vw, 120px)",
+          zIndex: 10,
+          opacity: mounted ? 1 : 0,
+          transition: "opacity 0.6s ease 0.5s",
         }}
       >
-        ☠ &nbsp; SURVIVE THE ENDLESS HORDE &nbsp; ☠
-      </div>
-
-      {/* FOOTER */}
-      <div
-        className="absolute bottom-3 left-0 right-0 text-center z-10"
-        style={{
-          fontFamily: "'Oswald', sans-serif",
-          fontSize: "0.65rem",
-          color: "rgba(120,50,20,0.55)",
-          letterSpacing: "0.04em",
-        }}
-      >
-        Built with ❤ using{" "}
-        <a
-          href={`https://caffeine.ai/?utm_source=Caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname || "desert-dead-fps")}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ color: "rgba(180,80,30,0.7)", textDecoration: "underline" }}
+        <div
+          style={{
+            fontFamily: "'Oswald', sans-serif",
+            fontWeight: 400,
+            fontSize: "0.72rem",
+            letterSpacing: "0.18em",
+            color: "rgba(255,255,255,0.22)",
+            textTransform: "uppercase",
+          }}
         >
-          caffeine.ai
-        </a>{" "}
-        · © {new Date().getFullYear()}
+          [ ENTER ] SELECT &nbsp;•&nbsp; [ ESC ] BACK &nbsp;•&nbsp; Built with ❤
+          using{" "}
+          <a
+            href={`https://caffeine.ai/?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "rgba(255,122,0,0.5)", textDecoration: "none" }}
+          >
+            caffeine.ai
+          </a>{" "}
+          © {new Date().getFullYear()}
+        </div>
       </div>
     </div>
   );

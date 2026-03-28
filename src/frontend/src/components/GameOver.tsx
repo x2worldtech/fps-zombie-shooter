@@ -58,7 +58,6 @@ export function GameOver({
         },
         onError: () => {
           setStatsSaveError(true);
-          // Allow retry if it failed
           statsSavedRef.current = false;
         },
       },
@@ -82,104 +81,110 @@ export function GameOver({
       className="relative w-full h-full flex flex-col items-center justify-center overflow-hidden"
       style={{
         background:
-          "linear-gradient(180deg, #0a0000 0%, #1a0500 50%, #0a0000 100%)",
+          "radial-gradient(ellipse at 50% 0%, rgba(140,0,0,0.22) 0%, #060606 55%)",
       }}
     >
-      {/* Blood splatter effect */}
+      {/* Top blood glow */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse at 50% 0%, rgba(120,0,0,0.4) 0%, transparent 60%)",
+            "radial-gradient(ellipse 80% 30% at 50% 0%, rgba(180,0,0,0.18) 0%, transparent 60%)",
+          zIndex: 0,
+        }}
+      />
+      {/* Scan-line texture */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px)",
+          zIndex: 0,
         }}
       />
 
       <div
-        className="relative z-10 flex flex-col items-center gap-5 px-8 py-8 w-full max-w-md"
+        className="relative z-10 flex flex-col items-center gap-4 px-8 py-8 w-full max-w-md"
         style={{
-          background: "rgba(8,0,0,0.97)",
-          border: "4px solid #0a0505",
-          boxShadow: "8px 8px 0 #0a0505",
+          background: "rgba(255,255,255,0.03)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          boxShadow:
+            "0 4px 40px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.04)",
         }}
       >
         {/* Title */}
         <div
-          className="font-bangers text-6xl text-center"
+          data-ocid="gameover.panel"
           style={{
-            color: "#ff2200",
-            WebkitTextStroke: "3px #0a0505",
-            textShadow: "4px 4px 0 #0a0505",
+            fontFamily: "'Oswald', sans-serif",
+            fontWeight: 700,
+            fontSize: "clamp(3.5rem, 8vw, 5.5rem)",
             letterSpacing: "0.05em",
+            textTransform: "uppercase",
+            color: "#cc1111",
+            textShadow:
+              "0 0 40px rgba(220,0,0,0.6), 0 0 80px rgba(180,0,0,0.3), 0 4px 12px rgba(0,0,0,0.9)",
+            lineHeight: 1,
           }}
         >
           GAME OVER
         </div>
 
-        {/* Stats */}
+        {/* Divider */}
         <div
-          className="w-full grid grid-cols-2 gap-3"
           style={{
-            background: "rgba(20,5,0,0.8)",
-            border: "2px solid #2a0a00",
-            padding: "12px",
+            width: "100%",
+            height: "1px",
+            background:
+              "linear-gradient(90deg, transparent, rgba(200,20,20,0.5), transparent)",
           }}
-        >
-          <div className="flex flex-col items-center">
-            <span
-              className="font-bangers text-3xl"
-              style={{ color: "#ffcc00", WebkitTextStroke: "1px #0a0505" }}
+        />
+
+        {/* Stats */}
+        <div className="w-full grid grid-cols-2 gap-2">
+          {[
+            {
+              label: "Score",
+              value: score.toLocaleString(),
+              color: "rgba(255,255,255,0.92)",
+            },
+            { label: "Wave", value: String(wave), color: "#FF7A00" },
+            { label: "Kills", value: String(kills), color: "#ff5555" },
+            { label: "Headshots", value: String(headshots), color: "#44ee88" },
+          ].map(({ label, value, color }) => (
+            <div
+              key={label}
+              className="flex flex-col items-center py-3 px-2"
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.07)",
+              }}
             >
-              {score.toLocaleString()}
-            </span>
-            <span
-              className="font-oswald text-xs uppercase tracking-widest"
-              style={{ color: "#cc8844" }}
-            >
-              Score
-            </span>
-          </div>
-          <div className="flex flex-col items-center">
-            <span
-              className="font-bangers text-3xl"
-              style={{ color: "#ff8800", WebkitTextStroke: "1px #0a0505" }}
-            >
-              {wave}
-            </span>
-            <span
-              className="font-oswald text-xs uppercase tracking-widest"
-              style={{ color: "#cc8844" }}
-            >
-              Wave
-            </span>
-          </div>
-          <div className="flex flex-col items-center">
-            <span
-              className="font-bangers text-3xl"
-              style={{ color: "#ff4444", WebkitTextStroke: "1px #0a0505" }}
-            >
-              {kills}
-            </span>
-            <span
-              className="font-oswald text-xs uppercase tracking-widest"
-              style={{ color: "#cc8844" }}
-            >
-              Kills
-            </span>
-          </div>
-          <div className="flex flex-col items-center">
-            <span
-              className="font-bangers text-3xl"
-              style={{ color: "#44ff88", WebkitTextStroke: "1px #0a0505" }}
-            >
-              {headshots}
-            </span>
-            <span
-              className="font-oswald text-xs uppercase tracking-widest"
-              style={{ color: "#cc8844" }}
-            >
-              Headshots
-            </span>
-          </div>
+              <span
+                style={{
+                  fontFamily: "'Oswald', sans-serif",
+                  fontWeight: 700,
+                  fontSize: "2rem",
+                  color,
+                  lineHeight: 1.1,
+                }}
+              >
+                {value}
+              </span>
+              <span
+                style={{
+                  fontFamily: "'Sora', system-ui, sans-serif",
+                  fontSize: "0.68rem",
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                  color: "rgba(255,255,255,0.35)",
+                  marginTop: "2px",
+                }}
+              >
+                {label}
+              </span>
+            </div>
+          ))}
         </div>
 
         {/* Stats save status */}
@@ -187,47 +192,60 @@ export function GameOver({
           <div className="w-full">
             {!statsSaved && !statsSaveError && (
               <div
+                data-ocid="gameover.loading_state"
                 className="w-full flex items-center justify-center gap-2 px-3 py-2"
                 style={{
-                  background: "rgba(20,10,0,0.7)",
-                  border: "1px solid #2a1500",
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px solid rgba(255,255,255,0.06)",
                 }}
               >
                 <span
-                  className="font-oswald text-sm animate-pulse"
-                  style={{ color: "#cc8844" }}
+                  style={{
+                    fontFamily: "'Sora', system-ui, sans-serif",
+                    fontSize: "0.8rem",
+                    color: "rgba(255,255,255,0.45)",
+                    animation: "pulse 1.5s ease-in-out infinite",
+                  }}
                 >
-                  ⏳ Saving stats...
+                  Saving stats...
                 </span>
               </div>
             )}
             {statsSaved && (
               <div
+                data-ocid="gameover.success_state"
                 className="w-full flex items-center justify-center gap-2 px-3 py-2"
                 style={{
-                  background: "rgba(0,30,0,0.7)",
-                  border: "1px solid #004400",
+                  background: "rgba(20,80,20,0.1)",
+                  border: "1px solid rgba(40,160,70,0.3)",
                 }}
               >
                 <span
-                  className="font-oswald text-sm"
-                  style={{ color: "#44ff88" }}
+                  style={{
+                    fontFamily: "'Sora', system-ui, sans-serif",
+                    fontSize: "0.8rem",
+                    color: "#44ee88",
+                  }}
                 >
-                  ✓ Stats saved to your profile!
+                  ✓ Stats saved to your profile
                 </span>
               </div>
             )}
             {statsSaveError && (
               <div
+                data-ocid="gameover.error_state"
                 className="w-full flex items-center justify-center gap-2 px-3 py-2"
                 style={{
-                  background: "rgba(30,0,0,0.7)",
-                  border: "1px solid #440000",
+                  background: "rgba(80,0,0,0.1)",
+                  border: "1px solid rgba(200,30,30,0.3)",
                 }}
               >
                 <span
-                  className="font-oswald text-sm"
-                  style={{ color: "#ff4444" }}
+                  style={{
+                    fontFamily: "'Sora', system-ui, sans-serif",
+                    fontSize: "0.8rem",
+                    color: "#ff5555",
+                  }}
                 >
                   ✗ Could not save stats. Try again later.
                 </span>
@@ -241,48 +259,68 @@ export function GameOver({
           !submitted ? (
             <div className="w-full flex flex-col gap-3">
               <div
-                className="font-bangers text-xl text-center"
-                style={{ color: "#ffcc00", letterSpacing: "0.05em" }}
+                style={{
+                  fontFamily: "'Oswald', sans-serif",
+                  fontWeight: 600,
+                  fontSize: "0.8rem",
+                  letterSpacing: "0.15em",
+                  textTransform: "uppercase",
+                  color: "rgba(255,255,255,0.45)",
+                  textAlign: "center",
+                }}
               >
                 SUBMIT YOUR SCORE
               </div>
               <input
                 type="text"
                 maxLength={16}
-                placeholder="ENTER NAME (max 16 chars)"
+                placeholder="Enter name (max 16 chars)"
                 value={playerName}
                 onChange={(e) => setPlayerName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                className="w-full px-3 py-2 font-oswald text-base outline-none"
+                data-ocid="gameover.input"
+                className="w-full px-3 py-2 outline-none"
                 style={{
-                  background: "rgba(20,8,0,0.9)",
-                  border: "2px solid #cc8800",
-                  color: "#ffcc00",
-                  letterSpacing: "0.05em",
+                  fontFamily: "'Sora', system-ui, sans-serif",
+                  fontSize: "0.9rem",
+                  background: "rgba(255,255,255,0.05)",
+                  border: "1px solid rgba(255,122,0,0.4)",
+                  color: "rgba(255,255,255,0.85)",
+                  letterSpacing: "0.04em",
                 }}
               />
               <button
                 type="button"
-                className="toon-btn toon-btn-yellow w-full"
+                className="cod-premium-btn w-full"
+                data-ocid="gameover.submit_button"
                 onClick={handleSubmit}
                 disabled={isSubmitting || !playerName.trim()}
+                style={{
+                  opacity: isSubmitting || !playerName.trim() ? 0.45 : 1,
+                }}
               >
-                {isSubmitting ? "⏳ SUBMITTING..." : "🏆 SUBMIT SCORE"}
+                {isSubmitting ? "SUBMITTING..." : "SUBMIT SCORE"}
               </button>
             </div>
           ) : (
             <div
+              data-ocid="gameover.success_state"
               className="w-full flex items-center justify-center gap-2 px-3 py-3"
               style={{
-                background: "rgba(0,30,0,0.7)",
-                border: "2px solid #004400",
+                background: "rgba(20,80,20,0.1)",
+                border: "1px solid rgba(40,160,70,0.3)",
               }}
             >
               <span
-                className="font-bangers text-xl"
-                style={{ color: "#44ff88", letterSpacing: "0.05em" }}
+                style={{
+                  fontFamily: "'Oswald', sans-serif",
+                  fontWeight: 600,
+                  fontSize: "1rem",
+                  letterSpacing: "0.08em",
+                  color: "#44ee88",
+                }}
               >
-                ✓ SCORE SUBMITTED!
+                SCORE SUBMITTED
               </span>
             </div>
           )
@@ -290,43 +328,59 @@ export function GameOver({
           <div
             className="w-full flex flex-col items-center gap-2 px-3 py-3"
             style={{
-              background: "rgba(20,8,0,0.7)",
-              border: "2px dashed #cc8800",
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.08)",
             }}
           >
-            <span style={{ fontSize: "1.5rem" }}>🔒</span>
+            <span style={{ fontSize: "1.2rem" }}>🔒</span>
             <span
-              className="font-oswald text-sm text-center"
-              style={{ color: "#cc8844" }}
+              style={{
+                fontFamily: "'Sora', system-ui, sans-serif",
+                fontSize: "0.78rem",
+                textAlign: "center",
+                color: "rgba(255,255,255,0.4)",
+              }}
             >
-              Sign in to submit your score to the leaderboard and save your
-              stats!
+              Sign in to submit your score and save your stats.
             </span>
           </div>
         )}
+
+        {/* Divider */}
+        <div
+          style={{
+            width: "100%",
+            height: "1px",
+            background:
+              "linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)",
+          }}
+        />
 
         {/* Action buttons */}
         <div className="w-full flex flex-col gap-2">
           <button
             type="button"
-            className="toon-btn toon-btn-green w-full"
+            className="cod-premium-btn-success w-full"
+            data-ocid="gameover.primary_button"
             onClick={onRetry}
           >
-            🔄 PLAY AGAIN
+            PLAY AGAIN
           </button>
           <button
             type="button"
-            className="toon-btn toon-btn-yellow w-full"
+            className="cod-premium-btn w-full"
+            data-ocid="gameover.secondary_button"
             onClick={onShowLeaderboard}
           >
-            🏆 LEADERBOARD
+            LEADERBOARD
           </button>
           <button
             type="button"
-            className="toon-btn toon-btn-red w-full"
+            className="cod-premium-btn-danger w-full"
+            data-ocid="gameover.cancel_button"
             onClick={onMainMenu}
           >
-            🏠 MAIN MENU
+            MAIN MENU
           </button>
         </div>
       </div>

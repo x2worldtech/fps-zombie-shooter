@@ -5,7 +5,7 @@ interface LeaderboardProps {
 }
 
 const RANK_COLORS = ["#ffd700", "#c0c0c0", "#cd7f32"];
-const RANK_LABELS = ["🥇", "🥈", "🥉"];
+const RANK_LABELS = ["1ST", "2ND", "3RD"];
 
 export function Leaderboard({ onBack }: LeaderboardProps) {
   const { leaderboard, isLoading, isError } = useLeaderboard();
@@ -15,141 +15,215 @@ export function Leaderboard({ onBack }: LeaderboardProps) {
       className="relative w-full h-full flex flex-col items-center justify-center overflow-hidden"
       style={{
         background:
-          "linear-gradient(180deg, #1a0800 0%, #2d1200 40%, #1a0800 100%)",
+          "radial-gradient(ellipse at 50% 30%, rgba(120,10,10,0.12) 0%, #060606 60%)",
       }}
     >
+      {/* Scan-line texture */}
       <div
-        className="flex flex-col items-center gap-5 px-8 py-8 w-full max-w-lg"
+        className="absolute inset-0 pointer-events-none"
         style={{
-          background: "rgba(10,5,0,0.95)",
-          border: "4px solid #0a0505",
-          boxShadow: "8px 8px 0 #0a0505",
+          backgroundImage:
+            "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px)",
+          zIndex: 0,
+        }}
+      />
+
+      <div
+        className="relative z-10 flex flex-col items-center gap-5 px-8 py-8 w-full max-w-lg"
+        style={{
+          background: "rgba(255,255,255,0.03)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          boxShadow:
+            "0 4px 40px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.04)",
         }}
       >
         {/* Title */}
         <div
-          className="font-bangers text-5xl"
           style={{
-            color: "#ffcc00",
-            WebkitTextStroke: "2px #0a0505",
-            textShadow: "4px 4px 0 #0a0505",
-            letterSpacing: "0.1em",
+            fontFamily: "'Oswald', sans-serif",
+            fontWeight: 700,
+            fontSize: "2.8rem",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: "rgba(255,255,255,0.95)",
+            textShadow:
+              "0 0 30px rgba(255,160,20,0.3), 0 2px 8px rgba(0,0,0,0.8)",
           }}
         >
-          🏆 LEADERBOARD
+          LEADERBOARD
         </div>
+
+        {/* Divider */}
+        <div
+          style={{
+            width: "100%",
+            height: "1px",
+            background:
+              "linear-gradient(90deg, transparent, rgba(255,160,20,0.5), transparent)",
+          }}
+        />
+
         {/* Auth notice */}
         <div
           className="w-full flex items-center gap-2 px-3 py-2"
           style={{
-            background: "rgba(40,20,0,0.7)",
-            border: "2px dashed #cc8800",
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.07)",
           }}
         >
-          <span style={{ fontSize: "1rem" }}>🔒</span>
-          <span className="font-oswald text-sm" style={{ color: "#cc8844" }}>
-            Only scores from signed-in players are shown on this leaderboard.
+          <span style={{ fontSize: "0.9rem" }}>🔒</span>
+          <span
+            style={{
+              fontFamily: "'Sora', system-ui, sans-serif",
+              fontSize: "0.78rem",
+              color: "rgba(255,255,255,0.4)",
+              letterSpacing: "0.02em",
+            }}
+          >
+            Only scores from signed-in players are shown.
           </span>
         </div>
+
         {/* Header row */}
         <div
           className="w-full grid gap-2 px-3 py-2"
           style={{
-            gridTemplateColumns: "40px 1fr 100px 80px",
-            background: "rgba(80,40,0,0.6)",
-            border: "2px solid #4a2800",
+            gridTemplateColumns: "44px 1fr 100px 72px",
+            background: "rgba(255,255,255,0.04)",
+            borderBottom: "1px solid rgba(255,122,0,0.25)",
           }}
         >
-          <span className="font-bangers text-sm" style={{ color: "#ff8800" }}>
-            #
-          </span>
-          <span className="font-bangers text-sm" style={{ color: "#ff8800" }}>
-            NAME
-          </span>
-          <span
-            className="font-bangers text-sm text-right"
-            style={{ color: "#ff8800" }}
-          >
-            SCORE
-          </span>
-          <span
-            className="font-bangers text-sm text-right"
-            style={{ color: "#ff8800" }}
-          >
-            WAVE
-          </span>
+          {["#", "NAME", "SCORE", "WAVE"].map((h) => (
+            <span
+              key={h}
+              style={{
+                fontFamily: "'Oswald', sans-serif",
+                fontWeight: 600,
+                fontSize: "0.75rem",
+                letterSpacing: "0.12em",
+                color: "#FF7A00",
+                textTransform: "uppercase",
+                textAlign: h === "SCORE" || h === "WAVE" ? "right" : "left",
+              }}
+            >
+              {h}
+            </span>
+          ))}
         </div>
+
         {/* Entries */}
-        <div className="w-full flex flex-col gap-1 max-h-80 overflow-y-auto">
+        <div
+          className="w-full flex flex-col gap-1 max-h-80 overflow-y-auto"
+          data-ocid="leaderboard.list"
+        >
           {isLoading ? (
             <div
-              className="text-center py-8 font-bangers text-2xl"
-              style={{ color: "#cc8844" }}
+              data-ocid="leaderboard.loading_state"
+              className="text-center py-8"
+              style={{
+                fontFamily: "'Sora', system-ui, sans-serif",
+                fontSize: "0.9rem",
+                color: "rgba(255,255,255,0.4)",
+              }}
             >
-              ⏳ LOADING...
+              Loading scores...
             </div>
           ) : isError ? (
             <div
-              className="text-center py-8 font-bangers text-xl"
-              style={{ color: "#ff4444" }}
+              data-ocid="leaderboard.error_state"
+              className="text-center py-8"
+              style={{
+                fontFamily: "'Sora', system-ui, sans-serif",
+                fontSize: "0.85rem",
+                color: "#ff4444",
+              }}
             >
-              ✗ COULD NOT LOAD SCORES
-              <div
-                className="font-oswald text-sm mt-2"
-                style={{ color: "#886644" }}
-              >
-                Please try again later.
-              </div>
+              Could not load scores. Try again later.
             </div>
           ) : leaderboard.length === 0 ? (
             <div
-              className="text-center py-8 font-bangers text-2xl"
-              style={{ color: "#cc8844" }}
+              data-ocid="leaderboard.empty_state"
+              className="text-center py-8"
+              style={{
+                fontFamily: "'Sora', system-ui, sans-serif",
+                color: "rgba(255,255,255,0.35)",
+              }}
             >
-              NO SCORES YET!
               <div
-                className="font-oswald text-base mt-2"
-                style={{ color: "#886644" }}
+                style={{
+                  fontFamily: "'Oswald', sans-serif",
+                  fontWeight: 700,
+                  fontSize: "1.5rem",
+                  letterSpacing: "0.08em",
+                  color: "rgba(255,255,255,0.5)",
+                  marginBottom: "6px",
+                }}
               >
-                Be the first to survive the desert!
+                NO SCORES YET
               </div>
+              Be the first to survive the desert!
             </div>
           ) : (
             leaderboard.map((entry, i) => (
               <div
                 // biome-ignore lint: pre-existing issue
                 key={i}
+                data-ocid={`leaderboard.item.${i + 1}`}
                 className="w-full grid gap-2 px-3 py-2 items-center"
                 style={{
-                  gridTemplateColumns: "40px 1fr 100px 80px",
+                  gridTemplateColumns: "44px 1fr 100px 72px",
                   background:
                     i < 3
-                      ? `rgba(${i === 0 ? "80,60,0" : i === 1 ? "50,50,50" : "60,35,10"},0.5)`
-                      : "rgba(20,10,0,0.5)",
-                  border: `1px solid ${i < 3 ? `${RANK_COLORS[i]}44` : "#2a1500"}`,
+                      ? `rgba(${i === 0 ? "255,215,0" : i === 1 ? "192,192,192" : "205,127,50"},0.05)`
+                      : "rgba(255,255,255,0.025)",
+                  border: `1px solid ${
+                    i < 3 ? `${RANK_COLORS[i]}30` : "rgba(255,255,255,0.05)"
+                  }`,
                 }}
               >
                 <span
-                  className="font-bangers text-xl"
-                  style={{ color: i < 3 ? RANK_COLORS[i] : "#886644" }}
+                  style={{
+                    fontFamily: "'Oswald', sans-serif",
+                    fontWeight: 700,
+                    fontSize: i < 3 ? "0.75rem" : "1rem",
+                    color: i < 3 ? RANK_COLORS[i] : "rgba(255,255,255,0.3)",
+                    letterSpacing: i < 3 ? "0.05em" : "0",
+                  }}
                 >
                   {i < 3 ? RANK_LABELS[i] : `${i + 1}`}
                 </span>
                 <span
-                  className="font-oswald font-semibold text-base truncate"
-                  style={{ color: i < 3 ? RANK_COLORS[i] : "#cc8844" }}
+                  style={{
+                    fontFamily: "'Oswald', sans-serif",
+                    fontWeight: 600,
+                    fontSize: "0.95rem",
+                    color: i < 3 ? RANK_COLORS[i] : "rgba(255,255,255,0.75)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
                 >
                   {entry.playerName}
                 </span>
                 <span
-                  className="font-bangers text-lg text-right"
-                  style={{ color: "#ffcc00" }}
+                  style={{
+                    fontFamily: "'Oswald', sans-serif",
+                    fontWeight: 600,
+                    fontSize: "0.95rem",
+                    textAlign: "right",
+                    color: "rgba(255,255,255,0.85)",
+                  }}
                 >
                   {Number(entry.score).toLocaleString()}
                 </span>
                 <span
-                  className="font-bangers text-lg text-right"
-                  style={{ color: "#ff8800" }}
+                  style={{
+                    fontFamily: "'Oswald', sans-serif",
+                    fontWeight: 600,
+                    fontSize: "0.9rem",
+                    textAlign: "right",
+                    color: "#FF7A00",
+                  }}
                 >
                   W{Number(entry.wave)}
                 </span>
@@ -157,9 +231,21 @@ export function Leaderboard({ onBack }: LeaderboardProps) {
             ))
           )}
         </div>
+
+        {/* Divider */}
+        <div
+          style={{
+            width: "100%",
+            height: "1px",
+            background:
+              "linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)",
+          }}
+        />
+
         <button
           type="button"
-          className="toon-btn toon-btn-red w-48"
+          className="cod-premium-btn-danger w-48"
+          data-ocid="leaderboard.back.button"
           onClick={onBack}
         >
           ← BACK
