@@ -19,32 +19,40 @@ export function WaveOverlay({ waveState }: WaveOverlayProps) {
       style={{ zIndex: 20 }}
     >
       <div
-        className="flex flex-col items-center gap-4 px-12 py-8"
+        className="flex flex-col items-center gap-4 px-14 py-10"
         style={{
-          background: "rgba(10,5,0,0.88)",
-          border: "4px solid #0a0505",
-          boxShadow: "8px 8px 0 #0a0505",
+          background: "rgba(3,4,10,0.92)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          boxShadow:
+            "0 0 60px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.04)",
         }}
       >
         {waveState.phase === "countdown" && (
           <>
             <div
-              className="font-bangers text-5xl"
               style={{
+                fontFamily: "'Oswald', sans-serif",
+                fontWeight: 700,
+                fontSize: "clamp(1.8rem, 3.5vw, 2.8rem)",
+                letterSpacing: "0.18em",
                 color: "#8b0000",
-                WebkitTextStroke: "1px #0a0505",
-                textShadow: "0 0 12px #8b000088, 3px 3px 0 #0a0505",
-                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                textShadow:
+                  "0 0 20px rgba(139,0,0,0.6), 2px 2px 8px rgba(0,0,0,0.95)",
               }}
             >
               ROUND {waveState.wave}
             </div>
             <div
-              className="font-bangers text-8xl"
               style={{
-                color: "#ffcc00",
-                WebkitTextStroke: "3px #0a0505",
-                textShadow: "4px 4px 0 #0a0505",
+                fontFamily: "'Oswald', sans-serif",
+                fontWeight: 700,
+                fontSize: "clamp(5rem, 12vw, 9rem)",
+                lineHeight: 1,
+                letterSpacing: "0.05em",
+                color: "rgba(255,255,255,0.92)",
+                textTransform: "uppercase",
+                textShadow: "2px 2px 20px rgba(0,0,0,0.95)",
                 animation: "wave-in 0.3s ease-out",
               }}
             >
@@ -56,17 +64,29 @@ export function WaveOverlay({ waveState }: WaveOverlayProps) {
         {waveState.phase === "cleared" && (
           <>
             <div
-              className="font-bangers text-6xl"
               style={{
-                color: "#44ff44",
-                WebkitTextStroke: "2px #0a0505",
-                textShadow: "3px 3px 0 #0a0505",
-                letterSpacing: "0.05em",
+                fontFamily: "'Oswald', sans-serif",
+                fontWeight: 700,
+                fontSize: "clamp(2.5rem, 5vw, 4rem)",
+                letterSpacing: "0.12em",
+                color: "rgba(255,255,255,0.92)",
+                textTransform: "uppercase",
+                textShadow:
+                  "0 0 20px rgba(60,200,60,0.4), 2px 2px 10px rgba(0,0,0,0.95)",
               }}
             >
               ROUND CLEAR
             </div>
-            <div className="toon-text text-xl" style={{ color: "#ffcc88" }}>
+            <div
+              style={{
+                fontFamily: "'Oswald', sans-serif",
+                fontWeight: 400,
+                fontSize: "1rem",
+                letterSpacing: "0.25em",
+                color: "rgba(255,255,255,0.35)",
+                textTransform: "uppercase",
+              }}
+            >
               Next round incoming...
             </div>
           </>

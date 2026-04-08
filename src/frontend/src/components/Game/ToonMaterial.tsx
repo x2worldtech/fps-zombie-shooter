@@ -9,24 +9,36 @@ interface ToonMaterialProps {
 }
 
 // Standard PBR material (no cell-shading) — used for zombies
+// Includes a subtle undead emissive glow so bloom picks up the zombie
 export function useStandardMaterial(color: string, hitFlash = 0) {
   const materialRef = useRef<THREE.MeshStandardMaterial | null>(null);
 
   if (!materialRef.current) {
     materialRef.current = new THREE.MeshStandardMaterial({
       color: new THREE.Color(color),
-      roughness: 0.85,
-      metalness: 0.05,
+      roughness: 0.8,
+      metalness: 0.1,
+      // Subtle undead glow — picked up by the bloom pass for atmosphere
+      emissive: new THREE.Color(0.13, 0.0, 0.0),
+      emissiveIntensity: 0.1,
     });
   }
 
   if (materialRef.current) {
     materialRef.current.color.set(color);
-    materialRef.current.emissive.setRGB(
-      hitFlash * 0.6,
-      hitFlash * 0.1,
-      hitFlash * 0.1,
-    );
+    if (hitFlash > 0) {
+      // Hit flash overrides the resting undead glow
+      materialRef.current.emissive.setRGB(
+        hitFlash * 0.7,
+        hitFlash * 0.08,
+        hitFlash * 0.08,
+      );
+      materialRef.current.emissiveIntensity = 1.0;
+    } else {
+      // Return to subtle undead glow at rest
+      materialRef.current.emissive.setRGB(0.13, 0.0, 0.0);
+      materialRef.current.emissiveIntensity = 0.1;
+    }
   }
 
   return materialRef.current;

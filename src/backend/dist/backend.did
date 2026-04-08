@@ -1,0 +1,43 @@
+type UserRole = 
+ variant {
+   admin;
+   guest;
+   user;
+ };
+type SessionStats = 
+ record {
+   headshots: nat;
+   kills: nat;
+   points: nat;
+   shots: nat;
+ };
+type ScoreEntry = 
+ record {
+   playerName: text;
+   score: nat;
+   wave: nat;
+ };
+type PlayerProfile = 
+ record {
+   currentLevel: nat;
+   totalHeadshots: nat;
+   totalKills: nat;
+   totalPoints: nat;
+   totalRounds: nat;
+   totalShots: nat;
+ };
+service : {
+  _initializeAccessControl: () -> ();
+  assignCallerUserRole: (user: principal, role: UserRole) -> ();
+  getCallerUserProfile: () -> (opt PlayerProfile) query;
+  getCallerUserRole: () -> (UserRole) query;
+  getHighScores: () -> (vec ScoreEntry) query;
+  getOrCreateProfile: () -> (PlayerProfile);
+  getProfile: ("principal": principal) -> (opt PlayerProfile) query;
+  getUserProfile: (user: principal) -> (opt PlayerProfile) query;
+  isCallerAdmin: () -> (bool) query;
+  saveCallerUserProfile: (profile: PlayerProfile) -> ();
+  submitScore: (playerName: text, score: nat, wave: nat) -> ();
+  updateProfile: ("principal": principal, sessionStats: SessionStats) ->
+   (PlayerProfile);
+}

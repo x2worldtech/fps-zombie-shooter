@@ -16,7 +16,7 @@ const STARS = Array.from({ length: 120 }, (_, i) => ({
   top: ((i * 97.3 + 7) % 100).toFixed(2),
   size: 1 + (i % 2),
   opacity: (0.2 + ((i * 3) % 7) * 0.09).toFixed(2),
-  twinkle: i % 5 === 0, // every 5th star twinkles
+  twinkle: i % 5 === 0,
   twinkleDuration: (2.5 + (i % 8) * 0.4).toFixed(1),
   twinkleDelay: ((i * 0.23) % 4).toFixed(1),
 }));
@@ -86,7 +86,7 @@ export function MainMenu({
   const isAuthenticated = !!identity;
   const isLoggingIn = loginStatus === "logging-in";
   const [mounted, setMounted] = useState(false);
-  const [activeItem, setActiveItem] = useState(0);
+  const [activeItem, setActiveItem] = useState(-1);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -135,7 +135,7 @@ export function MainMenu({
   };
 
   const menuItems = [
-    { label: "START GAME", action: onStartGame, primary: true },
+    { label: "START GAME", action: onStartGame },
     { label: "LEADERBOARD", action: onShowLeaderboard },
     ...(isAuthenticated
       ? [{ label: "MY PROFILE", action: onShowProfile }]
@@ -148,7 +148,6 @@ export function MainMenu({
           ? "SIGN OUT"
           : "SIGN IN",
       action: handleAuth,
-      muted: true,
     },
   ];
 
@@ -166,7 +165,6 @@ export function MainMenu({
           zIndex: 0,
         }}
       />
-      {/* secondary subtle nebula */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
@@ -313,20 +311,17 @@ export function MainMenu({
               className="cod-menu-item"
               style={{
                 color:
-                  idx === 0 || activeItem === idx
-                    ? "#FF7A00"
-                    : item.muted
-                      ? "rgba(255,255,255,0.35)"
-                      : "rgba(255,255,255,0.82)",
+                  activeItem === idx ? "#FF7A00" : "rgba(255,255,255,0.82)",
                 fontSize:
                   idx === 0
                     ? "clamp(1.6rem, 3.5vw, 2.3rem)"
                     : "clamp(1.2rem, 2.5vw, 1.75rem)",
+                transition: "color 0.15s ease",
               }}
               onMouseEnter={() => setActiveItem(idx)}
-              onMouseLeave={() => setActiveItem(0)}
+              onMouseLeave={() => setActiveItem(-1)}
               onClick={item.action}
-              disabled={isLoggingIn && item.muted}
+              disabled={isLoggingIn}
             >
               {item.label}
             </button>

@@ -1,3 +1,4 @@
+import { ContactShadows, Environment } from "@react-three/drei";
 import { useMemo } from "react";
 import * as THREE from "three";
 import { sandFragmentShader, sandVertexShader } from "../../shaders/sandShader";
@@ -25,6 +26,7 @@ function usePBRMat(
   metalness = 0.0,
   emissive?: string,
   emissiveIntensity = 0,
+  envMapIntensity = 0.3,
 ) {
   return useMemo(
     () =>
@@ -34,18 +36,14 @@ function usePBRMat(
         metalness,
         emissive: emissive ? new THREE.Color(emissive) : undefined,
         emissiveIntensity,
+        envMapIntensity,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [color, roughness, metalness, emissive, emissiveIntensity],
+    [color, roughness, metalness, emissive, emissiveIntensity, envMapIntensity],
   );
 }
 
 // ─── Window component ─────────────────────────────────────────────────────────
-// rotationY controls which direction the window faces outward:
-//   Front wall  (+Z): rotationY = 0           (default)
-//   Back wall   (-Z): rotationY = Math.PI
-//   Right wall  (+X): rotationY = Math.PI / 2
-//   Left wall   (-X): rotationY = -Math.PI / 2
 function Window({
   position,
   rotationY = 0,
@@ -61,7 +59,7 @@ function Window({
   frameColor: string;
   hasLight?: boolean;
 }) {
-  const frameMat = usePBRMat(frameColor, 0.75);
+  const frameMat = usePBRMat(frameColor, 0.7, 0.05);
   const glassMat = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
@@ -71,15 +69,17 @@ function Window({
         roughness: 0.05,
         metalness: 0.6,
         emissive: hasLight
-          ? new THREE.Color(0.4, 0.3, 0.1)
+          ? new THREE.Color(0.5, 0.35, 0.12)
           : new THREE.Color(0.01, 0.02, 0.05),
-        emissiveIntensity: hasLight ? 0.8 : 0.3,
+        // Higher emissive intensity so bloom picks up lit windows
+        emissiveIntensity: hasLight ? 1.4 : 0.2,
         transparent: true,
         opacity: hasLight ? 0.85 : 0.7,
+        envMapIntensity: 0.5,
       }),
     [hasLight],
   );
-  const sillMat = usePBRMat(frameColor, 0.6);
+  const sillMat = usePBRMat(frameColor, 0.6, 0.05);
 
   return (
     <group position={position} rotation={[0, rotationY, 0]}>
@@ -120,7 +120,7 @@ function Balcony({
   railColor: string;
 }) {
   const floorMat = usePBRMat(floorColor, 0.88);
-  const railMat = usePBRMat(railColor, 0.7, 0.1);
+  const railMat = usePBRMat(railColor, 0.65, 0.15);
   const postCount = Math.max(2, Math.floor(width / 0.6));
 
   return (
@@ -161,14 +161,14 @@ function Balcony({
 
 // ─── Rooftop AC Unit ─────────────────────────────────────────────────────────
 function ACUnit({ position }: { position: [number, number, number] }) {
-  const bodyMat = usePBRMat("#7a8088", 0.7, 0.3);
-  const ventMat = usePBRMat("#55595e", 0.8, 0.2);
+  // Metal elements get higher metalness for the engine-look
+  const bodyMat = usePBRMat("#7a8088", 0.65, 0.35, undefined, 0, 0.4);
+  const ventMat = usePBRMat("#55595e", 0.75, 0.25, undefined, 0, 0.4);
   return (
     <group position={position}>
       <mesh material={bodyMat} castShadow>
         <boxGeometry args={[0.9, 0.55, 0.7]} />
       </mesh>
-      {/* Vent slats */}
       {[-0.2, 0, 0.2].map((y, i) => (
         <mesh
           // biome-ignore lint/suspicious/noArrayIndexKey: static
@@ -185,11 +185,10 @@ function ACUnit({ position }: { position: [number, number, number] }) {
 
 // ─── Water Tank ───────────────────────────────────────────────────────────────
 function WaterTank({ position }: { position: [number, number, number] }) {
-  const tankMat = usePBRMat("#8a7060", 0.85);
-  const bandMat = usePBRMat("#5a4030", 0.7, 0.1);
+  const tankMat = usePBRMat("#8a7060", 0.78, 0.12, undefined, 0, 0.3);
+  const bandMat = usePBRMat("#5a4030", 0.65, 0.18, undefined, 0, 0.3);
   return (
     <group position={position}>
-      {/* Cylinder legs */}
       {[-0.3, 0.3].map((x, i) => (
         <mesh
           // biome-ignore lint/suspicious/noArrayIndexKey: static
@@ -200,11 +199,9 @@ function WaterTank({ position }: { position: [number, number, number] }) {
           <boxGeometry args={[0.08, 0.5, 0.08]} />
         </mesh>
       ))}
-      {/* Tank body */}
       <mesh material={tankMat} position={[0, 0.1, 0]} castShadow>
         <cylinderGeometry args={[0.35, 0.35, 0.7, 10]} />
       </mesh>
-      {/* Bands */}
       {[-0.15, 0.15].map((y, i) => (
         <mesh
           // biome-ignore lint/suspicious/noArrayIndexKey: static
@@ -233,11 +230,9 @@ function IntactBuilding({
   depth: number;
   color: string;
 }) {
-  // Derive realistic colour palette from base color
   const baseColor = useMemo(() => new THREE.Color(color), [color]);
 
   const wallColor = useMemo(() => {
-    // Desaturate slightly & lighten for concrete/stucco feel
     const c = baseColor.clone();
     const hsl = { h: 0, s: 0, l: 0 };
     c.getHSL(hsl);
@@ -258,10 +253,11 @@ function IntactBuilding({
     return `#${new THREE.Color().setHSL(hsl.h, hsl.s * 0.5, Math.min(1, hsl.l * 1.3)).getHexString()}`;
   }, [baseColor]);
 
-  const wallMat = usePBRMat(wallColor, 0.88);
-  const trimMat = usePBRMat(trimColor, 0.78);
-  const accentMat = usePBRMat(accentColor, 0.65);
-  const concreteMat = usePBRMat("#b0a898", 0.9);
+  // Slightly reduced roughness + envMapIntensity for PBR depth
+  const wallMat = usePBRMat(wallColor, 0.78, 0.04, undefined, 0, 0.3);
+  const trimMat = usePBRMat(trimColor, 0.72, 0.04, undefined, 0, 0.3);
+  const accentMat = usePBRMat(accentColor, 0.62, 0.06, undefined, 0, 0.35);
+  const concreteMat = usePBRMat("#b0a898", 0.84, 0.02, undefined, 0, 0.25);
 
   const parapetH = 0.5;
   const floorH = 3.2;
@@ -270,7 +266,6 @@ function IntactBuilding({
   const windowW = 0.65;
   const windowH = 0.9;
 
-  // Window grid
   const windowGrid = useMemo(() => {
     const wins: { x: number; y: number; hasLight: boolean }[] = [];
     for (let fl = 0; fl < numFloors; fl++) {
@@ -283,7 +278,6 @@ function IntactBuilding({
     return wins;
   }, [numFloors, windowCols, width, height]);
 
-  // Which floors get balconies (every other floor, skip ground)
   const balconyFloors = useMemo(() => {
     const floors: number[] = [];
     for (let fl = 1; fl < numFloors; fl += 2) {
@@ -292,7 +286,6 @@ function IntactBuilding({
     return floors;
   }, [numFloors]);
 
-  // Rooftop details
   const hasWaterTank = width > 5;
   const acUnitCount = Math.floor(width / 4);
 
@@ -351,7 +344,6 @@ function IntactBuilding({
       >
         <boxGeometry args={[width + 0.35, parapetH, depth + 0.35]} />
       </mesh>
-      {/* Parapet merlons (crenellations) */}
       {Array.from({ length: Math.floor(width * 1.2) }).map((_, i, arr) => {
         const t = i / (arr.length - 1);
         const x = -width / 2 + t * width;
@@ -452,11 +444,9 @@ function IntactBuilding({
 
       {/* ── Main entrance ── */}
       <group position={[0, -height / 2 + 1.2, depth / 2 + 0.01]}>
-        {/* Door arch surround */}
         <mesh material={accentMat}>
           <boxGeometry args={[1.4, 2.6, 0.18]} />
         </mesh>
-        {/* Door panels */}
         <mesh position={[-0.33, -0.05, 0.1]}>
           <boxGeometry args={[0.52, 2.1, 0.08]} />
           <meshStandardMaterial color="#2a1a0a" roughness={0.9} />
@@ -465,15 +455,12 @@ function IntactBuilding({
           <boxGeometry args={[0.52, 2.1, 0.08]} />
           <meshStandardMaterial color="#2a1a0a" roughness={0.9} />
         </mesh>
-        {/* Door frame top */}
         <mesh material={trimMat} position={[0, 1.15, 0.05]}>
           <boxGeometry args={[1.42, 0.18, 0.14]} />
         </mesh>
-        {/* Overhang canopy */}
         <mesh material={concreteMat} position={[0, 1.45, 0.5]}>
           <boxGeometry args={[1.8, 0.1, 1.1]} />
         </mesh>
-        {/* Canopy supports */}
         {[-0.65, 0.65].map((x, i) => (
           <mesh
             // biome-ignore lint/suspicious/noArrayIndexKey: static
@@ -484,7 +471,6 @@ function IntactBuilding({
             <boxGeometry args={[0.1, 0.35, 0.1]} />
           </mesh>
         ))}
-        {/* Steps */}
         <mesh material={trimMat} position={[0, -1.1, 0.35]}>
           <boxGeometry args={[1.6, 0.12, 0.7]} />
         </mesh>
@@ -547,11 +533,11 @@ function RuinedBuilding({
     return `#${c.getHexString()}`;
   }, [baseColor]);
 
-  const wallMat = usePBRMat(wallColor, 0.92);
-  const darkMat = usePBRMat(darkColor, 0.95);
-  const exposedMat = usePBRMat("#8a7060", 0.93);
-  const steelMat = usePBRMat("#5a4a3a", 0.6, 0.4);
-  const rubbleMat = usePBRMat("#7a6a55", 0.95);
+  const wallMat = usePBRMat(wallColor, 0.88, 0.02);
+  const darkMat = usePBRMat(darkColor, 0.92, 0.02);
+  const exposedMat = usePBRMat("#8a7060", 0.9, 0.04);
+  const steelMat = usePBRMat("#5a4a3a", 0.55, 0.45, undefined, 0, 0.4);
+  const rubbleMat = usePBRMat("#7a6a55", 0.92, 0.02);
 
   const wallSections = useMemo(
     () => [
@@ -563,12 +549,10 @@ function RuinedBuilding({
 
   return (
     <group position={position}>
-      {/* Base */}
       <mesh material={wallMat} castShadow receiveShadow>
         <boxGeometry args={[width, height, depth]} />
       </mesh>
 
-      {/* Broken upper wall sections */}
       {wallSections.map((s, i) => (
         <mesh
           // biome-ignore lint/suspicious/noArrayIndexKey: static
@@ -583,12 +567,10 @@ function RuinedBuilding({
         </mesh>
       ))}
 
-      {/* Exposed interior – dark cavity */}
       <mesh material={darkMat} position={[0, height * 0.08, 0]}>
         <boxGeometry args={[width * 0.7, height * 0.55, depth * 0.65]} />
       </mesh>
 
-      {/* Exposed brick/rebar layer */}
       <mesh
         material={exposedMat}
         position={[width * 0.15, height * 0.1, depth / 2 - 0.05]}
@@ -596,7 +578,6 @@ function RuinedBuilding({
         <boxGeometry args={[width * 0.3, height * 0.4, 0.12]} />
       </mesh>
 
-      {/* Rebar sticking out */}
       {[-0.15, 0, 0.15].map((ox, i) => (
         <mesh
           // biome-ignore lint/suspicious/noArrayIndexKey: static
@@ -609,7 +590,6 @@ function RuinedBuilding({
         </mesh>
       ))}
 
-      {/* Cracked window openings */}
       {(
         [
           { x: -width * 0.22, y: height * 0.08, w: 0.7, h: 0.95 },
@@ -625,7 +605,6 @@ function RuinedBuilding({
             <boxGeometry args={[wnd.w + 0.14, wnd.h + 0.14, 0.14]} />
             <meshStandardMaterial color="#1a100a" roughness={1} />
           </mesh>
-          {/* Broken frame shards */}
           <mesh position={[wnd.w / 3, wnd.h / 3, 0.04]} rotation={[0, 0, 0.4]}>
             <boxGeometry args={[0.12, 0.25, 0.06]} />
             <meshStandardMaterial color="#6a5540" roughness={0.9} />
@@ -633,7 +612,6 @@ function RuinedBuilding({
         </group>
       ))}
 
-      {/* Rubble heap at base */}
       {([-0.4, 0, 0.4] as number[]).map((xi, i) => (
         <mesh
           // biome-ignore lint/suspicious/noArrayIndexKey: static
@@ -651,7 +629,6 @@ function RuinedBuilding({
         </mesh>
       ))}
 
-      {/* Scorch mark */}
       <mesh
         position={[-width * 0.1, height * 0.18, depth / 2 + 0.02]}
         rotation={[0, 0, -0.15]}
@@ -680,8 +657,8 @@ function Barrier({
   height: number;
   depth: number;
 }) {
-  const concreteMat = usePBRMat("#9e9585", 0.88);
-  const darkMat = usePBRMat("#6e6358", 0.82);
+  const concreteMat = usePBRMat("#9e9585", 0.84, 0.02);
+  const darkMat = usePBRMat("#6e6358", 0.78, 0.02);
 
   return (
     <group position={position}>
@@ -700,8 +677,8 @@ function Barrier({
 
 // ─── Rubble pile ──────────────────────────────────────────────────────────────
 function RubblePile({ position }: { position: [number, number, number] }) {
-  const toonMat = usePBRMat("#7a6a50", 0.95);
-  const darkMat = usePBRMat("#5a4a35", 0.92);
+  const toonMat = usePBRMat("#7a6a50", 0.92, 0.02);
+  const darkMat = usePBRMat("#5a4a35", 0.88, 0.02);
 
   return (
     <group position={position}>
@@ -825,6 +802,50 @@ export function DesertEnvironment({
       <SkyDome />
       <SandGround />
 
+      {/* ── Atmospheric desert fog ── */}
+      <fogExp2 attach="fog" args={["#c8844a", 0.008]} />
+
+      {/* ── IBL: image-based lighting for PBR depth — no background override ── */}
+      <Environment preset="sunset" background={false} />
+
+      {/* ── Cinematic lighting rig ── */}
+      {/* Warm desert sun — strong key light */}
+      <directionalLight
+        position={[80, 120, 60]}
+        intensity={2.2}
+        color="#ffe0a0"
+        castShadow
+        shadow-mapSize-width={4096}
+        shadow-mapSize-height={4096}
+        shadow-camera-far={250}
+        shadow-camera-left={-100}
+        shadow-camera-right={100}
+        shadow-camera-top={100}
+        shadow-camera-bottom={-100}
+        shadow-bias={-0.0005}
+        shadow-normalBias={0.02}
+      />
+      {/* Sky hemisphere — warm sky / warm ground bounce */}
+      <hemisphereLight args={["#4488cc", "#7a5020", 0.45]} />
+      {/* Subtle secondary warm fill — no shadow */}
+      <directionalLight
+        position={[-40, 30, -30]}
+        intensity={0.3}
+        color="#ffcc88"
+      />
+      {/* Very subtle ambient to lift the darkest shadows */}
+      <ambientLight intensity={0.15} color="#ffddaa" />
+
+      {/* ── Soft contact shadows — removes "floating object" look ── */}
+      <ContactShadows
+        position={[0, -0.48, 0]}
+        opacity={0.4}
+        scale={120}
+        blur={2.5}
+        far={12}
+        resolution={512}
+      />
+
       {buildings.map((b, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
         <BuildingDispatcher key={i} b={b} />
@@ -848,29 +869,6 @@ export function DesertEnvironment({
       />
 
       <MountainBarrier />
-
-      {/* Lighting */}
-      <ambientLight intensity={0.55} color="#ffbb77" />
-      <directionalLight
-        position={[60, 90, 40]}
-        intensity={1.8}
-        color="#ffe8aa"
-        castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-camera-far={200}
-        shadow-camera-left={-80}
-        shadow-camera-right={80}
-        shadow-camera-top={80}
-        shadow-camera-bottom={-80}
-      />
-      <hemisphereLight args={["#ffaa55", "#5a3311", 0.35]} />
-      {/* Fill light from opposite side */}
-      <directionalLight
-        position={[-30, 40, -20]}
-        intensity={0.4}
-        color="#aaccff"
-      />
     </group>
   );
 }

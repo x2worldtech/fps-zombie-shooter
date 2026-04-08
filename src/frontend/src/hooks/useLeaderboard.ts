@@ -1,10 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ScoreEntry } from "../backend";
+import { createActor } from "../backend";
 import { useActor } from "./useActor";
 import { useInternetIdentity } from "./useInternetIdentity";
 
+// Local type definition (backend type not yet generated)
+export interface ScoreEntry {
+  playerName: string;
+  score: bigint;
+  wave: bigint;
+  timestamp: bigint;
+}
+
 export function useLeaderboard() {
-  const { actor, isFetching } = useActor();
+  const { actor, isFetching } = useActor(createActor);
   const { identity } = useInternetIdentity();
   const queryClient = useQueryClient();
 
@@ -15,7 +23,8 @@ export function useLeaderboard() {
     queryKey: ["leaderboard", principalKey],
     queryFn: async () => {
       if (!actor) throw new Error("Actor not available");
-      return actor.getHighScores();
+      // biome-ignore lint/suspicious/noExplicitAny: backend not yet fully typed
+      return (actor as any).getHighScores() as Promise<ScoreEntry[]>;
     },
     enabled: !!actor && !isFetching,
     retry: 2,
@@ -28,7 +37,8 @@ export function useLeaderboard() {
       wave,
     }: { name: string; score: number; wave: number }) => {
       if (!actor) throw new Error("No actor");
-      await actor.submitScore(name, BigInt(score), BigInt(wave));
+      // biome-ignore lint/suspicious/noExplicitAny: backend not yet fully typed
+      await (actor as any).submitScore(name, BigInt(score), BigInt(wave));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["leaderboard"] });
