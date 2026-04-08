@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useFrame } from "@react-three/fiber";
+import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import {
   type MountainSegmentData,
@@ -165,15 +166,14 @@ function MountainPeak({
     return "#" + c.getHexString();
   }, [baseColor]);
 
-  // Materials — PBR with flatShading for angular rock facets
+  // Materials
   const baseMat = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
         color: new THREE.Color(baseColor),
-        roughness: 0.9,
-        metalness: 0.06,
+        roughness: 0.92,
+        metalness: 0.04,
         flatShading: true,
-        envMapIntensity: 0.2,
       }),
     [baseColor],
   );
@@ -182,10 +182,9 @@ function MountainPeak({
     () =>
       new THREE.MeshStandardMaterial({
         color: new THREE.Color(darkColor),
-        roughness: 0.94,
-        metalness: 0.03,
+        roughness: 0.95,
+        metalness: 0.02,
         flatShading: true,
-        envMapIntensity: 0.15,
       }),
     [darkColor],
   );
@@ -194,12 +193,22 @@ function MountainPeak({
     () =>
       new THREE.MeshStandardMaterial({
         color: new THREE.Color(lightColor),
-        roughness: 0.86,
-        metalness: 0.08,
+        roughness: 0.88,
+        metalness: 0.05,
         flatShading: true,
-        envMapIntensity: 0.25,
       }),
     [lightColor],
+  );
+
+  // Outline material (dark, back-face)
+  const outlineMat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: new THREE.Color(0.05, 0.04, 0.03),
+        side: THREE.BackSide,
+        roughness: 1,
+      }),
+    [],
   );
 
   // Main peak geometry (distorted cone)
@@ -245,6 +254,13 @@ function MountainPeak({
         castShadow
         receiveShadow
       />
+      {/* Outline pass */}
+      <mesh
+        geometry={peakGeo}
+        material={outlineMat}
+        position={[0, seg.peakHeight / 2, 0]}
+        scale={[1.025, 1.015, 1.025]}
+      />
 
       {/* Ridge sub-peaks */}
       {seg.ridgeOffsets.map((r, ri) => (
@@ -258,6 +274,11 @@ function MountainPeak({
             castShadow
             receiveShadow
           />
+          <mesh
+            geometry={ridgeGeos[ri]}
+            material={outlineMat}
+            scale={[1.03, 1.02, 1.03]}
+          />
         </group>
       ))}
 
@@ -270,6 +291,11 @@ function MountainPeak({
             material={bi % 2 === 0 ? darkMat : baseMat}
             castShadow
             receiveShadow
+          />
+          <mesh
+            geometry={boulderGeos[bi]}
+            material={outlineMat}
+            scale={[1.04, 1.04, 1.04]}
           />
         </group>
       ))}

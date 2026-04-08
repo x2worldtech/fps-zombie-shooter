@@ -122,8 +122,7 @@ function StandardZombie({
   const necroMat = useStandardMaterial("#3d5238", hitFlashRef.current);
   const clothMat = useStandardMaterial("#2e2318", hitFlashRef.current);
   const clothTornMat = useStandardMaterial("#1e1510", hitFlashRef.current);
-  // Brighter blood so bloom makes splatter glow
-  const bloodMat = useStandardMaterial("#ff1111", hitFlashRef.current);
+  const bloodMat = useStandardMaterial("#8b0000", hitFlashRef.current);
   const eyeMat = useStandardMaterial("#0d0d0d", hitFlashRef.current);
   const eyeGlowMat = useRef<THREE.MeshBasicMaterial | null>(null);
   if (!eyeGlowMat.current) {
@@ -253,7 +252,7 @@ function StandardZombie({
 
     if (enemy.isHit) {
       hitFlashRef.current = Math.min(hitFlashRef.current + delta * 8, 1);
-      // useStandardMaterial handles emissive internally — drive via emissiveIntensity
+      // Update emissive on all standard materials
       for (const mat of [
         skinMat,
         necroMat,
@@ -262,14 +261,12 @@ function StandardZombie({
         boneMat,
         teethMat,
       ]) {
-        if (mat) {
+        if (mat)
           mat.emissive.setRGB(
-            hitFlashRef.current * 0.7,
-            hitFlashRef.current * 0.08,
-            hitFlashRef.current * 0.08,
+            hitFlashRef.current * 0.6,
+            hitFlashRef.current * 0.1,
+            hitFlashRef.current * 0.1,
           );
-          mat.emissiveIntensity = 1.0;
-        }
       }
       if (hitFlashRef.current >= 0.9) {
         onHitFlashDone(enemy.id);
@@ -277,7 +274,6 @@ function StandardZombie({
       }
     } else {
       hitFlashRef.current = Math.max(hitFlashRef.current - delta * 8, 0);
-      // Fade back to subtle undead glow
       for (const mat of [
         skinMat,
         necroMat,
@@ -286,10 +282,7 @@ function StandardZombie({
         boneMat,
         teethMat,
       ]) {
-        if (mat) {
-          mat.emissive.setRGB(0.13, 0.0, 0.0);
-          mat.emissiveIntensity = 0.1;
-        }
+        if (mat) mat.emissive.setRGB(0, 0, 0);
       }
     }
 
@@ -608,8 +601,7 @@ function BossZombie({
   const necroMat = useStandardMaterial("#2e3d22", hitFlashRef.current);
   const clothMat = useStandardMaterial("#1a1208", hitFlashRef.current);
   const clothTornMat = useStandardMaterial("#120e06", hitFlashRef.current);
-  // Brighter blood for bloom glow
-  const bloodMat = useStandardMaterial("#ff1111", hitFlashRef.current);
+  const bloodMat = useStandardMaterial("#8b0000", hitFlashRef.current);
   const boneMat = useStandardMaterial("#c8c0b0", hitFlashRef.current);
   const teethMat = useStandardMaterial("#d8d0b0", hitFlashRef.current);
 
@@ -746,14 +738,12 @@ function BossZombie({
         boneMat,
         teethMat,
       ]) {
-        if (mat) {
+        if (mat)
           mat.emissive.setRGB(
-            hitFlashRef.current * 0.7,
-            hitFlashRef.current * 0.08,
-            hitFlashRef.current * 0.08,
+            hitFlashRef.current * 0.6,
+            hitFlashRef.current * 0.1,
+            hitFlashRef.current * 0.1,
           );
-          mat.emissiveIntensity = 1.0;
-        }
       }
       if (hitFlashRef.current >= 0.9) {
         onHitFlashDone(enemy.id);
@@ -761,7 +751,6 @@ function BossZombie({
       }
     } else {
       hitFlashRef.current = Math.max(hitFlashRef.current - delta * 8, 0);
-      // Fade back to subtle undead glow
       for (const mat of [
         skinMat,
         necroMat,
@@ -770,10 +759,7 @@ function BossZombie({
         boneMat,
         teethMat,
       ]) {
-        if (mat) {
-          mat.emissive.setRGB(0.13, 0.0, 0.0);
-          mat.emissiveIntensity = 0.1;
-        }
+        if (mat) mat.emissive.setRGB(0, 0, 0);
       }
     }
 

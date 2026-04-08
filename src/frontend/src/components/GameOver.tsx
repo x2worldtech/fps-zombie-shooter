@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { createActor } from "../backend";
 import { useActor } from "../hooks/useActor";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import { useLeaderboard } from "../hooks/useLeaderboard";
@@ -32,7 +31,7 @@ export function GameOver({
   const [statsSaveError, setStatsSaveError] = useState(false);
   const { submitScore, isSubmitting } = useLeaderboard();
   const { identity } = useInternetIdentity();
-  const { actor, isFetching: actorFetching } = useActor(createActor);
+  const { actor, isFetching: actorFetching } = useActor();
   const updateProfile = useUpdateProfile();
   const statsSavedRef = useRef(false);
 
@@ -51,8 +50,6 @@ export function GameOver({
         headshots: BigInt(headshots),
         shots: BigInt(shotsFired),
         points: BigInt(score),
-        score: BigInt(score),
-        wave: BigInt(wave),
       },
       {
         onSuccess: () => {

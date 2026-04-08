@@ -1,11 +1,7 @@
 import { PointerLockControls } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
-import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
-import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { useEnemySystem } from "../../hooks/useEnemySystem";
 import { useGameAudio } from "../../hooks/useGameAudio";
 import { useJuggernogSystem } from "../../hooks/useJuggernogSystem";
@@ -59,40 +55,6 @@ function isHeadHit(hitObject: THREE.Object3D): boolean {
     current = current.parent;
   }
   return false;
-}
-
-// ─── Post-processing pipeline ─────────────────────────────────────────────────
-function PostProcessing() {
-  const { gl, scene, camera, size } = useThree();
-
-  const composer = useMemo(() => {
-    const c = new EffectComposer(gl);
-    const renderPass = new RenderPass(scene, camera);
-    c.addPass(renderPass);
-
-    const bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(size.width, size.height),
-      0.35, // strength — subtle
-      0.4, // radius
-      0.7, // threshold — only bright emissive elements glow
-    );
-    c.addPass(bloomPass);
-
-    const outputPass = new OutputPass();
-    c.addPass(outputPass);
-
-    return c;
-  }, [gl, scene, camera, size.width, size.height]);
-
-  useEffect(() => {
-    composer.setSize(size.width, size.height);
-  }, [composer, size.width, size.height]);
-
-  useFrame(() => {
-    composer.render();
-  }, 1);
-
-  return null;
 }
 
 function RaycastShooter({
@@ -601,17 +563,9 @@ export function GameScene({ onGameOver }: GameSceneProps) {
       <Canvas
         style={{ width: "100%", height: "100%" }}
         camera={{ fov: 75, near: 0.1, far: 300 }}
-        gl={{
-          antialias: true,
-          toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: 1.1,
-          outputColorSpace: THREE.SRGBColorSpace,
-        }}
-        shadows={{ type: THREE.PCFSoftShadowMap }}
+        gl={{ antialias: true }}
+        shadows
       >
-        {/* Post-processing: bloom + output */}
-        <PostProcessing />
-
         <PointerLockControls
           ref={controlsRef as React.Ref<any>}
           onLock={handleLock}

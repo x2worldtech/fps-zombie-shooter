@@ -1,6 +1,6 @@
+import { useInternetIdentity } from "@caffeineai/core-infrastructure";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { useInternetIdentity } from "../hooks/useInternetIdentity";
 
 interface MainMenuProps {
   onStartGame: () => void;
@@ -9,72 +9,220 @@ interface MainMenuProps {
   onShowProfile: () => void;
 }
 
-// ── STAR FIELD ──
-const STARS = Array.from({ length: 120 }, (_, i) => ({
-  id: i,
-  left: ((i * 137.5 + 11) % 100).toFixed(2),
-  top: ((i * 97.3 + 7) % 100).toFixed(2),
-  size: 1 + (i % 2),
-  opacity: (0.2 + ((i * 3) % 7) * 0.09).toFixed(2),
-  twinkle: i % 5 === 0,
-  twinkleDuration: (2.5 + (i % 8) * 0.4).toFixed(1),
-  twinkleDelay: ((i * 0.23) % 4).toFixed(1),
-}));
+// ── SEEDED PSEUDO-RANDOM ──
+function seededRand(seed: number): () => number {
+  let s = seed;
+  return () => {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    return (s >>> 0) / 0xffffffff;
+  };
+}
 
-// ── ASTEROID SHAPES ──
-const ASTEROID_SHAPES = [
-  "polygon(20% 0%, 80% 5%, 100% 30%, 95% 75%, 75% 100%, 30% 98%, 5% 70%, 0% 25%)",
-  "polygon(15% 5%, 70% 0%, 100% 25%, 90% 80%, 60% 100%, 20% 95%, 0% 60%, 5% 20%)",
-  "polygon(50% 0%, 90% 20%, 100% 60%, 80% 100%, 30% 90%, 0% 50%, 10% 10%)",
-  "polygon(25% 0%, 85% 10%, 100% 45%, 85% 90%, 45% 100%, 5% 75%, 0% 30%)",
-  "polygon(40% 0%, 90% 15%, 100% 55%, 70% 100%, 20% 85%, 0% 40%, 15% 5%)",
-  "polygon(10% 15%, 60% 0%, 100% 20%, 95% 70%, 65% 100%, 15% 95%, 0% 55%, 5% 15%)",
-  "polygon(30% 0%, 75% 5%, 100% 35%, 90% 80%, 55% 100%, 10% 90%, 0% 50%, 8% 18%)",
-  "polygon(45% 2%, 88% 18%, 98% 58%, 72% 98%, 22% 92%, 2% 62%, 12% 18%)",
-];
-
-const ASTEROID_GRADIENTS = [
-  "radial-gradient(ellipse at 30% 28%, #5a5250 0%, #2e2a28 55%, #161412 100%)",
-  "radial-gradient(ellipse at 38% 32%, #504840 0%, #28221e 55%, #121008 100%)",
-  "radial-gradient(ellipse at 42% 26%, #484442 0%, #2a2826 55%, #181614 100%)",
-  "radial-gradient(ellipse at 28% 35%, #524c48 0%, #302c28 55%, #1c1816 100%)",
-  "radial-gradient(ellipse at 36% 30%, #464240 0%, #262220 55%, #141210 100%)",
-];
-
-// ── ASTEROID OBJECTS ──
-const ASTEROIDS = Array.from({ length: 25 }, (_, i) => {
-  const isLarge = i < 5;
-  const isMedium = i >= 5 && i < 15;
-  const size = isLarge
-    ? 65 + ((i * 19) % 56)
-    : isMedium
-      ? 26 + ((i * 13) % 30)
-      : 8 + ((i * 7) % 13);
-  const driftVariant = i % 8;
-  const duration = isLarge
-    ? 40 + ((i * 11) % 25)
-    : isMedium
-      ? 25 + ((i * 7) % 20)
-      : 15 + ((i * 5) % 12);
-  const delay = -((i * 5.3) % duration);
+// ── STARS: very subtle, barely visible through warm haze ──
+const BACKGROUND_STARS = Array.from({ length: 180 }, (_, i) => {
+  const r = seededRand(i * 17 + 3);
+  const x = r() * 100;
+  const y = r() * 100;
+  // Warm whites only — no blue/purple
+  const colorRoll = r();
+  const color =
+    colorRoll < 0.7 ? "#fff8ee" : colorRoll < 0.88 ? "#ffecc8" : "#fff4d8";
   return {
-    id: i,
-    left: ((i * 83 + 9) % 95).toFixed(1),
-    top: ((i * 67 + 13) % 90).toFixed(1),
-    size,
-    shape: ASTEROID_SHAPES[i % ASTEROID_SHAPES.length],
-    gradient: ASTEROID_GRADIENTS[i % ASTEROID_GRADIENTS.length],
-    driftVariant,
-    duration,
-    delay,
-    boxShadow: isLarge
-      ? "inset -4px -4px 12px rgba(0,0,0,0.7), inset 2px 2px 6px rgba(255,255,255,0.05)"
-      : isMedium
-        ? "inset -2px -2px 6px rgba(0,0,0,0.6)"
-        : "inset -1px -1px 3px rgba(0,0,0,0.5)",
+    id: `bg-${i}`,
+    left: x.toFixed(2),
+    top: y.toFixed(2),
+    size: (0.5 + r() * 0.7).toFixed(1),
+    // Very subtle — max 0.25 opacity
+    opacity: (0.06 + r() * 0.18).toFixed(2),
+    color,
   };
 });
 
+// Mid stars — sparse, warm toned
+const MID_STARS = Array.from({ length: 60 }, (_, i) => {
+  const r = seededRand(i * 31 + 7);
+  const x = r() * 100;
+  const y = r() * 100;
+  const color = r() < 0.75 ? "#fff8ee" : "#ffeac0";
+  return {
+    id: `mid-${i}`,
+    left: x.toFixed(2),
+    top: y.toFixed(2),
+    size: (0.8 + r() * 0.9).toFixed(1),
+    // Max 0.4 — barely visible
+    opacity: (0.12 + r() * 0.22).toFixed(2),
+    twinkleDuration: (5.0 + r() * 4.0).toFixed(1),
+    twinkleDelay: (r() * 8.0).toFixed(1),
+    color,
+  };
+});
+
+// ── METEORITE SHAPES: 12-vertex jagged rocky silhouettes ──
+const MET_SHAPES = [
+  "polygon(22% 0%,45% 2%,68% 0%,88% 8%,100% 22%,98% 44%,100% 62%,90% 80%,76% 96%,55% 100%,34% 98%,14% 88%,2% 70%,0% 48%,4% 28%,10% 12%)",
+  "polygon(35% 0%,58% 4%,78% 0%,94% 14%,100% 36%,96% 58%,100% 72%,84% 90%,64% 100%,40% 96%,20% 100%,6% 82%,0% 60%,4% 38%,0% 18%,18% 6%)",
+  "polygon(48% 0%,70% 6%,90% 2%,100% 20%,94% 42%,100% 60%,88% 78%,70% 94%,48% 100%,28% 92%,10% 100%,0% 78%,6% 55%,0% 32%,12% 14%,30% 4%)",
+  "polygon(18% 2%,40% 0%,62% 6%,82% 0%,98% 16%,100% 38%,92% 58%,100% 74%,82% 92%,58% 100%,36% 94%,16% 100%,2% 80%,0% 56%,8% 34%,0% 14%)",
+  "polygon(30% 0%,52% 4%,74% 0%,92% 10%,100% 30%,96% 52%,100% 70%,86% 88%,66% 100%,44% 96%,22% 100%,6% 84%,0% 62%,6% 40%,0% 22%,14% 8%)",
+  "polygon(42% 0%,62% 6%,84% 0%,96% 18%,100% 40%,92% 60%,100% 76%,80% 94%,58% 100%,36% 96%,16% 100%,4% 78%,0% 56%,8% 36%,0% 16%,22% 4%)",
+  "polygon(26% 2%,48% 0%,70% 4%,90% 0%,100% 18%,96% 40%,100% 58%,88% 76%,70% 96%,48% 100%,26% 94%,8% 100%,0% 76%,4% 52%,0% 28%,12% 10%)",
+  "polygon(38% 0%,60% 6%,80% 2%,96% 16%,100% 36%,94% 56%,100% 72%,84% 90%,62% 100%,40% 96%,20% 100%,4% 82%,0% 60%,6% 38%,0% 18%,20% 6%)",
+  "polygon(14% 6%,36% 0%,58% 4%,80% 0%,96% 14%,100% 34%,94% 54%,100% 70%,86% 88%,64% 100%,42% 96%,22% 100%,6% 82%,0% 60%,6% 38%,0% 20%)",
+  "polygon(50% 0%,72% 4%,92% 0%,100% 22%,96% 44%,100% 64%,86% 82%,68% 98%,46% 100%,26% 96%,8% 100%,0% 78%,6% 54%,0% 32%,10% 12%,30% 2%)",
+  "polygon(32% 0%,54% 6%,76% 0%,94% 12%,100% 32%,92% 54%,100% 68%,82% 90%,60% 100%,38% 96%,18% 100%,4% 80%,0% 58%,8% 36%,0% 16%,18% 4%)",
+  "polygon(44% 0%,66% 4%,86% 2%,98% 18%,100% 40%,90% 62%,100% 76%,78% 96%,56% 100%,34% 94%,14% 100%,2% 76%,0% 52%,8% 30%,0% 12%,24% 4%)",
+];
+
+// ── METEORITE GRADIENTS: very dark matte stone — NO glow, NO warmth ──
+// Lit subtly from upper-left by the distant warm glow source
+// Colors: near-black core (#0a0806), dark brown-gray mids (#1c1510, #201812)
+// subtle highlight (#302820), all very understated
+const MET_GRADIENTS = [
+  "radial-gradient(ellipse at 30% 26%, #2a2018 0%, #1c1510 22%, #120e0a 52%, #0a0806 78%, #060402 100%)",
+  "radial-gradient(ellipse at 26% 30%, #281e16 0%, #1a1410 20%, #110d09 50%, #090705 76%, #060402 100%)",
+  "radial-gradient(ellipse at 34% 22%, #2e2419 0%, #1e1812 22%, #14100b 52%, #0b0907 78%, #070503 100%)",
+  "radial-gradient(ellipse at 28% 34%, #241c13 0%, #181210 20%, #0f0c09 50%, #080607 76%, #050404 100%)",
+  "radial-gradient(ellipse at 32% 28%, #302618 0%, #201810 22%, #150f0b 52%, #0c0908 78%, #070504 100%)",
+  "radial-gradient(ellipse at 24% 24%, #2c2016 0%, #1c1610 20%, #12100a 50%, #0a0807 76%, #060504 100%)",
+];
+
+interface MeteorObj {
+  id: string;
+  layer: "far" | "mid" | "near";
+  left: string;
+  top: string;
+  size: number;
+  shape: string;
+  gradient: string;
+  driftVariant: number;
+  duration: number;
+  delay: number;
+  opacity: string;
+  glowColor: string | null;
+}
+
+// ── METEORITE OBJECTS: 110 total — denser field, clustered center-bottom/right ──
+function buildMeteors(): MeteorObj[] {
+  const r = seededRand(1337);
+  const meteors: MeteorObj[] = [];
+
+  // Helper: bias position toward center-right and center-bottom of screen
+  const biasedPos = (
+    rng: () => number,
+    biasRight = false,
+    biasBottom = false,
+  ): [string, string] => {
+    const rawX = rng();
+    const rawY = rng();
+    // 60% chance to cluster toward center-right/bottom
+    const roll = rng();
+    let x: number;
+    let y: number;
+    if (roll < 0.6) {
+      // Cluster: right half (45–95%), bottom two-thirds (30–95%)
+      x = biasRight ? 45 + rawX * 50 : rawX * 100;
+      y = biasBottom ? 30 + rawY * 65 : rawY * 100;
+    } else {
+      x = rawX * 100;
+      y = rawY * 100;
+    }
+    return [
+      Math.min(100, Math.max(0, x)).toFixed(1),
+      Math.min(100, Math.max(0, y)).toFixed(1),
+    ];
+  };
+
+  // FAR layer: 45 tiny slow meteorites — more density, clustered right/bottom
+  for (let i = 0; i < 45; i++) {
+    const size = 3 + r() * 9;
+    const dur = 60 + r() * 35;
+    const drift = Math.floor(r() * MET_SHAPES.length);
+    const layer = "far" as const;
+    const [left, top] = biasedPos(r, true, true);
+    meteors.push({
+      id: `far-${i}`,
+      layer,
+      left,
+      top,
+      size: Math.round(size),
+      shape: MET_SHAPES[drift % MET_SHAPES.length],
+      gradient: MET_GRADIENTS[Math.floor(r() * MET_GRADIENTS.length)],
+      driftVariant: drift % 12,
+      duration: Math.round(dur),
+      delay: -(r() * dur),
+      // Far meteors lit softly by distant warm source
+      opacity: (0.3 + r() * 0.28).toFixed(2),
+      glowColor: null,
+    });
+  }
+
+  // MID layer: 38 medium meteorites — clustered center-right
+  for (let i = 0; i < 38; i++) {
+    const size = 14 + r() * 28;
+    const dur = 34 + r() * 22;
+    const drift = Math.floor(r() * MET_SHAPES.length);
+    const layer = "mid" as const;
+    const [left, top] = biasedPos(r, true, true);
+    meteors.push({
+      id: `mid-${i}`,
+      layer,
+      left,
+      top,
+      size: Math.round(size),
+      shape: MET_SHAPES[drift % MET_SHAPES.length],
+      gradient: MET_GRADIENTS[Math.floor(r() * MET_GRADIENTS.length)],
+      driftVariant: drift % 12,
+      duration: Math.round(dur),
+      delay: -(r() * dur),
+      opacity: (0.5 + r() * 0.3).toFixed(2),
+      glowColor: null,
+    });
+  }
+
+  // NEAR layer: 27 large prominent meteorites — dark, matte, no glow
+  for (let i = 0; i < 27; i++) {
+    const size = 44 + r() * 65;
+    const dur = 18 + r() * 18;
+    const drift = Math.floor(r() * MET_SHAPES.length);
+    const layer = "near" as const;
+    const [left, top] = biasedPos(r, true, true);
+    meteors.push({
+      id: `near-${i}`,
+      layer,
+      left,
+      top,
+      size: Math.round(size),
+      shape: MET_SHAPES[drift % MET_SHAPES.length],
+      gradient: MET_GRADIENTS[Math.floor(r() * MET_GRADIENTS.length)],
+      driftVariant: drift % 12,
+      duration: Math.round(dur),
+      delay: -(r() * dur),
+      opacity: (0.72 + r() * 0.24).toFixed(2),
+      // NO glow — dark matte rock
+      glowColor: null,
+    });
+  }
+
+  return meteors;
+}
+
+const METEORS = buildMeteors();
+const FAR_METEORS = METEORS.filter((m) => m.layer === "far");
+const MID_METEORS = METEORS.filter((m) => m.layer === "mid");
+const NEAR_METEORS = METEORS.filter((m) => m.layer === "near");
+
+// ── BOX SHADOW: only subtle inset depth for 3D form — NO outer glow ──
+function meteorBoxShadow(layer: "far" | "mid" | "near", size: number): string {
+  if (layer === "near") {
+    return `inset ${Math.round(size * 0.06)}px ${Math.round(size * 0.06)}px ${Math.round(size * 0.18)}px rgba(255,220,160,0.07), inset -${Math.round(size * 0.1)}px -${Math.round(size * 0.1)}px ${Math.round(size * 0.28)}px rgba(0,0,0,0.9)`;
+  }
+  if (layer === "mid") {
+    return "inset 2px 2px 7px rgba(255,210,140,0.05), inset -2px -2px 8px rgba(0,0,0,0.85)";
+  }
+  return "inset 1px 1px 3px rgba(255,200,120,0.03), inset -1px -1px 4px rgba(0,0,0,0.7)";
+}
+
+// ── COMPONENT ──
 export function MainMenu({
   onStartGame,
   onShowLeaderboard,
@@ -125,8 +273,11 @@ export function MainMenu({
     } else {
       try {
         await login();
-      } catch (error: any) {
-        if (error?.message === "User is already authenticated") {
+      } catch (error: unknown) {
+        if (
+          error instanceof Error &&
+          error.message === "User is already authenticated"
+        ) {
           await clear();
           setTimeout(() => login(), 300);
         }
@@ -154,32 +305,63 @@ export function MainMenu({
   return (
     <div
       className="relative w-full h-full overflow-hidden"
-      style={{ background: "#03040a" }}
+      // Near-black with very faint warm tint — almost pure black
+      style={{ background: "#050302" }}
     >
-      {/* ── DEEP SPACE NEBULA GLOW ── */}
+      {/* ── Z0: ATMOSPHERE LAYERS ── */}
       <div
         className="absolute inset-0 pointer-events-none"
-        style={{
-          background:
-            "radial-gradient(ellipse 80% 60% at 65% 40%, rgba(30,20,80,0.18) 0%, rgba(15,8,40,0.10) 40%, transparent 70%)",
-          zIndex: 0,
-        }}
-      />
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background:
-            "radial-gradient(ellipse 50% 40% at 80% 70%, rgba(60,10,80,0.08) 0%, transparent 60%)",
-          zIndex: 0,
-        }}
-      />
+        style={{ zIndex: 0 }}
+      >
+        {/* PRIMARY WARM GOLDEN LIGHT SOURCE — dominant feature, center-right/upper-right
+            Like a sun or massive explosion hidden behind the asteroid field */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(ellipse 72% 60% at 72% 38%, rgba(255,138,18,0.32) 0%, rgba(240,115,12,0.20) 22%, rgba(200,88,10,0.12) 45%, rgba(140,58,8,0.05) 68%, transparent 85%)",
+          }}
+        />
+        {/* Secondary amber glow — slightly wider, softer halo */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(ellipse 90% 75% at 68% 42%, rgba(255,160,30,0.12) 0%, rgba(210,120,15,0.07) 40%, rgba(150,80,8,0.03) 65%, transparent 80%)",
+          }}
+        />
+        {/* Warm brownish-golden atmospheric dust — lower half */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(ellipse 100% 55% at 55% 100%, rgba(120,70,12,0.18) 0%, rgba(90,50,8,0.10) 35%, rgba(60,32,5,0.04) 62%, transparent 78%)",
+          }}
+        />
+        {/* Right-edge amber haze — blends into light source */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(ellipse 40% 100% at 100% 45%, rgba(180,95,15,0.12) 0%, rgba(130,65,10,0.06) 50%, transparent 75%)",
+          }}
+        />
+        {/* Subtle center-bottom warm pooling */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(ellipse 80% 40% at 60% 98%, rgba(100,55,8,0.13) 0%, rgba(70,38,5,0.06) 45%, transparent 70%)",
+          }}
+        />
+      </div>
 
-      {/* ── STAR FIELD ── */}
+      {/* ── Z1: BACKGROUND STARS — barely visible ── */}
       <div
         className="absolute inset-0 pointer-events-none overflow-hidden"
         style={{ zIndex: 1 }}
       >
-        {STARS.map((s) => (
+        {BACKGROUND_STARS.map((s) => (
           <div
             key={s.id}
             className="absolute rounded-full"
@@ -188,36 +370,56 @@ export function MainMenu({
               top: `${s.top}%`,
               width: `${s.size}px`,
               height: `${s.size}px`,
-              background: s.id % 7 === 0 ? "#a8c8ff" : "#ffffff",
+              background: s.color,
               opacity: Number(s.opacity),
-              animation: s.twinkle
-                ? `star-twinkle ${s.twinkleDuration}s ease-in-out ${s.twinkleDelay}s infinite`
-                : undefined,
             }}
           />
         ))}
       </div>
 
-      {/* ── ASTEROID FIELD ── */}
+      {/* ── Z2: MID STARS — subtle twinkle, barely visible ── */}
       <div
         className="absolute inset-0 pointer-events-none overflow-hidden"
         style={{ zIndex: 2 }}
       >
-        {ASTEROIDS.map((a) => (
+        {MID_STARS.map((s) => (
           <div
-            key={a.id}
+            key={s.id}
+            className="absolute rounded-full"
+            style={{
+              left: `${s.left}%`,
+              top: `${s.top}%`,
+              width: `${s.size}px`,
+              height: `${s.size}px`,
+              background: s.color,
+              opacity: Number(s.opacity),
+              animation: `star-twinkle-mid ${s.twinkleDuration}s ease-in-out ${s.twinkleDelay}s infinite`,
+            }}
+          />
+        ))}
+      </div>
+
+      {/* ── Z3: FAR METEORITES — tiny, dark, matte ── */}
+      <div
+        className="absolute inset-0 pointer-events-none overflow-hidden"
+        style={{ zIndex: 3 }}
+      >
+        {FAR_METEORS.map((m) => (
+          <div
+            key={m.id}
             className="absolute"
             style={{
-              left: `${a.left}%`,
-              top: `${a.top}%`,
-              width: `${a.size}px`,
-              height: `${a.size}px`,
-              background: a.gradient,
-              clipPath: a.shape,
-              boxShadow: a.boxShadow,
-              animationName: `ast-drift-${a.driftVariant}`,
-              animationDuration: `${a.duration}s`,
-              animationDelay: `${a.delay}s`,
+              left: `${m.left}%`,
+              top: `${m.top}%`,
+              width: `${m.size}px`,
+              height: `${m.size}px`,
+              background: m.gradient,
+              clipPath: m.shape,
+              opacity: Number(m.opacity),
+              boxShadow: meteorBoxShadow("far", m.size),
+              animationName: `met-drift-${m.driftVariant}`,
+              animationDuration: `${m.duration}s`,
+              animationDelay: `${m.delay}s`,
               animationTimingFunction: "linear",
               animationIterationCount: "infinite",
               willChange: "transform",
@@ -226,17 +428,94 @@ export function MainMenu({
         ))}
       </div>
 
-      {/* ── DARK VIGNETTE edges ── */}
+      {/* ── Z4: MID METEORITES — medium, dark stone ── */}
+      <div
+        className="absolute inset-0 pointer-events-none overflow-hidden"
+        style={{ zIndex: 4 }}
+      >
+        {MID_METEORS.map((m) => (
+          <div
+            key={m.id}
+            className="absolute"
+            style={{
+              left: `${m.left}%`,
+              top: `${m.top}%`,
+              width: `${m.size}px`,
+              height: `${m.size}px`,
+              background: m.gradient,
+              clipPath: m.shape,
+              opacity: Number(m.opacity),
+              boxShadow: meteorBoxShadow("mid", m.size),
+              animationName: `met-drift-${m.driftVariant}`,
+              animationDuration: `${m.duration}s`,
+              animationDelay: `${m.delay}s`,
+              animationTimingFunction: "linear",
+              animationIterationCount: "infinite",
+              willChange: "transform",
+            }}
+          />
+        ))}
+      </div>
+
+      {/* ── Z5: NEAR METEORITES — large, prominent dark rocks ── */}
+      <div
+        className="absolute inset-0 pointer-events-none overflow-hidden"
+        style={{ zIndex: 5 }}
+      >
+        {NEAR_METEORS.map((m) => (
+          <div
+            key={m.id}
+            className="absolute"
+            style={{
+              left: `${m.left}%`,
+              top: `${m.top}%`,
+              width: `${m.size}px`,
+              height: `${m.size}px`,
+              background: m.gradient,
+              clipPath: m.shape,
+              opacity: Number(m.opacity),
+              boxShadow: meteorBoxShadow("near", m.size),
+              animationName: `met-drift-${m.driftVariant}`,
+              animationDuration: `${m.duration}s`,
+              animationDelay: `${m.delay}s`,
+              animationTimingFunction: "linear",
+              animationIterationCount: "infinite",
+              willChange: "transform",
+            }}
+          />
+        ))}
+      </div>
+
+      {/* ── Z6: WARM VIGNETTE — frames the scene, deepens edges ── */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          // Dark vignette with a warm amber tint at the inner ring
+          background:
+            "radial-gradient(ellipse 100% 95% at 50% 50%, transparent 25%, rgba(10,4,0,0.35) 55%, rgba(4,2,0,0.72) 80%, rgba(2,1,0,0.94) 100%)",
+          zIndex: 6,
+        }}
+      />
+      {/* Left-edge darkening so menu text pops */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse 110% 100% at 50% 50%, transparent 35%, rgba(0,0,0,0.65) 75%, rgba(0,0,0,0.95) 100%)",
-          zIndex: 3,
+            "linear-gradient(to right, rgba(3,1,0,0.55) 0%, rgba(3,1,0,0.18) 28%, transparent 55%)",
+          zIndex: 6,
+        }}
+      />
+      {/* Bottom darkening */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            "linear-gradient(to top, rgba(2,1,0,0.6) 0%, transparent 30%)",
+          zIndex: 6,
         }}
       />
 
-      {/* ── MAIN CONTENT — left-aligned ── */}
+      {/* ── Z10+: MAIN CONTENT — left-aligned ── */}
       <div
         className="absolute inset-0 flex flex-col justify-center"
         style={{ paddingLeft: "clamp(40px, 8vw, 120px)", zIndex: 10 }}

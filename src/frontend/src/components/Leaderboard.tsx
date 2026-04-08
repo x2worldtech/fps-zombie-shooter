@@ -203,7 +203,7 @@ export function Leaderboard({ onBack }: LeaderboardProps) {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {entry.playerName}
+                  {entry.name}
                 </span>
                 <span
                   style={{

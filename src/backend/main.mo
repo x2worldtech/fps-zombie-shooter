@@ -7,6 +7,8 @@ import Order "mo:core/Order";
 import Runtime "mo:core/Runtime";
 import Principal "mo:core/Principal";
 import Map "mo:core/Map";
+import Nat "mo:core/Nat";
+import Char "mo:core/Char";
 
 
 
@@ -244,17 +246,11 @@ actor {
     let validChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_";
     var sanitizedName = "";
 
-    let charsIter = playerName.chars();
-    var nextChar = charsIter.next();
-    while (nextChar != null) {
-      let char = switch (nextChar) {
-        case (null) { return sanitizedName };
-        case (?c) { c };
+    for (char in playerName.chars()) {
+      let charText = Text.fromChar(char);
+      if (validChars.contains(#text charText)) {
+        sanitizedName #= charText;
       };
-      if (validChars.contains(#char char)) {
-        sanitizedName #= char.toText();
-      };
-      nextChar := charsIter.next();
     };
     sanitizedName;
   };

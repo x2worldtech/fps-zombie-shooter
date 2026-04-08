@@ -1,18 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createActor } from "../backend";
 import { useActor } from "./useActor";
 import { useInternetIdentity } from "./useInternetIdentity";
 
-// Local type definition (backend type not yet generated)
-export interface ScoreEntry {
-  playerName: string;
+// Inline type until backend generates it
+interface ScoreEntry {
+  name: string;
   score: bigint;
   wave: bigint;
-  timestamp: bigint;
+  principal?: unknown;
 }
 
 export function useLeaderboard() {
-  const { actor, isFetching } = useActor(createActor);
+  const { actor, isFetching } = useActor();
   const { identity } = useInternetIdentity();
   const queryClient = useQueryClient();
 
@@ -23,8 +22,8 @@ export function useLeaderboard() {
     queryKey: ["leaderboard", principalKey],
     queryFn: async () => {
       if (!actor) throw new Error("Actor not available");
-      // biome-ignore lint/suspicious/noExplicitAny: backend not yet fully typed
-      return (actor as any).getHighScores() as Promise<ScoreEntry[]>;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (actor as any).getHighScores();
     },
     enabled: !!actor && !isFetching,
     retry: 2,
@@ -37,7 +36,7 @@ export function useLeaderboard() {
       wave,
     }: { name: string; score: number; wave: number }) => {
       if (!actor) throw new Error("No actor");
-      // biome-ignore lint/suspicious/noExplicitAny: backend not yet fully typed
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (actor as any).submitScore(name, BigInt(score), BigInt(wave));
     },
     onSuccess: () => {
