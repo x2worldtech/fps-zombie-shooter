@@ -25,7 +25,6 @@ function getAudioContext(): AudioContext | null {
       return null;
     }
   }
-  // If suspended, try a non-blocking resume (may not work without gesture, but worth trying)
   if (audioCtx.state === "suspended") {
     audioCtx.resume().catch(() => {});
   }
@@ -54,7 +53,6 @@ export function pistolShot(): void {
     if (!ctx) return;
     const now = ctx.currentTime;
 
-    // === Layer 1: Sub-bass pop (the initial pressure wave) ===
     const subOsc = ctx.createOscillator();
     const subGain = ctx.createGain();
     subOsc.type = "sine";
@@ -67,7 +65,6 @@ export function pistolShot(): void {
     subOsc.start(now);
     subOsc.stop(now + 0.12);
 
-    // === Layer 2: Mid crack (body of the shot) ===
     const midOsc = ctx.createOscillator();
     const midGain = ctx.createGain();
     midOsc.type = "triangle";
@@ -80,7 +77,6 @@ export function pistolShot(): void {
     midOsc.start(now);
     midOsc.stop(now + 0.1);
 
-    // === Layer 3: Sharp high-frequency crack burst ===
     const crackNoise = createNoise(ctx, 0.05);
     const crackFilter = ctx.createBiquadFilter();
     crackFilter.type = "highpass";
@@ -94,7 +90,6 @@ export function pistolShot(): void {
     crackNoise.start(now);
     crackNoise.stop(now + 0.05);
 
-    // === Layer 4: Body noise sweep (the full shot body) ===
     const bodyNoise = createNoise(ctx, 0.18);
     const bodyFilter = ctx.createBiquadFilter();
     bodyFilter.type = "bandpass";
@@ -110,7 +105,6 @@ export function pistolShot(): void {
     bodyNoise.start(now);
     bodyNoise.stop(now + 0.18);
 
-    // === Layer 5: Slide/brass ejection click ===
     const brassNoise = createNoise(ctx, 0.035);
     const brassFilter = ctx.createBiquadFilter();
     brassFilter.type = "bandpass";
@@ -134,7 +128,6 @@ export function shotgunShot(): void {
     if (!ctx) return;
     const now = ctx.currentTime;
 
-    // === Layer 1: Massive sub-bass explosion boom ===
     const subOsc = ctx.createOscillator();
     const subGain = ctx.createGain();
     subOsc.type = "sine";
@@ -147,7 +140,6 @@ export function shotgunShot(): void {
     subOsc.start(now);
     subOsc.stop(now + 0.4);
 
-    // === Layer 2: Mid-body explosion (the chunky blast) ===
     const midOsc = ctx.createOscillator();
     const midGain = ctx.createGain();
     midOsc.type = "sawtooth";
@@ -160,7 +152,6 @@ export function shotgunShot(): void {
     midOsc.start(now);
     midOsc.stop(now + 0.28);
 
-    // === Layer 3: Sharp pellet crack burst ===
     const crackNoise = createNoise(ctx, 0.07);
     const crackFilter = ctx.createBiquadFilter();
     crackFilter.type = "highpass";
@@ -174,7 +165,6 @@ export function shotgunShot(): void {
     crackNoise.start(now);
     crackNoise.stop(now + 0.07);
 
-    // === Layer 4: Low rumble noise tail (reverb body) ===
     const bodyNoise = createNoise(ctx, 0.6);
     const bodyFilter = ctx.createBiquadFilter();
     bodyFilter.type = "lowpass";
@@ -190,7 +180,6 @@ export function shotgunShot(): void {
     bodyNoise.start(now);
     bodyNoise.stop(now + 0.6);
 
-    // === Layer 5: Pump-action mechanical clank ===
     const pumpNoise = createNoise(ctx, 0.055);
     const pumpFilter = ctx.createBiquadFilter();
     pumpFilter.type = "bandpass";
@@ -214,7 +203,6 @@ export function assaultRifleShot(): void {
     if (!ctx) return;
     const now = ctx.currentTime;
 
-    // === Layer 1: Sub-bass thud (deep body of the shot) ===
     const subOsc = ctx.createOscillator();
     const subGain = ctx.createGain();
     subOsc.type = "sine";
@@ -227,7 +215,6 @@ export function assaultRifleShot(): void {
     subOsc.start(now);
     subOsc.stop(now + 0.22);
 
-    // === Layer 2: Mid-frequency body punch ===
     const midOsc = ctx.createOscillator();
     const midGain = ctx.createGain();
     midOsc.type = "triangle";
@@ -240,7 +227,6 @@ export function assaultRifleShot(): void {
     midOsc.start(now);
     midOsc.stop(now + 0.18);
 
-    // === Layer 3: Sharp crack (high-freq noise burst) ===
     const crackNoise = createNoise(ctx, 0.06);
     const crackFilter = ctx.createBiquadFilter();
     crackFilter.type = "highpass";
@@ -254,7 +240,6 @@ export function assaultRifleShot(): void {
     crackNoise.start(now);
     crackNoise.stop(now + 0.06);
 
-    // === Layer 4: Body noise with low-pass sweep (the "meat") ===
     const bodyNoise = createNoise(ctx, 0.25);
     const bodyFilter = ctx.createBiquadFilter();
     bodyFilter.type = "lowpass";
@@ -270,7 +255,6 @@ export function assaultRifleShot(): void {
     bodyNoise.start(now);
     bodyNoise.stop(now + 0.25);
 
-    // === Layer 5: Mechanical clank (bolt cycling) ===
     const clankNoise = createNoise(ctx, 0.04);
     const clankFilter = ctx.createBiquadFilter();
     clankFilter.type = "bandpass";
@@ -298,7 +282,6 @@ export function zombieGrowl(): void {
     const gainNode = ctx.createGain();
     const distortion = ctx.createWaveShaper();
 
-    // Create distortion curve
     const curve = new Float32Array(256);
     for (let i = 0; i < 256; i++) {
       const x = (i * 2) / 256 - 1;
@@ -448,7 +431,6 @@ export function sniperShot(): void {
     if (!ctx) return;
     const now = ctx.currentTime;
 
-    // === Layer 1: Massive sub-bass thud (the "earth-shaking" hit) ===
     const subOsc = ctx.createOscillator();
     const subGain = ctx.createGain();
     subOsc.type = "sine";
@@ -461,7 +443,6 @@ export function sniperShot(): void {
     subOsc.start(now);
     subOsc.stop(now + 0.4);
 
-    // === Layer 2: Deep mid-range body boom ===
     const midOsc = ctx.createOscillator();
     const midGain = ctx.createGain();
     midOsc.type = "triangle";
@@ -474,7 +455,6 @@ export function sniperShot(): void {
     midOsc.start(now);
     midOsc.stop(now + 0.35);
 
-    // === Layer 3: Sharp supersonic crack (the distinctive sniper "whip") ===
     const crackNoise = createNoise(ctx, 0.05);
     const crackFilter = ctx.createBiquadFilter();
     crackFilter.type = "highpass";
@@ -488,7 +468,6 @@ export function sniperShot(): void {
     crackNoise.start(now);
     crackNoise.stop(now + 0.05);
 
-    // === Layer 4: Long low-pass noise tail (the thunderous echo/boom) ===
     const bodyNoise = createNoise(ctx, 0.55);
     const bodyFilter = ctx.createBiquadFilter();
     bodyFilter.type = "lowpass";
@@ -504,7 +483,6 @@ export function sniperShot(): void {
     bodyNoise.start(now);
     bodyNoise.stop(now + 0.55);
 
-    // === Layer 5: Bolt action mechanical click (delayed, after firing) ===
     const boltNoise = createNoise(ctx, 0.06);
     const boltFilter = ctx.createBiquadFilter();
     boltFilter.type = "bandpass";
@@ -519,5 +497,271 @@ export function sniperShot(): void {
     boltGain.connect(ctx.destination);
     boltNoise.start(now + 0.18);
     boltNoise.stop(now + 0.24);
+  } catch (_) {}
+}
+
+// ── Nuclear Siren ──────────────────────────────────────────────────────────────
+// Alternating two-tone wail (350→750hz / 700→380hz sweep, 1.5s per half). Returns stop fn.
+export function playNuclearSiren(): () => void {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return () => {};
+
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(0.8, ctx.currentTime);
+    masterGain.connect(ctx.destination);
+
+    let stopped = false;
+    let timeoutRef: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleCycle = (startTime: number, cycle: number) => {
+      if (stopped) return;
+      const osc = ctx.createOscillator();
+      const envGain = ctx.createGain();
+      osc.type = "sawtooth";
+      osc.connect(envGain);
+      envGain.connect(masterGain);
+
+      const wailUp = cycle % 2 === 0;
+      osc.frequency.setValueAtTime(wailUp ? 350 : 700, startTime);
+      osc.frequency.linearRampToValueAtTime(
+        wailUp ? 750 : 380,
+        startTime + 1.5,
+      );
+
+      const noise = createNoise(ctx, 3.0);
+      const nFilter = ctx.createBiquadFilter();
+      nFilter.type = "bandpass";
+      nFilter.frequency.value = 600;
+      nFilter.Q.value = 1.5;
+      const nGain = ctx.createGain();
+      nGain.gain.setValueAtTime(0.15, startTime);
+      noise.connect(nFilter);
+      nFilter.connect(nGain);
+      nGain.connect(masterGain);
+
+      envGain.gain.setValueAtTime(0, startTime);
+      envGain.gain.linearRampToValueAtTime(0.6, startTime + 0.15);
+      envGain.gain.setValueAtTime(0.6, startTime + 1.35);
+      envGain.gain.linearRampToValueAtTime(0, startTime + 1.5);
+
+      osc.start(startTime);
+      osc.stop(startTime + 1.5);
+      noise.start(startTime);
+      noise.stop(startTime + 1.5);
+
+      timeoutRef = setTimeout(
+        () => scheduleCycle(ctx.currentTime, cycle + 1),
+        1400,
+      );
+    };
+
+    scheduleCycle(ctx.currentTime, 0);
+
+    return () => {
+      stopped = true;
+      if (timeoutRef) clearTimeout(timeoutRef);
+      masterGain.gain.setValueAtTime(masterGain.gain.value, ctx.currentTime);
+      masterGain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.15);
+    };
+  } catch (_) {
+    return () => {};
+  }
+}
+
+// ── Rocket Approach Sound ──────────────────────────────────────────────────────
+// Deep bass + turbine whine, gain ramps from 0 to max over durationMs. Returns stop fn.
+export function playRocketApproach(durationMs: number): () => void {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return () => {};
+
+    const durationS = durationMs / 1000;
+    const now = ctx.currentTime;
+
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(0, now);
+    masterGain.gain.linearRampToValueAtTime(2.0, now + durationS * 0.7);
+    masterGain.gain.linearRampToValueAtTime(3.5, now + durationS);
+    masterGain.connect(ctx.destination);
+
+    const bassOsc = ctx.createOscillator();
+    bassOsc.type = "sawtooth";
+    bassOsc.frequency.setValueAtTime(60, now);
+    bassOsc.frequency.linearRampToValueAtTime(120, now + durationS);
+    const bassFilter = ctx.createBiquadFilter();
+    bassFilter.type = "lowpass";
+    bassFilter.frequency.value = 200;
+    bassOsc.connect(bassFilter);
+    bassFilter.connect(masterGain);
+    bassOsc.start(now);
+    bassOsc.stop(now + durationS + 0.2);
+
+    const turbineOsc = ctx.createOscillator();
+    turbineOsc.type = "sawtooth";
+    turbineOsc.frequency.setValueAtTime(1200, now);
+    turbineOsc.frequency.linearRampToValueAtTime(2800, now + durationS);
+    const turbineGain = ctx.createGain();
+    turbineGain.gain.setValueAtTime(0.3, now);
+    turbineGain.gain.linearRampToValueAtTime(0.8, now + durationS);
+    turbineOsc.connect(turbineGain);
+    turbineGain.connect(masterGain);
+    turbineOsc.start(now);
+    turbineOsc.stop(now + durationS + 0.2);
+
+    const noiseNode = createNoise(ctx, durationS + 0.5);
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = "lowpass";
+    noiseFilter.frequency.setValueAtTime(300, now);
+    noiseFilter.frequency.linearRampToValueAtTime(800, now + durationS);
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.2, now);
+    noiseGain.gain.linearRampToValueAtTime(1.0, now + durationS);
+    noiseNode.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(masterGain);
+    noiseNode.start(now);
+    noiseNode.stop(now + durationS + 0.5);
+
+    return () => {
+      masterGain.gain.setValueAtTime(masterGain.gain.value, ctx.currentTime);
+      masterGain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.1);
+    };
+  } catch (_) {
+    return () => {};
+  }
+}
+
+// ── Nuclear Impact Boom ────────────────────────────────────────────────────────
+// Massive multi-layer explosion: 15+ seconds of rumble, thunder echoes,
+// shockwave whoosh, and deep sub-bass that slowly decays.
+export function playNuclearImpact(): void {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    // ── Layer 1: Ultra-deep sub-bass thud (15 → 12 hz, 15s) ──────────────────
+    const sub = ctx.createOscillator();
+    const subGain = ctx.createGain();
+    sub.type = "sine";
+    sub.frequency.setValueAtTime(38, now);
+    sub.frequency.exponentialRampToValueAtTime(14, now + 15.0);
+    subGain.gain.setValueAtTime(5.0, now);
+    subGain.gain.linearRampToValueAtTime(3.5, now + 1.5);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + 15.0);
+    sub.connect(subGain);
+    subGain.connect(ctx.destination);
+    sub.start(now);
+    sub.stop(now + 15.0);
+
+    // ── Layer 2: Deep pressure rumble (55 → 22 hz, 12s) ──────────────────────
+    const rumble = ctx.createOscillator();
+    const rumbleGain = ctx.createGain();
+    rumble.type = "sine";
+    rumble.frequency.setValueAtTime(55, now);
+    rumble.frequency.exponentialRampToValueAtTime(22, now + 12.0);
+    rumbleGain.gain.setValueAtTime(3.5, now);
+    rumbleGain.gain.exponentialRampToValueAtTime(0.001, now + 12.0);
+    rumble.connect(rumbleGain);
+    rumbleGain.connect(ctx.destination);
+    rumble.start(now);
+    rumble.stop(now + 12.0);
+
+    // ── Layer 3: Initial shockwave crack + noise burst ────────────────────────
+    const crack = createNoise(ctx, 0.6);
+    const crackFilter = ctx.createBiquadFilter();
+    crackFilter.type = "lowpass";
+    crackFilter.frequency.setValueAtTime(3000, now);
+    crackFilter.frequency.exponentialRampToValueAtTime(80, now + 0.6);
+    const crackGain = ctx.createGain();
+    crackGain.gain.setValueAtTime(4.5, now);
+    crackGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+    crack.connect(crackFilter);
+    crackFilter.connect(crackGain);
+    crackGain.connect(ctx.destination);
+    crack.start(now);
+    crack.stop(now + 0.6);
+
+    // ── Layer 4: Shockwave whoosh — builds over 3.5s as wave expands ─────────
+    const whoosh = createNoise(ctx, 4.0);
+    const whooshFilter = ctx.createBiquadFilter();
+    whooshFilter.type = "bandpass";
+    whooshFilter.frequency.setValueAtTime(600, now + 0.3);
+    whooshFilter.frequency.exponentialRampToValueAtTime(180, now + 3.5);
+    whooshFilter.Q.value = 0.8;
+    const whooshGain = ctx.createGain();
+    whooshGain.gain.setValueAtTime(0, now);
+    whooshGain.gain.linearRampToValueAtTime(2.8, now + 0.5);
+    whooshGain.gain.linearRampToValueAtTime(1.8, now + 2.0);
+    whooshGain.gain.exponentialRampToValueAtTime(0.001, now + 4.0);
+    whoosh.connect(whooshFilter);
+    whooshFilter.connect(whooshGain);
+    whooshGain.connect(ctx.destination);
+    whoosh.start(now + 0.2);
+    whoosh.stop(now + 4.0);
+
+    // ── Layer 5: Long mid-frequency rumble tail (10s) ─────────────────────────
+    const tail = createNoise(ctx, 12.0);
+    const tailFilter = ctx.createBiquadFilter();
+    tailFilter.type = "lowpass";
+    tailFilter.frequency.setValueAtTime(500, now + 0.3);
+    tailFilter.frequency.exponentialRampToValueAtTime(45, now + 12.0);
+    const tailGain = ctx.createGain();
+    tailGain.gain.setValueAtTime(0, now);
+    tailGain.gain.setValueAtTime(2.0, now + 0.15);
+    tailGain.gain.linearRampToValueAtTime(1.2, now + 3.0);
+    tailGain.gain.exponentialRampToValueAtTime(0.001, now + 12.0);
+    tail.connect(tailFilter);
+    tailFilter.connect(tailGain);
+    tailGain.connect(ctx.destination);
+    tail.start(now);
+    tail.stop(now + 12.0);
+
+    // ── Layer 6: Rolling thunder echo 1 (delayed ~2.5s) ──────────────────────
+    const thunder1 = createNoise(ctx, 2.5);
+    const t1Filter = ctx.createBiquadFilter();
+    t1Filter.type = "lowpass";
+    t1Filter.frequency.setValueAtTime(300, now + 2.5);
+    t1Filter.frequency.exponentialRampToValueAtTime(60, now + 5.0);
+    const t1Gain = ctx.createGain();
+    t1Gain.gain.setValueAtTime(0, now + 2.5);
+    t1Gain.gain.linearRampToValueAtTime(1.4, now + 2.7);
+    t1Gain.gain.exponentialRampToValueAtTime(0.001, now + 5.0);
+    thunder1.connect(t1Filter);
+    t1Filter.connect(t1Gain);
+    t1Gain.connect(ctx.destination);
+    thunder1.start(now + 2.5);
+    thunder1.stop(now + 5.0);
+
+    // ── Layer 7: Rolling thunder echo 2 (delayed ~5.5s) ──────────────────────
+    const thunder2 = createNoise(ctx, 2.5);
+    const t2Filter = ctx.createBiquadFilter();
+    t2Filter.type = "lowpass";
+    t2Filter.frequency.setValueAtTime(220, now + 5.5);
+    t2Filter.frequency.exponentialRampToValueAtTime(40, now + 8.0);
+    const t2Gain = ctx.createGain();
+    t2Gain.gain.setValueAtTime(0, now + 5.5);
+    t2Gain.gain.linearRampToValueAtTime(0.9, now + 5.7);
+    t2Gain.gain.exponentialRampToValueAtTime(0.001, now + 8.0);
+    thunder2.connect(t2Filter);
+    t2Filter.connect(t2Gain);
+    t2Gain.connect(ctx.destination);
+    thunder2.start(now + 5.5);
+    thunder2.stop(now + 8.0);
+
+    // ── Layer 8: Final distant rumble (8-15s) ─────────────────────────────────
+    const distant = ctx.createOscillator();
+    const distantGain = ctx.createGain();
+    distant.type = "sine";
+    distant.frequency.setValueAtTime(28, now + 8.0);
+    distant.frequency.exponentialRampToValueAtTime(16, now + 15.0);
+    distantGain.gain.setValueAtTime(0, now + 8.0);
+    distantGain.gain.linearRampToValueAtTime(1.2, now + 8.5);
+    distantGain.gain.exponentialRampToValueAtTime(0.001, now + 15.0);
+    distant.connect(distantGain);
+    distantGain.connect(ctx.destination);
+    distant.start(now + 8.0);
+    distant.stop(now + 15.0);
   } catch (_) {}
 }

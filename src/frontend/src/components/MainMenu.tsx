@@ -2,6 +2,68 @@ import { useInternetIdentity } from "@caffeineai/core-infrastructure";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
+function useFullscreen() {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  const toggle = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
+  return { isFullscreen, toggle };
+}
+
+function FullscreenButton() {
+  const { isFullscreen, toggle } = useFullscreen();
+  return (
+    <button
+      type="button"
+      data-ocid="fullscreen-toggle"
+      onClick={toggle}
+      title={isFullscreen ? "Vollbild beenden" : "Vollbild"}
+      style={{
+        position: "absolute",
+        top: "16px",
+        right: "20px",
+        zIndex: 30,
+        background: "transparent",
+        border: "none",
+        cursor: "pointer",
+        fontFamily: "'Oswald', sans-serif",
+        fontWeight: 600,
+        fontSize: "0.75rem",
+        letterSpacing: "0.12em",
+        textTransform: "uppercase",
+        color: "rgba(255,255,255,0.82)",
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
+        padding: "6px 8px",
+        transition: "color 0.15s ease",
+        lineHeight: 1,
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLButtonElement).style.color = "#FF7A00";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLButtonElement).style.color =
+          "rgba(255,255,255,0.82)";
+      }}
+    >
+      <span style={{ fontSize: "1.1rem", lineHeight: 1 }}>
+        {isFullscreen ? "⊠" : "⛶"}
+      </span>
+      <span>{isFullscreen ? "VOLLBILD BEENDEN" : "VOLLBILD"}</span>
+    </button>
+  );
+}
+
 interface MainMenuProps {
   onStartGame: () => void;
   onShowLeaderboard: () => void;
@@ -485,6 +547,9 @@ export function MainMenu({
           />
         ))}
       </div>
+
+      {/* ── FULLSCREEN BUTTON — top-right ── */}
+      <FullscreenButton />
 
       {/* ── Z6: WARM VIGNETTE — frames the scene, deepens edges ── */}
       <div

@@ -7,7 +7,71 @@ import {
   WEAPON_CONFIGS,
   type WeaponState,
 } from "../../types/weapon";
+import type { WorldType } from "./GameScene";
 import { SniperScope } from "./SniperScope";
+
+function useFullscreen() {
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  const toggle = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
+  return { isFullscreen, toggle };
+}
+
+function HUDFullscreenButton() {
+  const { isFullscreen, toggle } = useFullscreen();
+  return (
+    <button
+      type="button"
+      data-ocid="hud-fullscreen-toggle"
+      onClick={toggle}
+      title={isFullscreen ? "Vollbild beenden" : "Vollbild"}
+      className="pointer-events-auto"
+      style={{
+        background: "rgba(10,5,0,0.75)",
+        border: "2px solid #0a0505",
+        boxShadow: "3px 3px 0 #0a0505",
+        cursor: "pointer",
+        fontFamily: "'Oswald', sans-serif",
+        fontWeight: 600,
+        fontSize: "0.68rem",
+        letterSpacing: "0.1em",
+        textTransform: "uppercase",
+        color: "rgba(255,255,255,0.82)",
+        display: "flex",
+        alignItems: "center",
+        gap: "5px",
+        padding: "5px 8px",
+        transition: "color 0.15s ease, border-color 0.15s ease",
+        lineHeight: 1,
+      }}
+      onMouseEnter={(e) => {
+        const btn = e.currentTarget as HTMLButtonElement;
+        btn.style.color = "#FF7A00";
+        btn.style.borderColor = "#FF7A00";
+      }}
+      onMouseLeave={(e) => {
+        const btn = e.currentTarget as HTMLButtonElement;
+        btn.style.color = "rgba(255,255,255,0.82)";
+        btn.style.borderColor = "#0a0505";
+      }}
+    >
+      <span style={{ fontSize: "1rem", lineHeight: 1 }}>
+        {isFullscreen ? "⊠" : "⛶"}
+      </span>
+      <span>{isFullscreen ? "VOLLBILD BEENDEN" : "VOLLBILD"}</span>
+    </button>
+  );
+}
 
 interface HUDProps {
   health: number;
@@ -21,9 +85,13 @@ interface HUDProps {
   pointsNotifications: PointsNotification[];
   nearPackAPunch: boolean;
   nearJuggernog?: boolean;
+  nearNuclearMachine?: boolean;
+  nearSpeedCola?: boolean;
   upgradeMessage: string | null;
   juggernogPurchaseCount?: number;
   isAiming?: boolean;
+  currentWorld?: WorldType;
+  nearPortal?: boolean;
 }
 
 function HealthBar({
@@ -536,9 +604,13 @@ export function HUD({
   pointsNotifications,
   nearPackAPunch,
   nearJuggernog = false,
+  nearNuclearMachine = false,
+  nearSpeedCola = false,
   upgradeMessage,
   juggernogPurchaseCount = 0,
   isAiming = false,
+  currentWorld = "desert",
+  nearPortal = false,
 }: HUDProps) {
   // Re-render notifications every frame for smooth animation
   const [, forceUpdate] = useState(0);
@@ -602,33 +674,39 @@ export function HUD({
         )}
       </div>
 
-      {/* Top right - Points */}
+      {/* Top right - Points + Fullscreen */}
       <div
-        className="absolute top-4 right-6 hud-text text-lg px-3 py-1"
-        style={{
-          background: "rgba(10,5,0,0.8)",
-          border: "2px solid #0a0505",
-          boxShadow: "3px 3px 0 #0a0505",
-          color: "#ffee00",
-        }}
+        className="absolute top-4 right-6 flex flex-col items-end gap-2"
+        style={{ zIndex: 15 }}
       >
-        ⭐ {points.toLocaleString()} PTS
-        {weaponState.upgradeTier > 0 && (
-          <span
-            style={{
-              marginLeft: "8px",
-              color:
-                weaponState.upgradeTier === 1
-                  ? "#44aaff"
-                  : weaponState.upgradeTier === 2
-                    ? "#cc44ff"
-                    : "#ffcc00",
-              fontSize: "0.85rem",
-            }}
-          >
-            {"★".repeat(weaponState.upgradeTier)}
-          </span>
-        )}
+        <div
+          className="hud-text text-lg px-3 py-1"
+          style={{
+            background: "rgba(10,5,0,0.8)",
+            border: "2px solid #0a0505",
+            boxShadow: "3px 3px 0 #0a0505",
+            color: "#ffee00",
+          }}
+        >
+          ⭐ {points.toLocaleString()} PTS
+          {weaponState.upgradeTier > 0 && (
+            <span
+              style={{
+                marginLeft: "8px",
+                color:
+                  weaponState.upgradeTier === 1
+                    ? "#44aaff"
+                    : weaponState.upgradeTier === 2
+                      ? "#cc44ff"
+                      : "#ffcc00",
+                fontSize: "0.85rem",
+              }}
+            >
+              {"★".repeat(weaponState.upgradeTier)}
+            </span>
+          )}
+        </div>
+        <HUDFullscreenButton />
       </div>
 
       {/* Bottom left - Health + Perks */}
@@ -697,6 +775,129 @@ export function HUD({
         purchaseCount={juggernogPurchaseCount}
         points={points}
       />
+
+      {/* Portal interaction prompt */}
+      {nearPortal && (
+        <div
+          className="absolute bottom-32 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2"
+          data-ocid="portal.prompt"
+          style={{ zIndex: 20 }}
+        >
+          <div
+            className="hud-text text-lg px-5 py-2 text-center"
+            style={{
+              background:
+                currentWorld === "desert"
+                  ? "rgba(30,8,0,0.92)"
+                  : "rgba(20,14,0,0.92)",
+              border: `2px solid ${currentWorld === "desert" ? "#ff4400" : "#ffaa22"}`,
+              boxShadow: `0 0 18px ${currentWorld === "desert" ? "#ff440066" : "#ffaa2266"}, 3px 3px 0 #000`,
+              color: currentWorld === "desert" ? "#ff8855" : "#ffcc66",
+            }}
+          >
+            <div
+              style={{
+                color: currentWorld === "desert" ? "#ff4400" : "#ffaa22",
+                fontSize: "0.85rem",
+                marginBottom: "3px",
+                letterSpacing: "0.15em",
+              }}
+            >
+              ⬡ PORTAL — {currentWorld === "desert" ? "WAR ZONE" : "DESERT"}
+            </div>
+            <div>
+              Press <span style={{ color: "#ffee00" }}>E</span> to teleport
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Nuclear machine interaction prompt (warzone) */}
+      {nearNuclearMachine && (
+        <div
+          className="absolute bottom-32 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2"
+          data-ocid="nuclear_machine.prompt"
+          style={{ zIndex: 20 }}
+        >
+          <div
+            className="hud-text text-lg px-5 py-2 text-center"
+            style={{
+              background: "rgba(10,20,0,0.92)",
+              border: "2px solid #44ff22",
+              boxShadow: "0 0 18px #44ff2266, 3px 3px 0 #000",
+              color: "#aaffaa",
+            }}
+          >
+            <div
+              style={{
+                color: "#44ff22",
+                fontSize: "0.85rem",
+                marginBottom: "3px",
+                letterSpacing: "0.15em",
+              }}
+            >
+              ☢ NUCLEAR LAUNCH SYSTEM ☢
+            </div>
+            <div>
+              Press <span style={{ color: "#ffee00" }}>E</span> to launch
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Speed Cola interaction prompt (warzone) */}
+      {nearSpeedCola && (
+        <div
+          className="absolute bottom-32 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2"
+          data-ocid="speed_cola.prompt"
+          style={{ zIndex: 20 }}
+        >
+          <div
+            className="hud-text text-lg px-5 py-2 text-center"
+            style={{
+              background: "rgba(0,20,5,0.92)",
+              border: "2px solid #00ff55",
+              boxShadow: "0 0 18px #00ff5566, 3px 3px 0 #000",
+              color: "#aaffcc",
+            }}
+          >
+            <div
+              style={{
+                color: "#00ff55",
+                fontSize: "0.85rem",
+                marginBottom: "3px",
+                letterSpacing: "0.15em",
+              }}
+            >
+              🥤 SPEED COLA
+            </div>
+            <div>
+              Press <span style={{ color: "#ffee00" }}>E</span> — 3000 pts
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom right — world name indicator */}
+      <div
+        className="absolute bottom-6 right-6 pb-14 flex flex-col items-end gap-1"
+        style={{ zIndex: 12, pointerEvents: "none" }}
+      >
+        <div
+          className="hud-text text-xs px-2 py-0.5"
+          data-ocid="hud.world_label"
+          style={{
+            color:
+              currentWorld === "desert"
+                ? "rgba(255,180,60,0.55)"
+                : "rgba(140,160,200,0.55)",
+            letterSpacing: "0.2em",
+            fontSize: "0.6rem",
+          }}
+        >
+          {currentWorld === "desert" ? "DESERT" : "WAR ZONE"}
+        </div>
+      </div>
 
       {/* Upgrade / purchase message */}
       <UpgradeMessage message={upgradeMessage} />

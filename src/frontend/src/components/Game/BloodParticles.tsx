@@ -52,8 +52,6 @@ const BloodParticles: React.FC<BloodParticlesProps> = ({
         scale: 0.03 + Math.random() * 0.05 * intensity,
       };
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally run once on mount
   }, []);
 
   const dummy = useMemo(() => new THREE.Object3D(), []);

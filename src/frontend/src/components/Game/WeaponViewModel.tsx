@@ -115,9 +115,8 @@ function GoldSparkles({ active }: { active: boolean }) {
 
   return (
     <group ref={groupRef}>
-      {Array.from({ length: 6 }).map((_, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
-        <mesh key={i}>
+      {Array.from({ length: 6 }, (_, i) => i).map((val) => (
+        <mesh key={val}>
           <octahedronGeometry args={[1, 0]} />
           <meshStandardMaterial
             color="#ffcc00"
@@ -255,12 +254,11 @@ function PistolModel({
       </mesh>
 
       {/* Rear slide serrations – 8 vertical grooves (M1911 signature) */}
-      {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+      {[0, 1, 2, 3, 4, 5, 6, 7].map((val) => (
         <mesh
-          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
-          key={`ser-${i}`}
+          key={`ser-${val}`}
           material={rubberMat}
-          position={[0, 0.07, 0.07 + i * 0.012]}
+          position={[0, 0.07, 0.07 + val * 0.012]}
         >
           <boxGeometry args={[0.064, 0.054, 0.004]} />
         </mesh>
@@ -395,46 +393,42 @@ function PistolModel({
       />
 
       {/* Wood grain lines – left panel (3 vertical lines) */}
-      {[0, 1, 2].map((j) => (
+      {[0, 1, 2].map((val) => (
         <mesh
-          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
-          key={`wg-l-${j}`}
+          key={`wg-l-${val}`}
           material={gripLightMat}
-          position={[-0.036, -0.055, 0.02 + j * 0.035]}
+          position={[-0.036, -0.055, 0.02 + val * 0.035]}
         >
           <boxGeometry args={[0.008, 0.113, 0.003]} />
         </mesh>
       ))}
       {/* Wood grain lines – right panel */}
-      {[0, 1, 2].map((j) => (
+      {[0, 1, 2].map((val) => (
         <mesh
-          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
-          key={`wg-r-${j}`}
+          key={`wg-r-${val}`}
           material={gripLightMat}
-          position={[0.036, -0.055, 0.02 + j * 0.035]}
+          position={[0.036, -0.055, 0.02 + val * 0.035]}
         >
           <boxGeometry args={[0.008, 0.113, 0.003]} />
         </mesh>
       ))}
 
       {/* Diamond checkering simulation – left (6 horizontal ridges) */}
-      {[0, 1, 2, 3, 4, 5].map((k) => (
+      {[0, 1, 2, 3, 4, 5].map((val) => (
         <mesh
-          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
-          key={`chk-l-${k}`}
+          key={`chk-l-${val}`}
           material={gripMat}
-          position={[-0.036, -0.02 + k * 0.02, 0.065]}
+          position={[-0.036, -0.02 + val * 0.02, 0.065]}
         >
           <boxGeometry args={[0.008, 0.006, 0.098]} />
         </mesh>
       ))}
       {/* Diamond checkering simulation – right */}
-      {[0, 1, 2, 3, 4, 5].map((k) => (
+      {[0, 1, 2, 3, 4, 5].map((val) => (
         <mesh
-          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
-          key={`chk-r-${k}`}
+          key={`chk-r-${val}`}
           material={gripMat}
-          position={[0.036, -0.02 + k * 0.02, 0.065]}
+          position={[0.036, -0.02 + val * 0.02, 0.065]}
         >
           <boxGeometry args={[0.008, 0.006, 0.098]} />
         </mesh>
@@ -459,12 +453,11 @@ function PistolModel({
         <boxGeometry args={[0.053, 0.012, 0.09]} />
       </mesh>
       {/* Witness holes – right side (3) */}
-      {[0, 1, 2].map((m) => (
+      {[0, 1, 2].map((val) => (
         <mesh
-          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
-          key={`wh-${m}`}
+          key={`wh-${val}`}
           material={rubberMat}
-          position={[0.027, -0.075 + m * 0.025, 0.065]}
+          position={[0.027, -0.075 + val * 0.025, 0.065]}
         >
           <boxGeometry args={[0.007, 0.006, 0.086]} />
         </mesh>
@@ -489,12 +482,11 @@ function PistolModel({
         <boxGeometry args={[0.062, 0.008, 0.075]} />
       </mesh>
       {/* 2 cross slots */}
-      {[0, 1].map((n) => (
+      {[0, 1].map((val) => (
         <mesh
-          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
-          key={`rail-${n}`}
+          key={`rail-${val}`}
           material={rubberMat}
-          position={[0, -0.038, -0.045 + n * 0.03]}
+          position={[0, -0.038, -0.045 + val * 0.03]}
         >
           <boxGeometry args={[0.064, 0.009, 0.005]} />
         </mesh>
@@ -739,12 +731,11 @@ function ShotgunModel({
       />
 
       {/* 5 finger grooves */}
-      {[0, 1, 2, 3, 4].map((i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
+      {[0, 1, 2, 3, 4].map((val) => (
         <mesh
-          key={`fg-${i}`}
+          key={`fg-${val}`}
           material={woodDarkMat}
-          position={[0, -0.02, -0.105 + i * 0.028]}
+          position={[0, -0.02, -0.105 + val * 0.028]}
         >
           <boxGeometry args={[0.08, 0.067, 0.008]} />
         </mesh>
@@ -785,12 +776,11 @@ function ShotgunModel({
         <boxGeometry args={[0.065, 0.014, 0.32]} />
       </mesh>
       {/* 7 heat slots */}
-      {[0, 1, 2, 3, 4, 5, 6].map((i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
+      {[0, 1, 2, 3, 4, 5, 6].map((val) => (
         <mesh
-          key={`hs-${i}`}
+          key={`hs-${val}`}
           material={rubberMat}
-          position={[0, 0.065, -0.07 - i * 0.05]}
+          position={[0, 0.065, -0.07 - val * 0.05]}
         >
           <boxGeometry args={[0.058, 0.016, 0.022]} />
         </mesh>
@@ -802,12 +792,11 @@ function ShotgunModel({
         <boxGeometry args={[0.008, 0.007, 0.38]} />
       </mesh>
       {/* 8 rib posts */}
-      {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
+      {[0, 1, 2, 3, 4, 5, 6, 7].map((val) => (
         <mesh
-          key={`rp-${i}`}
+          key={`rp-${val}`}
           material={metalLightMat}
-          position={[0, 0.076, -0.06 - i * 0.05]}
+          position={[0, 0.076, -0.06 - val * 0.05]}
           rotation={[Math.PI / 2, 0, 0]}
         >
           <cylinderGeometry args={[0.004, 0.004, 0.018, 6]} />
@@ -842,12 +831,11 @@ function ShotgunModel({
         <boxGeometry args={[0.008, 0.075, 0.16]} />
       </mesh>
       {/* 6 shell tubes */}
-      {[0, 1, 2, 3, 4, 5].map((i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
+      {[0, 1, 2, 3, 4, 5].map((val) => (
         <mesh
-          key={`sh-${i}`}
+          key={`sh-${val}`}
           material={brassMat}
-          position={[-0.055, -0.025 + i * 0.015, 0.01 + (i % 2) * 0.01]}
+          position={[-0.055, -0.025 + val * 0.015, 0.01 + (val % 2) * 0.01]}
           rotation={[0, 0, Math.PI / 2]}
         >
           <cylinderGeometry args={[0.009, 0.009, 0.065, 8]} />
@@ -988,10 +976,9 @@ function AssaultRifleModel({
       </mesh>
 
       {/* Wood grain on handguard */}
-      {[-0.02, 0, 0.02].map((xOff, i) => (
+      {[-0.02, 0, 0.02].map((xOff) => (
         <mesh
-          // biome-ignore lint: pre-existing issue
-          key={`hg-grain-${i}`}
+          key={`hg-grain-${xOff}`}
           material={woodDarkMat}
           position={[xOff, 0.04, -0.19]}
         >
@@ -1039,10 +1026,9 @@ function AssaultRifleModel({
       </mesh>
 
       {/* Flash hider prongs (4 prongs) */}
-      {[0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2].map((angle, i) => (
+      {[0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2].map((angle) => (
         <mesh
-          // biome-ignore lint: pre-existing issue
-          key={`prong-${i}`}
+          key={`prong-${angle.toFixed(4)}`}
           material={steelMat}
           position={[
             Math.cos(angle) * 0.018,
@@ -1070,10 +1056,9 @@ function AssaultRifleModel({
       />
 
       {/* Grip finger grooves */}
-      {[-0.03, -0.01, 0.01, 0.03].map((yOff, i) => (
+      {[-0.03, -0.01, 0.01, 0.03].map((yOff) => (
         <mesh
-          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry array
-          key={`grip-groove-${i}`}
+          key={`grip-groove-${yOff}`}
           material={detailMat}
           position={[0, -0.055 + yOff, 0.1]}
           rotation={[0.25, 0, 0]}
@@ -1131,10 +1116,9 @@ function AssaultRifleModel({
       </mesh>
 
       {/* Magazine ribs (AK-style horizontal ridges) */}
-      {[-0.03, 0, 0.03].map((yOff, i) => (
+      {[-0.03, 0, 0.03].map((yOff) => (
         <mesh
-          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry array
-          key={`mag-rib-${i}`}
+          key={`mag-rib-${yOff}`}
           material={detailMat}
           position={[0, -0.115 + yOff, 0.01]}
           rotation={[0.35, 0, 0]}
@@ -1165,10 +1149,9 @@ function AssaultRifleModel({
       </mesh>
 
       {/* Wood grain on stock */}
-      {[-0.015, 0.015].map((xOff, i) => (
+      {[-0.015, 0.015].map((xOff) => (
         <mesh
-          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry array
-          key={`stock-grain-${i}`}
+          key={`stock-grain-${xOff}`}
           material={woodDarkMat}
           position={[xOff, -0.01, 0.27]}
         >
@@ -1304,13 +1287,12 @@ function SniperRifleModel({
       <mesh material={steelMat} position={[0, 0.055, 0.08]}>
         <boxGeometry args={[0.022, 0.012, 0.22]} />
       </mesh>
-      {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+      {[0, 1, 2, 3, 4, 5, 6].map((val) => (
         <mesh
-          key={`rs-${i}`}
+          key={`rs-${val}`}
           material={steelDarkMat}
-          position={[0, 0.057, -0.04 + i * 0.03]}
+          position={[0, 0.057, -0.04 + val * 0.03]}
         >
-          {/* biome-ignore lint/suspicious/noArrayIndexKey: static geometry */}
           <boxGeometry args={[0.024, 0.006, 0.008]} />
         </mesh>
       ))}
@@ -1471,10 +1453,9 @@ function SniperRifleModel({
         <cylinderGeometry args={[0.011, 0.011, 0.005, 10]} />
       </mesh>
       {/* Scope rings */}
-      {[-0.08, 0.14].map((zOff, i) => (
+      {[-0.08, 0.14].map((zOff) => (
         <mesh
-          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
-          key={`sr-${i}`}
+          key={`sr-${zOff}`}
           material={steelMat}
           position={[0, 0.075, zOff]}
           rotation={[Math.PI / 2, 0, 0]}
@@ -1482,10 +1463,9 @@ function SniperRifleModel({
           <cylinderGeometry args={[0.032, 0.032, 0.018, 14]} />
         </mesh>
       ))}
-      {[-0.08, 0.14].map((zOff, i) => (
+      {[-0.08, 0.14].map((zOff) => (
         <mesh
-          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry
-          key={`rb-${i}`}
+          key={`rb-${zOff}`}
           material={steelDarkMat}
           position={[0, 0.059, zOff]}
         >

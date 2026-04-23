@@ -14,6 +14,7 @@ interface FirstPersonCameraProps {
   onFire: () => void;
   isGameActive: boolean;
   isPaused: boolean;
+  extraAABBs?: CollisionAABB[];
 }
 
 const MOVE_SPEED = 8;
@@ -34,6 +35,7 @@ export function FirstPersonCamera({
   onFire,
   isGameActive,
   isPaused,
+  extraAABBs = [],
 }: FirstPersonCameraProps) {
   const { camera } = useThree();
 
@@ -54,8 +56,11 @@ export function FirstPersonCamera({
     const mountainAABBs = generateMountainCollisionAABBs(PLAYER_RADIUS);
     aabbs.push(...mountainAABBs);
 
+    // Add any extra AABBs passed from outside (e.g. nuclear machine in warzone)
+    aabbs.push(...extraAABBs);
+
     return aabbs;
-  }, []);
+  }, [extraAABBs]);
 
   const keysRef = useRef({
     w: false,

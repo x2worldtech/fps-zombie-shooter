@@ -14,7 +14,7 @@ const WEAPON_ORDER: WeaponName[] = [
   "sniper_rifle",
 ];
 
-export function useWeaponSystem() {
+export function useWeaponSystem(reloadMultiplier = 1.0) {
   const [weaponState, setWeaponState] = useState<WeaponState>({
     currentWeapon: "pistol",
     currentAmmo: WEAPON_CONFIGS.pistol.magazineSize,
@@ -30,6 +30,8 @@ export function useWeaponSystem() {
 
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recoilTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reloadMultiplierRef = useRef(reloadMultiplier);
+  reloadMultiplierRef.current = reloadMultiplier;
   const stateRef = useRef(weaponState);
   stateRef.current = weaponState;
 
@@ -69,19 +71,22 @@ export function useWeaponSystem() {
       reloadProgress: 0,
     }));
 
-    reloadTimerRef.current = setTimeout(() => {
-      setWeaponState((prev) => {
-        const needed = config.magazineSize - prev.currentAmmo;
-        const toAdd = Math.min(needed, prev.reserveAmmo);
-        return {
-          ...prev,
-          currentAmmo: prev.currentAmmo + toAdd,
-          reserveAmmo: prev.reserveAmmo - toAdd,
-          isReloading: false,
-          reloadProgress: 0,
-        };
-      });
-    }, config.reloadTime * 1000);
+    reloadTimerRef.current = setTimeout(
+      () => {
+        setWeaponState((prev) => {
+          const needed = config.magazineSize - prev.currentAmmo;
+          const toAdd = Math.min(needed, prev.reserveAmmo);
+          return {
+            ...prev,
+            currentAmmo: prev.currentAmmo + toAdd,
+            reserveAmmo: prev.reserveAmmo - toAdd,
+            isReloading: false,
+            reloadProgress: 0,
+          };
+        });
+      },
+      config.reloadTime * 1000 * reloadMultiplierRef.current,
+    );
   }, []);
 
   const tryFire = useCallback((): boolean => {

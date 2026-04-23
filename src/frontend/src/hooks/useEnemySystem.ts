@@ -67,7 +67,7 @@ export function useEnemySystem() {
         newEnemies.push({
           id: generateId(),
           type: "standard",
-          position: [x, 0.9, z],
+          position: [x, 1.2, z],
           health: 60,
           maxHealth: 60,
           speed: 3.5 * speedMultiplier,
