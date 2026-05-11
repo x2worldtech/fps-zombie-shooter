@@ -8,11 +8,12 @@ import Runtime "mo:core/Runtime";
 import Principal "mo:core/Principal";
 import Map "mo:core/Map";
 import Nat "mo:core/Nat";
-import Char "mo:core/Char";
 
 
 
-actor {
+
+
+persistent actor {
   type ScoreEntry = {
     playerName : Text;
     score : Nat;
@@ -26,6 +27,7 @@ actor {
     totalShots : Nat;
     totalPoints : Nat;
     currentLevel : Nat;
+    username : ?Text;
   };
 
   type SessionStats = {
@@ -41,13 +43,13 @@ actor {
     };
   };
 
-  let accessControlState = AccessControl.initState();
+  transient let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
 
-  let highScoresList = List.empty<ScoreEntry>();
-  let profiles = Map.empty<Principal, PlayerProfile>();
+  transient let highScoresList = List.empty<ScoreEntry>();
+  transient let profiles = Map.empty<Principal, PlayerProfile>();
 
-  let hardXPThresholds : [Nat] = [
+  transient let hardXPThresholds : [Nat] = [
     // 55 entries, extremely steep progression
     1000, // Level 1 to 2, 10x increase for slow initial progression
     3000, // Level 2 to 3, 3x per level
@@ -105,28 +107,30 @@ actor {
     80000000000000000, // Level 54 to 55
   ];
 
-  public shared ({ caller }) func submitScore(playerName : Text, score : Nat, wave : Nat) : async () {
+  public shared ({ caller }) func submitScore(score : Nat, wave : Nat) : async () {
     if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
       Runtime.trap("Unauthorized: Only authenticated users can submit scores!");
     };
 
-    if (playerName.size() > 16) { Runtime.trap("Player name must not exceed 16 characters") };
-    let sanitizedPlayerName = sanitizePlayerName(playerName);
-    if (sanitizedPlayerName == "") {
-      Runtime.trap("Player name cannot be empty after sanitization");
+    let callerProfile = profiles.get(caller);
+    let playerName = switch (callerProfile) {
+      case (?profile) {
+        switch (profile.username) {
+          case (?name) { name };
+          case (null) { return }; // No username set — skip submission silently
+        };
+      };
+      case (null) { return }; // No profile — skip submission silently
     };
 
     let newEntry : ScoreEntry = {
-      playerName = sanitizedPlayerName;
+      playerName;
       score;
       wave;
     };
     highScoresList.add(newEntry);
 
-    // Convert to array and sort
     let scoresArray = highScoresList.toArray().sort();
-
-    // Clear current list and add top 10
     highScoresList.clear();
     let topScores = scoresArray.sliceToArray(0, Nat.min(scoresArray.size(), 10));
     for (entry in topScores.values()) {
@@ -134,7 +138,7 @@ actor {
     };
   };
 
-  public query ({ caller }) func getHighScores() : async [ScoreEntry] {
+  public query func getHighScores() : async [ScoreEntry] {
     highScoresList.toArray();
   };
 
@@ -165,11 +169,13 @@ actor {
           totalShots = 0;
           totalPoints = 0;
           currentLevel = 1;
+          username = null;
         };
       };
     };
 
     let updatedProfile = {
+      currentProfile with
       totalKills = currentProfile.totalKills + sessionStats.kills;
       totalRounds = currentProfile.totalRounds + 1;
       totalHeadshots = currentProfile.totalHeadshots + sessionStats.headshots;
@@ -197,6 +203,7 @@ actor {
           totalShots = 0;
           totalPoints = 0;
           currentLevel = 1;
+          username = null;
         };
         profiles.add(caller, newProfile);
         newProfile;
@@ -253,5 +260,51 @@ actor {
       };
     };
     sanitizedName;
+  };
+
+  public shared ({ caller }) func setUsername(username : Text) : async { #ok; #err : Text } {
+    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
+      return #err("Unauthorized: Only authenticated users can set a username");
+    };
+
+    let size = username.size();
+    if (size < 3 or size > 20) {
+      return #err("Username must be between 3 and 20 characters");
+    };
+
+    let sanitized = sanitizePlayerName(username);
+    if (sanitized != username or sanitized == "") {
+      return #err("Username may only contain letters, digits, hyphens, and underscores");
+    };
+
+    let currentProfile = switch (profiles.get(caller)) {
+      case (?profile) { profile };
+      case (null) {
+        {
+          totalKills = 0;
+          totalRounds = 0;
+          totalHeadshots = 0;
+          totalShots = 0;
+          totalPoints = 0;
+          currentLevel = 1;
+          username = null;
+        };
+      };
+    };
+
+    switch (currentProfile.username) {
+      case (?_) { return #err("Username is already set and cannot be changed") };
+      case (null) {};
+    };
+
+    profiles.add(caller, { currentProfile with username = ?sanitized });
+    #ok;
+  };
+
+  public query ({ caller }) func getUsername() : async ?Text {
+    switch (profiles.get(caller)) {
+      case (?profile) { profile.username };
+      case (null) { null };
+    };
   };
 };

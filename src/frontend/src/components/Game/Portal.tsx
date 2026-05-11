@@ -204,9 +204,13 @@ export function PortalSurface({ theme }: { theme: "warzone" | "desert" }) {
     mat.uniforms.uTime.value = performance.now() * 0.001;
   });
 
-  // Tall oval shape using a plane scaled to oval proportions
+  // Vortex passt exakt zwischen Pfeiler und zwischen Sockel/Bogen:
+  // - Rahmen-Innenraum horizontal: 2.52 (Pfeiler innen bei ±1.26)
+  // - Rahmen-Innenraum vertikal: 3.06 (Sockel y=0.44 → Bogen y=3.50)
+  // circleGeometry hat Basis-Radius 1.2 → scale x=1.05 → Halbbreite 1.26
+  //                                       scale y=1.275 → Halbhöhe 1.53
   return (
-    <mesh scale={[1.0, 1.55, 1.0]}>
+    <mesh scale={[1.05, 1.275, 1.0]}>
       <circleGeometry args={[1.2, 64]} />
       <primitive object={mat} attach="material" />
     </mesh>
@@ -259,7 +263,7 @@ function PortalParticles({ theme }: { theme: "warzone" | "desert" }) {
       return {
         pos: new THREE.Vector3(
           Math.cos(angle) * edgeR,
-          1.9 + heightOnPortal,
+          1.97 + heightOnPortal,
           Math.sin(angle) * 0.05,
         ),
         vel: new THREE.Vector3(
@@ -289,7 +293,7 @@ function PortalParticles({ theme }: { theme: "warzone" | "desert" }) {
         // Orbital wisps circling portal
         p.orbitAngle += p.orbitSpeed * delta;
         p.pos.x = Math.cos(p.orbitAngle) * p.orbitRadius;
-        p.pos.y = 1.9 + Math.sin(p.orbitAngle * 0.5) * 1.6;
+        p.pos.y = 1.97 + Math.sin(p.orbitAngle * 0.5) * 1.6;
         p.pos.z = Math.sin(p.orbitAngle) * 0.12;
       } else {
         // Spark particles ejected outward + upward
@@ -303,7 +307,7 @@ function PortalParticles({ theme }: { theme: "warzone" | "desert" }) {
         const angle = Math.random() * Math.PI * 2;
         const edgeR = 1.0 + Math.random() * 0.2;
         const ht = (Math.random() - 0.5) * 3.4;
-        p.pos.set(Math.cos(angle) * edgeR, 1.9 + ht, Math.sin(angle) * 0.06);
+        p.pos.set(Math.cos(angle) * edgeR, 1.97 + ht, Math.sin(angle) * 0.06);
         p.vel.set(
           Math.cos(angle) * (0.005 + Math.random() * 0.012),
           Math.random() * 0.015 + 0.004,
@@ -380,15 +384,192 @@ export function Portal({
     : new THREE.Color(0.9, 0.08, 0.0); // deep red accent
 
   const stoneColor = isWarzone ? "#1a1520" : "#1e1510";
-  const stoneMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: new THREE.Color(stoneColor),
-        roughness: 0.92,
-        metalness: 0.08,
-      }),
-    [stoneColor],
-  );
+  const stoneMat = useMemo(() => {
+    const size = 512;
+    // ── Albedo: dunkler Stein mit eingemeißelten Steinblock-Fugen + Verwitterung ──
+    const albedoCanvas = document.createElement("canvas");
+    albedoCanvas.width = size;
+    albedoCanvas.height = size;
+    const aCtx = albedoCanvas.getContext("2d");
+    if (aCtx) {
+      // Basis: dunkler Felston (Warzone violett-dunkel, Desert braun-dunkel)
+      aCtx.fillStyle = isWarzone ? "#26202e" : "#2a2018";
+      aCtx.fillRect(0, 0, size, size);
+
+      // Schichten heller/dunkler Patches für Mineral-Variation
+      for (let i = 0; i < 35; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const r = 30 + Math.random() * 100;
+        const g = aCtx.createRadialGradient(x, y, 0, x, y, r);
+        const isLight = Math.random() > 0.5;
+        if (isLight) {
+          g.addColorStop(
+            0,
+            isWarzone
+              ? `rgba(75,68,90,${0.2 + Math.random() * 0.25})`
+              : `rgba(80,68,55,${0.2 + Math.random() * 0.25})`,
+          );
+        } else {
+          g.addColorStop(0, `rgba(8,5,12,${0.3 + Math.random() * 0.3})`);
+        }
+        g.addColorStop(1, "rgba(127,127,127,0)");
+        aCtx.fillStyle = g;
+        aCtx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+
+      // Steinblock-Fugen (Mauer-Look) — alternierend versetzt
+      aCtx.fillStyle = "#000000";
+      const blockH = 64;
+      const blockW = 96;
+      for (let row = 0; row * blockH < size; row++) {
+        const y = row * blockH;
+        const offsetX = (row % 2) * (blockW / 2);
+        // Horizontale Fugen
+        aCtx.fillRect(0, y - 1, size, 3);
+        // Vertikale Fugen
+        for (let col = 0; col * blockW + offsetX < size + blockW; col++) {
+          const x = col * blockW + offsetX;
+          aCtx.fillRect(x - 1, y, 3, blockH);
+        }
+      }
+
+      // Verwitterungs-Risse (zufällige feine Linien innerhalb der Blöcke)
+      aCtx.lineCap = "round";
+      for (let i = 0; i < 40; i++) {
+        const x0 = Math.random() * size;
+        const y0 = Math.random() * size;
+        let x = x0;
+        let y = y0;
+        aCtx.strokeStyle = `rgba(0,0,0,${0.35 + Math.random() * 0.35})`;
+        aCtx.lineWidth = 0.6 + Math.random() * 1.2;
+        aCtx.beginPath();
+        aCtx.moveTo(x, y);
+        const segs = 3 + Math.floor(Math.random() * 5);
+        let angle = Math.random() * Math.PI * 2;
+        for (let s = 0; s < segs; s++) {
+          angle += (Math.random() - 0.5) * 0.6;
+          x += Math.cos(angle) * (8 + Math.random() * 18);
+          y += Math.sin(angle) * (8 + Math.random() * 18);
+          aCtx.lineTo(x, y);
+        }
+        aCtx.stroke();
+      }
+
+      // Verstreute Stein-Sprenkel (Mineral-Punkte)
+      for (let i = 0; i < 500; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const r = 0.6 + Math.random() * 1.6;
+        const dark = 0.3 + Math.random() * 0.4;
+        aCtx.fillStyle = isWarzone
+          ? `rgba(${50 * dark | 0},${45 * dark | 0},${65 * dark | 0},${0.5 + Math.random() * 0.4})`
+          : `rgba(${55 * dark | 0},${45 * dark | 0},${35 * dark | 0},${0.5 + Math.random() * 0.4})`;
+        aCtx.beginPath();
+        aCtx.arc(x, y, r, 0, Math.PI * 2);
+        aCtx.fill();
+      }
+
+      // Per-Pixel-Korn
+      const img = aCtx.getImageData(0, 0, size, size);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const n = (Math.random() - 0.5) * 22;
+        img.data[i] = Math.max(0, Math.min(255, img.data[i] + n));
+        img.data[i + 1] = Math.max(0, Math.min(255, img.data[i + 1] + n));
+        img.data[i + 2] = Math.max(0, Math.min(255, img.data[i + 2] + n));
+      }
+      aCtx.putImageData(img, 0, 0);
+    }
+    const albedoTex = new THREE.CanvasTexture(albedoCanvas);
+    albedoTex.wrapS = THREE.RepeatWrapping;
+    albedoTex.wrapT = THREE.RepeatWrapping;
+    albedoTex.repeat.set(1, 2); // Pfeiler sind hoch und schmal → vertikal stärker kacheln
+    albedoTex.colorSpace = THREE.SRGBColorSpace;
+    albedoTex.anisotropy = 8;
+
+    // ── Bump: Steinblock-Fugen vertieft + grobe Felskörnung ──
+    const bumpCanvas = document.createElement("canvas");
+    bumpCanvas.width = size;
+    bumpCanvas.height = size;
+    const bCtx = bumpCanvas.getContext("2d");
+    if (bCtx) {
+      bCtx.fillStyle = "#7f7f7f";
+      bCtx.fillRect(0, 0, size, size);
+
+      // Stein-Buckel innerhalb der Blöcke
+      for (let i = 0; i < 60; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const r = 12 + Math.random() * 35;
+        const g = bCtx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(255,255,255,${0.2 + Math.random() * 0.2})`);
+        g.addColorStop(0.7, "rgba(127,127,127,0)");
+        bCtx.fillStyle = g;
+        bCtx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+
+      // Steinblock-Fugen als tiefe schwarze Linien (= eingedrückt)
+      bCtx.fillStyle = "#000000";
+      const blockH = 64;
+      const blockW = 96;
+      for (let row = 0; row * blockH < size; row++) {
+        const y = row * blockH;
+        const offsetX = (row % 2) * (blockW / 2);
+        bCtx.fillRect(0, y - 2, size, 5);
+        for (let col = 0; col * blockW + offsetX < size + blockW; col++) {
+          const x = col * blockW + offsetX;
+          bCtx.fillRect(x - 2, y, 5, blockH);
+        }
+      }
+
+      // Risse als zusätzliche tiefe Linien
+      bCtx.lineCap = "round";
+      for (let i = 0; i < 30; i++) {
+        const x0 = Math.random() * size;
+        const y0 = Math.random() * size;
+        let x = x0;
+        let y = y0;
+        bCtx.strokeStyle = `rgba(0,0,0,${0.5 + Math.random() * 0.3})`;
+        bCtx.lineWidth = 1 + Math.random() * 2;
+        bCtx.beginPath();
+        bCtx.moveTo(x, y);
+        const segs = 3 + Math.floor(Math.random() * 5);
+        let angle = Math.random() * Math.PI * 2;
+        for (let s = 0; s < segs; s++) {
+          angle += (Math.random() - 0.5) * 0.6;
+          x += Math.cos(angle) * (10 + Math.random() * 20);
+          y += Math.sin(angle) * (10 + Math.random() * 20);
+          bCtx.lineTo(x, y);
+        }
+        bCtx.stroke();
+      }
+
+      // Per-Pixel-Korn
+      const img = bCtx.getImageData(0, 0, size, size);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const n = (Math.random() - 0.5) * 80;
+        const v = Math.max(0, Math.min(255, img.data[i] + n));
+        img.data[i] = v;
+        img.data[i + 1] = v;
+        img.data[i + 2] = v;
+      }
+      bCtx.putImageData(img, 0, 0);
+    }
+    const bumpTex = new THREE.CanvasTexture(bumpCanvas);
+    bumpTex.wrapS = THREE.RepeatWrapping;
+    bumpTex.wrapT = THREE.RepeatWrapping;
+    bumpTex.repeat.set(1, 2);
+    bumpTex.anisotropy = 8;
+
+    return new THREE.MeshStandardMaterial({
+      color: new THREE.Color(stoneColor),
+      map: albedoTex,
+      bumpMap: bumpTex,
+      bumpScale: 0.05,
+      roughness: 0.95,
+      metalness: 0.06,
+    });
+  }, [stoneColor, isWarzone]);
 
   // Iron trim with glowing cracks
   const ironMat = useMemo(
@@ -629,24 +810,24 @@ export function Portal({
     <group position={[px, py, pz]}>
       <group ref={groupRef}>
         {/* ── Large halo backglow ── */}
-        <mesh ref={haloRef} position={[0, 2.1, -0.12]}>
+        <mesh ref={haloRef} position={[0, 1.97, -0.12]}>
           <sphereGeometry args={[2.0, 20, 14]} />
           <primitive object={haloMat} attach="material" />
         </mesh>
 
-        {/* ── Portal swirl surface (tall oval via scale) ── */}
-        <group position={[0, 2.1, 0]}>
+        {/* ── Portal swirl surface — exakt im Rahmen zentriert ── */}
+        <group position={[0, 1.97, 0]}>
           <PortalSurface theme={theme} />
         </group>
 
-        {/* ── Outer energy ring (main, oval-scaled) ── */}
-        <mesh ref={ringRef} position={[0, 2.1, 0.02]} scale={[1.0, 1.55, 1.0]}>
-          <torusGeometry args={[1.24, 0.055, 16, 72]} />
+        {/* ── Outer energy ring — direkt am Innenrand des Rahmens ── */}
+        <mesh ref={ringRef} position={[0, 1.97, 0.02]} scale={[1.05, 1.275, 1.0]}>
+          <torusGeometry args={[1.2, 0.055, 16, 72]} />
           <primitive object={ringMat} attach="material" />
         </mesh>
 
-        {/* ── Secondary spinning ring (slightly inside, different color) ── */}
-        <mesh ref={ring2Ref} position={[0, 2.1, 0.04]} scale={[1.0, 1.55, 1.0]}>
+        {/* ── Secondary spinning ring — leicht innerhalb ── */}
+        <mesh ref={ring2Ref} position={[0, 1.97, 0.04]} scale={[1.0, 1.215, 1.0]}>
           <torusGeometry args={[1.18, 0.03, 12, 60]} />
           <primitive object={ring2Mat} attach="material" />
         </mesh>
@@ -735,7 +916,7 @@ export function Portal({
         {/* ── Primary pulsing point light ── */}
         <pointLight
           ref={lightRef}
-          position={[0, 2.1, 1.0]}
+          position={[0, 1.97, 1.0]}
           intensity={4.0}
           distance={15}
           color={glowColor}
@@ -745,7 +926,7 @@ export function Portal({
         {/* ── Secondary fill light from behind ── */}
         <pointLight
           ref={light2Ref}
-          position={[0, 2.1, -1.0]}
+          position={[0, 1.97, -1.0]}
           intensity={1.5}
           distance={8}
           color={glowColor2}

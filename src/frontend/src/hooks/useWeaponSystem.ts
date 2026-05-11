@@ -30,6 +30,8 @@ export function useWeaponSystem(reloadMultiplier = 1.0) {
 
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recoilTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // RAF-Handle für die Reload-Progress-Animation
+  const reloadAnimRafRef = useRef<number | null>(null);
   const reloadMultiplierRef = useRef(reloadMultiplier);
   reloadMultiplierRef.current = reloadMultiplier;
   const stateRef = useRef(weaponState);
@@ -43,6 +45,10 @@ export function useWeaponSystem(reloadMultiplier = 1.0) {
     if (stateRef.current.isReloading) {
       if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current);
     }
+    if (reloadAnimRafRef.current !== null) {
+      cancelAnimationFrame(reloadAnimRafRef.current);
+      reloadAnimRafRef.current = null;
+    }
     const config = WEAPON_CONFIGS[weapon];
     lastFireTimeRef.current = 0; // reset cooldown on weapon switch
     setIsAiming(false); // cancel aiming when switching weapons
@@ -54,6 +60,9 @@ export function useWeaponSystem(reloadMultiplier = 1.0) {
       isReloading: false,
       reloadProgress: 0,
       recoilOffset: 0,
+      // Verhindert, dass MuzzleFlash der neuen Waffe einen alten lastFireTime
+      // als "neuen Schuss" interpretiert
+      lastFireTime: 0,
     }));
   }, []);
 
@@ -65,28 +74,51 @@ export function useWeaponSystem(reloadMultiplier = 1.0) {
     if (state.reserveAmmo <= 0) return;
 
     const config = WEAPON_CONFIGS[state.currentWeapon];
+    const totalDurationMs =
+      config.reloadTime * 1000 * reloadMultiplierRef.current;
+
     setWeaponState((prev) => ({
       ...prev,
       isReloading: true,
       reloadProgress: 0,
     }));
 
-    reloadTimerRef.current = setTimeout(
-      () => {
-        setWeaponState((prev) => {
-          const needed = config.magazineSize - prev.currentAmmo;
-          const toAdd = Math.min(needed, prev.reserveAmmo);
-          return {
-            ...prev,
-            currentAmmo: prev.currentAmmo + toAdd,
-            reserveAmmo: prev.reserveAmmo - toAdd,
-            isReloading: false,
-            reloadProgress: 0,
-          };
-        });
-      },
-      config.reloadTime * 1000 * reloadMultiplierRef.current,
-    );
+    // Animiere reloadProgress von 0 auf 1 über die volle Reload-Dauer.
+    // RAF läuft parallel zum setTimeout — beide enden synchron.
+    const startTime = performance.now();
+    const tick = () => {
+      const elapsed = performance.now() - startTime;
+      const t = Math.min(1, elapsed / totalDurationMs);
+      // Setze nur den Progress, sonst nichts
+      setWeaponState((prev) =>
+        prev.isReloading ? { ...prev, reloadProgress: t } : prev,
+      );
+      if (t < 1) {
+        reloadAnimRafRef.current = requestAnimationFrame(tick);
+      } else {
+        reloadAnimRafRef.current = null;
+      }
+    };
+    reloadAnimRafRef.current = requestAnimationFrame(tick);
+
+    reloadTimerRef.current = setTimeout(() => {
+      // Animation abbrechen falls noch laufend (sollte synchron enden)
+      if (reloadAnimRafRef.current !== null) {
+        cancelAnimationFrame(reloadAnimRafRef.current);
+        reloadAnimRafRef.current = null;
+      }
+      setWeaponState((prev) => {
+        const needed = config.magazineSize - prev.currentAmmo;
+        const toAdd = Math.min(needed, prev.reserveAmmo);
+        return {
+          ...prev,
+          currentAmmo: prev.currentAmmo + toAdd,
+          reserveAmmo: prev.reserveAmmo - toAdd,
+          isReloading: false,
+          reloadProgress: 0,
+        };
+      });
+    }, totalDurationMs);
   }, []);
 
   const tryFire = useCallback((): boolean => {
@@ -166,9 +198,8 @@ export function useWeaponSystem(reloadMultiplier = 1.0) {
 
     const handleMouseDown = (e: MouseEvent) => {
       if (e.button === 2) {
-        if (stateRef.current.currentWeapon === "sniper_rifle") {
-          setIsAiming(true);
-        }
+        // Right-click aim für ALLE Waffen (nicht mehr nur Sniper)
+        setIsAiming(true);
       }
     };
 
@@ -187,6 +218,15 @@ export function useWeaponSystem(reloadMultiplier = 1.0) {
       window.removeEventListener("wheel", handleWheel);
       window.removeEventListener("mousedown", handleMouseDown);
       window.removeEventListener("mouseup", handleMouseUp);
+      // RAF und Timer beim Unmount aufräumen
+      if (reloadAnimRafRef.current !== null) {
+        cancelAnimationFrame(reloadAnimRafRef.current);
+        reloadAnimRafRef.current = null;
+      }
+      if (reloadTimerRef.current) {
+        clearTimeout(reloadTimerRef.current);
+        reloadTimerRef.current = null;
+      }
     };
   }, [switchWeapon, reload]);
 

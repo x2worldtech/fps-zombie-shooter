@@ -1,6 +1,7 @@
 import { useInternetIdentity } from "@caffeineai/core-infrastructure";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
+import { MenuAsteroidField } from "./MenuAsteroidField";
 
 function useFullscreen() {
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -118,171 +119,6 @@ const MID_STARS = Array.from({ length: 60 }, (_, i) => {
     color,
   };
 });
-
-// ── METEORITE SHAPES: 12-vertex jagged rocky silhouettes ──
-const MET_SHAPES = [
-  "polygon(22% 0%,45% 2%,68% 0%,88% 8%,100% 22%,98% 44%,100% 62%,90% 80%,76% 96%,55% 100%,34% 98%,14% 88%,2% 70%,0% 48%,4% 28%,10% 12%)",
-  "polygon(35% 0%,58% 4%,78% 0%,94% 14%,100% 36%,96% 58%,100% 72%,84% 90%,64% 100%,40% 96%,20% 100%,6% 82%,0% 60%,4% 38%,0% 18%,18% 6%)",
-  "polygon(48% 0%,70% 6%,90% 2%,100% 20%,94% 42%,100% 60%,88% 78%,70% 94%,48% 100%,28% 92%,10% 100%,0% 78%,6% 55%,0% 32%,12% 14%,30% 4%)",
-  "polygon(18% 2%,40% 0%,62% 6%,82% 0%,98% 16%,100% 38%,92% 58%,100% 74%,82% 92%,58% 100%,36% 94%,16% 100%,2% 80%,0% 56%,8% 34%,0% 14%)",
-  "polygon(30% 0%,52% 4%,74% 0%,92% 10%,100% 30%,96% 52%,100% 70%,86% 88%,66% 100%,44% 96%,22% 100%,6% 84%,0% 62%,6% 40%,0% 22%,14% 8%)",
-  "polygon(42% 0%,62% 6%,84% 0%,96% 18%,100% 40%,92% 60%,100% 76%,80% 94%,58% 100%,36% 96%,16% 100%,4% 78%,0% 56%,8% 36%,0% 16%,22% 4%)",
-  "polygon(26% 2%,48% 0%,70% 4%,90% 0%,100% 18%,96% 40%,100% 58%,88% 76%,70% 96%,48% 100%,26% 94%,8% 100%,0% 76%,4% 52%,0% 28%,12% 10%)",
-  "polygon(38% 0%,60% 6%,80% 2%,96% 16%,100% 36%,94% 56%,100% 72%,84% 90%,62% 100%,40% 96%,20% 100%,4% 82%,0% 60%,6% 38%,0% 18%,20% 6%)",
-  "polygon(14% 6%,36% 0%,58% 4%,80% 0%,96% 14%,100% 34%,94% 54%,100% 70%,86% 88%,64% 100%,42% 96%,22% 100%,6% 82%,0% 60%,6% 38%,0% 20%)",
-  "polygon(50% 0%,72% 4%,92% 0%,100% 22%,96% 44%,100% 64%,86% 82%,68% 98%,46% 100%,26% 96%,8% 100%,0% 78%,6% 54%,0% 32%,10% 12%,30% 2%)",
-  "polygon(32% 0%,54% 6%,76% 0%,94% 12%,100% 32%,92% 54%,100% 68%,82% 90%,60% 100%,38% 96%,18% 100%,4% 80%,0% 58%,8% 36%,0% 16%,18% 4%)",
-  "polygon(44% 0%,66% 4%,86% 2%,98% 18%,100% 40%,90% 62%,100% 76%,78% 96%,56% 100%,34% 94%,14% 100%,2% 76%,0% 52%,8% 30%,0% 12%,24% 4%)",
-];
-
-// ── METEORITE GRADIENTS: very dark matte stone — NO glow, NO warmth ──
-// Lit subtly from upper-left by the distant warm glow source
-// Colors: near-black core (#0a0806), dark brown-gray mids (#1c1510, #201812)
-// subtle highlight (#302820), all very understated
-const MET_GRADIENTS = [
-  "radial-gradient(ellipse at 30% 26%, #2a2018 0%, #1c1510 22%, #120e0a 52%, #0a0806 78%, #060402 100%)",
-  "radial-gradient(ellipse at 26% 30%, #281e16 0%, #1a1410 20%, #110d09 50%, #090705 76%, #060402 100%)",
-  "radial-gradient(ellipse at 34% 22%, #2e2419 0%, #1e1812 22%, #14100b 52%, #0b0907 78%, #070503 100%)",
-  "radial-gradient(ellipse at 28% 34%, #241c13 0%, #181210 20%, #0f0c09 50%, #080607 76%, #050404 100%)",
-  "radial-gradient(ellipse at 32% 28%, #302618 0%, #201810 22%, #150f0b 52%, #0c0908 78%, #070504 100%)",
-  "radial-gradient(ellipse at 24% 24%, #2c2016 0%, #1c1610 20%, #12100a 50%, #0a0807 76%, #060504 100%)",
-];
-
-interface MeteorObj {
-  id: string;
-  layer: "far" | "mid" | "near";
-  left: string;
-  top: string;
-  size: number;
-  shape: string;
-  gradient: string;
-  driftVariant: number;
-  duration: number;
-  delay: number;
-  opacity: string;
-  glowColor: string | null;
-}
-
-// ── METEORITE OBJECTS: 110 total — denser field, clustered center-bottom/right ──
-function buildMeteors(): MeteorObj[] {
-  const r = seededRand(1337);
-  const meteors: MeteorObj[] = [];
-
-  // Helper: bias position toward center-right and center-bottom of screen
-  const biasedPos = (
-    rng: () => number,
-    biasRight = false,
-    biasBottom = false,
-  ): [string, string] => {
-    const rawX = rng();
-    const rawY = rng();
-    // 60% chance to cluster toward center-right/bottom
-    const roll = rng();
-    let x: number;
-    let y: number;
-    if (roll < 0.6) {
-      // Cluster: right half (45–95%), bottom two-thirds (30–95%)
-      x = biasRight ? 45 + rawX * 50 : rawX * 100;
-      y = biasBottom ? 30 + rawY * 65 : rawY * 100;
-    } else {
-      x = rawX * 100;
-      y = rawY * 100;
-    }
-    return [
-      Math.min(100, Math.max(0, x)).toFixed(1),
-      Math.min(100, Math.max(0, y)).toFixed(1),
-    ];
-  };
-
-  // FAR layer: 45 tiny slow meteorites — more density, clustered right/bottom
-  for (let i = 0; i < 45; i++) {
-    const size = 3 + r() * 9;
-    const dur = 60 + r() * 35;
-    const drift = Math.floor(r() * MET_SHAPES.length);
-    const layer = "far" as const;
-    const [left, top] = biasedPos(r, true, true);
-    meteors.push({
-      id: `far-${i}`,
-      layer,
-      left,
-      top,
-      size: Math.round(size),
-      shape: MET_SHAPES[drift % MET_SHAPES.length],
-      gradient: MET_GRADIENTS[Math.floor(r() * MET_GRADIENTS.length)],
-      driftVariant: drift % 12,
-      duration: Math.round(dur),
-      delay: -(r() * dur),
-      // Far meteors lit softly by distant warm source
-      opacity: (0.3 + r() * 0.28).toFixed(2),
-      glowColor: null,
-    });
-  }
-
-  // MID layer: 38 medium meteorites — clustered center-right
-  for (let i = 0; i < 38; i++) {
-    const size = 14 + r() * 28;
-    const dur = 34 + r() * 22;
-    const drift = Math.floor(r() * MET_SHAPES.length);
-    const layer = "mid" as const;
-    const [left, top] = biasedPos(r, true, true);
-    meteors.push({
-      id: `mid-${i}`,
-      layer,
-      left,
-      top,
-      size: Math.round(size),
-      shape: MET_SHAPES[drift % MET_SHAPES.length],
-      gradient: MET_GRADIENTS[Math.floor(r() * MET_GRADIENTS.length)],
-      driftVariant: drift % 12,
-      duration: Math.round(dur),
-      delay: -(r() * dur),
-      opacity: (0.5 + r() * 0.3).toFixed(2),
-      glowColor: null,
-    });
-  }
-
-  // NEAR layer: 27 large prominent meteorites — dark, matte, no glow
-  for (let i = 0; i < 27; i++) {
-    const size = 44 + r() * 65;
-    const dur = 18 + r() * 18;
-    const drift = Math.floor(r() * MET_SHAPES.length);
-    const layer = "near" as const;
-    const [left, top] = biasedPos(r, true, true);
-    meteors.push({
-      id: `near-${i}`,
-      layer,
-      left,
-      top,
-      size: Math.round(size),
-      shape: MET_SHAPES[drift % MET_SHAPES.length],
-      gradient: MET_GRADIENTS[Math.floor(r() * MET_GRADIENTS.length)],
-      driftVariant: drift % 12,
-      duration: Math.round(dur),
-      delay: -(r() * dur),
-      opacity: (0.72 + r() * 0.24).toFixed(2),
-      // NO glow — dark matte rock
-      glowColor: null,
-    });
-  }
-
-  return meteors;
-}
-
-const METEORS = buildMeteors();
-const FAR_METEORS = METEORS.filter((m) => m.layer === "far");
-const MID_METEORS = METEORS.filter((m) => m.layer === "mid");
-const NEAR_METEORS = METEORS.filter((m) => m.layer === "near");
-
-// ── BOX SHADOW: only subtle inset depth for 3D form — NO outer glow ──
-function meteorBoxShadow(layer: "far" | "mid" | "near", size: number): string {
-  if (layer === "near") {
-    return `inset ${Math.round(size * 0.06)}px ${Math.round(size * 0.06)}px ${Math.round(size * 0.18)}px rgba(255,220,160,0.07), inset -${Math.round(size * 0.1)}px -${Math.round(size * 0.1)}px ${Math.round(size * 0.28)}px rgba(0,0,0,0.9)`;
-  }
-  if (layer === "mid") {
-    return "inset 2px 2px 7px rgba(255,210,140,0.05), inset -2px -2px 8px rgba(0,0,0,0.85)";
-  }
-  return "inset 1px 1px 3px rgba(255,200,120,0.03), inset -1px -1px 4px rgba(0,0,0,0.7)";
-}
 
 // ── COMPONENT ──
 export function MainMenu({
@@ -461,92 +297,14 @@ export function MainMenu({
         ))}
       </div>
 
-      {/* ── Z3: FAR METEORITES — tiny, dark, matte ── */}
-      <div
-        className="absolute inset-0 pointer-events-none overflow-hidden"
-        style={{ zIndex: 3 }}
-      >
-        {FAR_METEORS.map((m) => (
-          <div
-            key={m.id}
-            className="absolute"
-            style={{
-              left: `${m.left}%`,
-              top: `${m.top}%`,
-              width: `${m.size}px`,
-              height: `${m.size}px`,
-              background: m.gradient,
-              clipPath: m.shape,
-              opacity: Number(m.opacity),
-              boxShadow: meteorBoxShadow("far", m.size),
-              animationName: `met-drift-${m.driftVariant}`,
-              animationDuration: `${m.duration}s`,
-              animationDelay: `${m.delay}s`,
-              animationTimingFunction: "linear",
-              animationIterationCount: "infinite",
-              willChange: "transform",
-            }}
-          />
-        ))}
-      </div>
-
-      {/* ── Z4: MID METEORITES — medium, dark stone ── */}
-      <div
-        className="absolute inset-0 pointer-events-none overflow-hidden"
-        style={{ zIndex: 4 }}
-      >
-        {MID_METEORS.map((m) => (
-          <div
-            key={m.id}
-            className="absolute"
-            style={{
-              left: `${m.left}%`,
-              top: `${m.top}%`,
-              width: `${m.size}px`,
-              height: `${m.size}px`,
-              background: m.gradient,
-              clipPath: m.shape,
-              opacity: Number(m.opacity),
-              boxShadow: meteorBoxShadow("mid", m.size),
-              animationName: `met-drift-${m.driftVariant}`,
-              animationDuration: `${m.duration}s`,
-              animationDelay: `${m.delay}s`,
-              animationTimingFunction: "linear",
-              animationIterationCount: "infinite",
-              willChange: "transform",
-            }}
-          />
-        ))}
-      </div>
-
-      {/* ── Z5: NEAR METEORITES — large, prominent dark rocks ── */}
-      <div
-        className="absolute inset-0 pointer-events-none overflow-hidden"
-        style={{ zIndex: 5 }}
-      >
-        {NEAR_METEORS.map((m) => (
-          <div
-            key={m.id}
-            className="absolute"
-            style={{
-              left: `${m.left}%`,
-              top: `${m.top}%`,
-              width: `${m.size}px`,
-              height: `${m.size}px`,
-              background: m.gradient,
-              clipPath: m.shape,
-              opacity: Number(m.opacity),
-              boxShadow: meteorBoxShadow("near", m.size),
-              animationName: `met-drift-${m.driftVariant}`,
-              animationDuration: `${m.duration}s`,
-              animationDelay: `${m.delay}s`,
-              animationTimingFunction: "linear",
-              animationIterationCount: "infinite",
-              willChange: "transform",
-            }}
-          />
-        ))}
-      </div>
+      {/* ── Z3-Z5: REALISTIC 3D ASTEROID FIELD ──
+       * Ersetzt die alten CSS-clip-path-Asteroiden durch echte 3D-Geometrie:
+       * - Verzerrte Icosahedrons mit prozeduralem Noise = felsige Oberfläche
+       * - Echte 3D-Rotation um zufällige Achsen (statt 2D-Spin)
+       * - Lineare Drift mit Wrap-Around (statt sinusförmigem Hin-und-Her)
+       * - Beleuchtung von rechts oben (passend zum warmen Glow im Hintergrund)
+       * - 3 Tiefen-Layer (far/mid/near) für echtes Parallax */}
+      <MenuAsteroidField />
 
       {/* ── FULLSCREEN BUTTON — top-right ── */}
       <FullscreenButton />

@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import * as THREE from "three";
-import { sandFragmentShader, sandVertexShader } from "../../shaders/sandShader";
 import { skyFragmentShader, skyVertexShader } from "../../shaders/skyShader";
 import {
   type BuildingData,
@@ -12,6 +11,91 @@ import JuggernogMachine from "./JuggernogMachine";
 import { MountainBarrier } from "./MountainBarrier";
 import { PackAPunchMachine } from "./PackAPunchMachine";
 import { PalmTree } from "./PalmTree";
+
+/**
+ * Sonnen-Position als feste Modul-Konstante.
+ *
+ * Wird sowohl vom directionalLight als auch vom sichtbaren 3D-Sonnen-Mesh
+ * und (über Uniform) vom Sky-Shader genutzt — so kommt die Beleuchtung
+ * exakt aus der Richtung, in der der Spieler die Sonne sieht. Schatten
+ * fallen logisch in die richtige Richtung.
+ *
+ * Wir platzieren sie hoch und etwas nach Osten/Süden — typisches Mittag-
+ * bis Nachmittags-Golden-Hour-Setup. Schattenwurf: leicht in Richtung
+ * -X / -Z (Häuser/Palmen werfen Schatten nach links/hinten).
+ */
+const SUN_DIR = new THREE.Vector3(0.7, 0.65, 0.3).normalize();
+// Position für Light + Mesh in Welt-Koordinaten
+const SUN_DISTANCE = 220;
+const SUN_POSITION: [number, number, number] = [
+  SUN_DIR.x * SUN_DISTANCE,
+  SUN_DIR.y * SUN_DISTANCE,
+  SUN_DIR.z * SUN_DISTANCE,
+];
+
+/**
+ * Sichtbare 3D-Sonne am Himmel: leuchtender Disk + Halo.
+ * Liegt am Skydome-Rand (220m vom Zentrum) — kein Sammelpunkt von Licht
+ * mehr, sondern eine klar sichtbare Lichtquelle.
+ */
+function Sun() {
+  const sunDiskMat = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: "#fff5d0",
+        transparent: true,
+        opacity: 1.0,
+        depthWrite: false,
+        toneMapped: false, // bleibt strahlend hell auch bei ACES-Tone-Mapping
+      }),
+    [],
+  );
+  const sunHaloMat = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: "#ffd084",
+        transparent: true,
+        opacity: 0.35,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    [],
+  );
+  const sunHalo2Mat = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: "#ff8030",
+        transparent: true,
+        opacity: 0.15,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    [],
+  );
+
+  // Sonne soll der Kamera entgegen orientiert sein — wir rotieren die Mesh-
+  // Quad-Plane so dass sie zum Zentrum (Spieler-Spawn) zeigt. Da der Spieler
+  // sich bewegt, lassen wir die Plane einfach in Welt-Z stehen und
+  // hoffen dass die Sonne weit genug entfernt ist (220m) damit Parallax
+  // unsichtbar ist.
+  // Stattdessen: wir nutzen 3 konzentrische Sphären — kameraunabhängig.
+  return (
+    <group position={SUN_POSITION}>
+      {/* Innerer heller Sonnen-Disc (Core) */}
+      <mesh material={sunDiskMat}>
+        <sphereGeometry args={[4.5, 24, 16]} />
+      </mesh>
+      {/* Mittlerer Halo */}
+      <mesh material={sunHaloMat}>
+        <sphereGeometry args={[8, 24, 16]} />
+      </mesh>
+      {/* Äußerer großer Glow */}
+      <mesh material={sunHalo2Mat}>
+        <sphereGeometry args={[16, 20, 14]} />
+      </mesh>
+    </group>
+  );
+}
 
 interface DesertEnvironmentProps {
   upgradeTier?: number;
@@ -38,6 +122,200 @@ function usePBRMat(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [color, roughness, metalness, emissive, emissiveIntensity],
   );
+}
+
+/**
+ * Procedural Adobe/Stucco wall material with detailed albedo + bump.
+ * Gives houses a textured wall surface instead of flat solid color.
+ * Each instance gets a unique noise pattern via `seed`.
+ */
+function useAdobeWallMat(color: string, seed: number) {
+  return useMemo(() => {
+    const size = 512;
+    let s = seed | 0;
+    const rng = () => {
+      s = (s * 1664525 + 1013904223) | 0;
+      return ((s >>> 0) % 100000) / 100000;
+    };
+
+    // ── Albedo: warmer Lehm/Adobe-Putz mit Patches und Verwitterung ──
+    const albedoCanvas = document.createElement("canvas");
+    albedoCanvas.width = size;
+    albedoCanvas.height = size;
+    const aCtx = albedoCanvas.getContext("2d");
+    if (aCtx) {
+      aCtx.fillStyle = color;
+      aCtx.fillRect(0, 0, size, size);
+
+      // Helle Sonnen-Patches (verblichener Putz)
+      for (let i = 0; i < 35; i++) {
+        const x = rng() * size;
+        const y = rng() * size;
+        const r = 40 + rng() * 120;
+        const g = aCtx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(255,240,210,${0.12 + rng() * 0.15})`);
+        g.addColorStop(1, "rgba(255,240,210,0)");
+        aCtx.fillStyle = g;
+        aCtx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+
+      // Dunkle Verwitterungs-Patches (Schmutz, Schatten)
+      for (let i = 0; i < 30; i++) {
+        const x = rng() * size;
+        const y = rng() * size;
+        const r = 30 + rng() * 100;
+        const g = aCtx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(60,40,20,${0.18 + rng() * 0.18})`);
+        g.addColorStop(1, "rgba(60,40,20,0)");
+        aCtx.fillStyle = g;
+        aCtx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+
+      // Vertikale Wasser-Streifen (Erosion vom Dach nach unten)
+      for (let i = 0; i < 8; i++) {
+        const x = rng() * size;
+        const w = 4 + rng() * 12;
+        const startY = rng() * size * 0.3;
+        const grad = aCtx.createLinearGradient(0, startY, 0, size);
+        grad.addColorStop(0, "rgba(40,28,15,0)");
+        grad.addColorStop(0.3, `rgba(40,28,15,${0.2 + rng() * 0.2})`);
+        grad.addColorStop(1, "rgba(40,28,15,0.05)");
+        aCtx.fillStyle = grad;
+        aCtx.fillRect(x, startY, w, size - startY);
+      }
+
+      // Putz-Risse
+      aCtx.lineCap = "round";
+      for (let i = 0; i < 25; i++) {
+        const x0 = rng() * size;
+        const y0 = rng() * size;
+        let x = x0;
+        let y = y0;
+        aCtx.strokeStyle = `rgba(20,12,5,${0.4 + rng() * 0.3})`;
+        aCtx.lineWidth = 0.5 + rng() * 1;
+        aCtx.beginPath();
+        aCtx.moveTo(x, y);
+        const segs = 3 + Math.floor(rng() * 5);
+        let angle = rng() * Math.PI * 2;
+        for (let p = 0; p < segs; p++) {
+          angle += (rng() - 0.5) * 0.8;
+          x += Math.cos(angle) * (12 + rng() * 22);
+          y += Math.sin(angle) * (12 + rng() * 22);
+          aCtx.lineTo(x, y);
+        }
+        aCtx.stroke();
+      }
+
+      // Adobe-Stein-Sprenkel (kleine helle Punkte als Putz-Körnung)
+      for (let i = 0; i < 600; i++) {
+        const x = rng() * size;
+        const y = rng() * size;
+        const r = 0.6 + rng() * 1.4;
+        const bright = 0.5 + rng() * 0.4;
+        aCtx.fillStyle = `rgba(${220 * bright | 0},${200 * bright | 0},${160 * bright | 0},${0.25 + rng() * 0.3})`;
+        aCtx.beginPath();
+        aCtx.arc(x, y, r, 0, Math.PI * 2);
+        aCtx.fill();
+      }
+
+      // Per-Pixel-Korn (feines Putz-Korn)
+      const img = aCtx.getImageData(0, 0, size, size);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const n = (rng() - 0.5) * 20;
+        img.data[i] = Math.max(0, Math.min(255, img.data[i] + n));
+        img.data[i + 1] = Math.max(0, Math.min(255, img.data[i + 1] + n * 0.9));
+        img.data[i + 2] = Math.max(0, Math.min(255, img.data[i + 2] + n * 0.75));
+      }
+      aCtx.putImageData(img, 0, 0);
+    }
+    const albedoTex = new THREE.CanvasTexture(albedoCanvas);
+    albedoTex.wrapS = THREE.RepeatWrapping;
+    albedoTex.wrapT = THREE.RepeatWrapping;
+    albedoTex.repeat.set(2, 2);
+    albedoTex.colorSpace = THREE.SRGBColorSpace;
+    albedoTex.anisotropy = 8;
+
+    // ── Bump: Putz-Buckel + Riss-Vertiefungen + Korn ──
+    const bumpCanvas = document.createElement("canvas");
+    bumpCanvas.width = size;
+    bumpCanvas.height = size;
+    const bCtx = bumpCanvas.getContext("2d");
+    if (bCtx) {
+      bCtx.fillStyle = "#7f7f7f";
+      bCtx.fillRect(0, 0, size, size);
+
+      // Mittelgrosse Putz-Buckel
+      for (let i = 0; i < 90; i++) {
+        const x = rng() * size;
+        const y = rng() * size;
+        const r = 15 + rng() * 50;
+        const g = bCtx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(255,255,255,${0.2 + rng() * 0.2})`);
+        g.addColorStop(0.7, "rgba(127,127,127,0)");
+        bCtx.fillStyle = g;
+        bCtx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+
+      // Vertiefungen
+      for (let i = 0; i < 80; i++) {
+        const x = rng() * size;
+        const y = rng() * size;
+        const r = 10 + rng() * 40;
+        const g = bCtx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(0,0,0,${0.2 + rng() * 0.25})`);
+        g.addColorStop(0.7, "rgba(127,127,127,0)");
+        bCtx.fillStyle = g;
+        bCtx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+
+      // Risse als tiefe schwarze Linien
+      bCtx.lineCap = "round";
+      for (let i = 0; i < 25; i++) {
+        const x0 = rng() * size;
+        const y0 = rng() * size;
+        let x = x0;
+        let y = y0;
+        bCtx.strokeStyle = `rgba(0,0,0,${0.55 + rng() * 0.3})`;
+        bCtx.lineWidth = 1 + rng() * 2;
+        bCtx.beginPath();
+        bCtx.moveTo(x, y);
+        const segs = 3 + Math.floor(rng() * 5);
+        let angle = rng() * Math.PI * 2;
+        for (let p = 0; p < segs; p++) {
+          angle += (rng() - 0.5) * 0.8;
+          x += Math.cos(angle) * (12 + rng() * 22);
+          y += Math.sin(angle) * (12 + rng() * 22);
+          bCtx.lineTo(x, y);
+        }
+        bCtx.stroke();
+      }
+
+      // Hochfrequentes Per-Pixel-Korn
+      const img = bCtx.getImageData(0, 0, size, size);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const n = (rng() - 0.5) * 75;
+        const v = Math.max(0, Math.min(255, img.data[i] + n));
+        img.data[i] = v;
+        img.data[i + 1] = v;
+        img.data[i + 2] = v;
+      }
+      bCtx.putImageData(img, 0, 0);
+    }
+    const bumpTex = new THREE.CanvasTexture(bumpCanvas);
+    bumpTex.wrapS = THREE.RepeatWrapping;
+    bumpTex.wrapT = THREE.RepeatWrapping;
+    bumpTex.repeat.set(2, 2);
+    bumpTex.anisotropy = 8;
+
+    return new THREE.MeshStandardMaterial({
+      color: new THREE.Color(color),
+      map: albedoTex,
+      bumpMap: bumpTex,
+      bumpScale: 0.04,
+      roughness: 0.92,
+      metalness: 0.0,
+    });
+  }, [color, seed]);
 }
 
 // ─── Window component ─────────────────────────────────────────────────────────
@@ -159,30 +437,6 @@ function Balcony({
   );
 }
 
-// ─── Rooftop AC Unit ─────────────────────────────────────────────────────────
-function ACUnit({ position }: { position: [number, number, number] }) {
-  const bodyMat = usePBRMat("#7a8088", 0.7, 0.3);
-  const ventMat = usePBRMat("#55595e", 0.8, 0.2);
-  return (
-    <group position={position}>
-      <mesh material={bodyMat} castShadow>
-        <boxGeometry args={[0.9, 0.55, 0.7]} />
-      </mesh>
-      {/* Vent slats */}
-      {[-0.2, 0, 0.2].map((y, i) => (
-        <mesh
-          // biome-ignore lint/suspicious/noArrayIndexKey: static
-          key={i}
-          material={ventMat}
-          position={[0, y, 0.36]}
-        >
-          <boxGeometry args={[0.75, 0.07, 0.04]} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
 // ─── Water Tank ───────────────────────────────────────────────────────────────
 function WaterTank({ position }: { position: [number, number, number] }) {
   const tankMat = usePBRMat("#8a7060", 0.85);
@@ -258,10 +512,14 @@ function IntactBuilding({
     return `#${new THREE.Color().setHSL(hsl.h, hsl.s * 0.5, Math.min(1, hsl.l * 1.3)).getHexString()}`;
   }, [baseColor]);
 
-  const wallMat = usePBRMat(wallColor, 0.88);
+  // Wand-Material mit prozeduraler Adobe/Putz-Textur (Albedo + Bump)
+  const wallSeed = Math.floor(position[0] * 73 + position[2] * 137 + 1000);
+  const wallMat = useAdobeWallMat(wallColor, wallSeed);
   const trimMat = usePBRMat(trimColor, 0.78);
   const accentMat = usePBRMat(accentColor, 0.65);
   const concreteMat = usePBRMat("#b0a898", 0.9);
+  // Schmutz-Streaks unter Fenstern + Wasserablauf-Spuren (dunkler als Wand)
+  const stainMat = usePBRMat("#3a2c1e", 0.98);
 
   const parapetH = 0.5;
   const floorH = 3.2;
@@ -294,7 +552,6 @@ function IntactBuilding({
 
   // Rooftop details
   const hasWaterTank = width > 5;
-  const acUnitCount = Math.floor(width / 4);
 
   return (
     <group position={position}>
@@ -450,6 +707,41 @@ function IntactBuilding({
         );
       })}
 
+      {/* ── Wand-Schmutz-Streifen unter Fenstern (Wasserablauf-Spuren) ── */}
+      {windowGrid.map((w) => (
+        <mesh
+          key={`stain-front-${w.x.toFixed(3)}-${w.y.toFixed(3)}`}
+          material={stainMat}
+          position={[w.x, w.y - windowH * 0.6, depth / 2 + 0.025]}
+        >
+          <boxGeometry args={[windowW * 0.65, windowH * 1.1, 0.005]} />
+        </mesh>
+      ))}
+      {windowGrid.map((w) => (
+        <mesh
+          key={`stain-back-${w.x.toFixed(3)}-${w.y.toFixed(3)}`}
+          material={stainMat}
+          position={[w.x, w.y - windowH * 0.6, -(depth / 2 + 0.025)]}
+        >
+          <boxGeometry args={[windowW * 0.65, windowH * 1.1, 0.005]} />
+        </mesh>
+      ))}
+
+      {/* ── Wand-Risse (kleine Patches an zufälligen Stellen) ── */}
+      {[
+        { x: -width * 0.35, y: height * 0.15, w: 0.04, h: 0.6, rot: 0.15 },
+        { x: width * 0.28, y: -height * 0.25, w: 0.05, h: 0.45, rot: 0.25 },
+      ].map((c) => (
+        <mesh
+          key={`crack-${c.x.toFixed(3)}-${c.y.toFixed(3)}`}
+          material={stainMat}
+          position={[c.x, c.y, depth / 2 + 0.022]}
+          rotation={[0, 0, c.rot]}
+        >
+          <boxGeometry args={[c.w, c.h, 0.005]} />
+        </mesh>
+      ))}
+
       {/* ── Main entrance ── */}
       <group position={[0, -height / 2 + 1.2, depth / 2 + 0.01]}>
         {/* Door arch surround */}
@@ -493,18 +785,7 @@ function IntactBuilding({
         </mesh>
       </group>
 
-      {/* ── Rooftop equipment ── */}
-      {Array.from({ length: acUnitCount }).map((_, i) => (
-        <ACUnit
-          // biome-ignore lint/suspicious/noArrayIndexKey: static
-          key={`ac-${i}`}
-          position={[
-            -width / 2 + 1 + i * 2.2,
-            height / 2 + parapetH + 0.42,
-            depth * 0.2,
-          ]}
-        />
-      ))}
+      {/* ── Rooftop equipment — nur Wassertank (passt zur Wüstenarchitektur) ── */}
       {hasWaterTank && (
         <WaterTank
           position={[
@@ -514,6 +795,7 @@ function IntactBuilding({
           ]}
         />
       )}
+
     </group>
   );
 }
@@ -547,7 +829,9 @@ function RuinedBuilding({
     return `#${c.getHexString()}`;
   }, [baseColor]);
 
-  const wallMat = usePBRMat(wallColor, 0.92);
+  // Wand-Material mit prozeduraler Adobe/Putz-Textur
+  const wallSeed = Math.floor(position[0] * 91 + position[2] * 163 + 2000);
+  const wallMat = useAdobeWallMat(wallColor, wallSeed);
   const darkMat = usePBRMat(darkColor, 0.95);
   const exposedMat = usePBRMat("#8a7060", 0.93);
   const steelMat = usePBRMat("#5a4a3a", 0.6, 0.4);
@@ -727,21 +1011,210 @@ function RubblePile({ position }: { position: [number, number, number] }) {
 }
 
 function SandGround() {
-  const sandMaterial = useMemo(
-    () =>
-      new THREE.ShaderMaterial({
-        vertexShader: sandVertexShader,
-        fragmentShader: sandFragmentShader,
-        side: THREE.FrontSide,
-      }),
-    [],
-  );
+  const sandMaterial = useMemo(() => {
+    const size = 1024;
+
+    // ── Albedo-Textur: warmer Sand mit Patches, Körnung, vereinzelten Steinen ──
+    const albedoCanvas = document.createElement("canvas");
+    albedoCanvas.width = size;
+    albedoCanvas.height = size;
+    const aCtx = albedoCanvas.getContext("2d");
+    if (aCtx) {
+      // Basis-Sandfarbe (warmer Goldton)
+      aCtx.fillStyle = "#c9a567";
+      aCtx.fillRect(0, 0, size, size);
+
+      // Helle Patches (sonnenbeschienener trockener Sand)
+      for (let i = 0; i < 40; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const r = 80 + Math.random() * 180;
+        const g = aCtx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(220,190,130,${0.15 + Math.random() * 0.2})`);
+        g.addColorStop(1, "rgba(220,190,130,0)");
+        aCtx.fillStyle = g;
+        aCtx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+
+      // Dunklere Patches (feuchtere Stellen, Schatten)
+      for (let i = 0; i < 30; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const r = 60 + Math.random() * 140;
+        const g = aCtx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(140,100,50,${0.18 + Math.random() * 0.18})`);
+        g.addColorStop(1, "rgba(140,100,50,0)");
+        aCtx.fillStyle = g;
+        aCtx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+
+      // Subtile Rippeln/Wellen (kurze elliptische Schatten)
+      for (let i = 0; i < 240; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const w = 12 + Math.random() * 28;
+        const h = 1.5 + Math.random() * 2.5;
+        const rot = Math.random() * Math.PI;
+        aCtx.save();
+        aCtx.translate(x, y);
+        aCtx.rotate(rot);
+        aCtx.fillStyle = `rgba(110,80,40,${0.18 + Math.random() * 0.15})`;
+        aCtx.beginPath();
+        aCtx.ellipse(0, 0, w, h, 0, 0, Math.PI * 2);
+        aCtx.fill();
+        aCtx.restore();
+      }
+
+      // Vereinzelte kleine Steine
+      for (let i = 0; i < 380; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const r = 1 + Math.random() * 3.5;
+        const dark = 0.4 + Math.random() * 0.3;
+        aCtx.fillStyle = `rgba(${60 * dark | 0},${50 * dark | 0},${35 * dark | 0},${0.5 + Math.random() * 0.4})`;
+        aCtx.beginPath();
+        aCtx.arc(x, y, r, 0, Math.PI * 2);
+        aCtx.fill();
+        // kleiner Highlight oben links für 3D-Optik
+        aCtx.fillStyle = `rgba(220,180,130,${0.3 + Math.random() * 0.3})`;
+        aCtx.beginPath();
+        aCtx.arc(x - r * 0.4, y - r * 0.4, r * 0.4, 0, Math.PI * 2);
+        aCtx.fill();
+      }
+
+      // Pixel-Korn (feines Sandkörn-Noise)
+      const img = aCtx.getImageData(0, 0, size, size);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const n = (Math.random() - 0.5) * 38;
+        img.data[i] = Math.max(0, Math.min(255, img.data[i] + n));
+        img.data[i + 1] = Math.max(0, Math.min(255, img.data[i + 1] + n * 0.85));
+        img.data[i + 2] = Math.max(0, Math.min(255, img.data[i + 2] + n * 0.7));
+      }
+      aCtx.putImageData(img, 0, 0);
+    }
+    const albedoTex = new THREE.CanvasTexture(albedoCanvas);
+    albedoTex.wrapS = THREE.RepeatWrapping;
+    albedoTex.wrapT = THREE.RepeatWrapping;
+    albedoTex.repeat.set(20, 20); // 20x kacheln über die 300x300 Plane → kleine Sandkörner-Skalierung
+    albedoTex.colorSpace = THREE.SRGBColorSpace;
+    albedoTex.anisotropy = 8;
+
+    // ── Bump-Textur: Sand-Rippeln + feine Körnung ──
+    const bumpCanvas = document.createElement("canvas");
+    bumpCanvas.width = size;
+    bumpCanvas.height = size;
+    const bCtx = bumpCanvas.getContext("2d");
+    if (bCtx) {
+      bCtx.fillStyle = "#7f7f7f";
+      bCtx.fillRect(0, 0, size, size);
+
+      // Mittelgrosse Sand-Hügelchen
+      for (let i = 0; i < 90; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const r = 30 + Math.random() * 80;
+        const g = bCtx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(255,255,255,${0.2 + Math.random() * 0.25})`);
+        g.addColorStop(0.7, "rgba(127,127,127,0)");
+        bCtx.fillStyle = g;
+        bCtx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+      // Vertiefungen
+      for (let i = 0; i < 80; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const r = 20 + Math.random() * 60;
+        const g = bCtx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(0,0,0,${0.2 + Math.random() * 0.25})`);
+        g.addColorStop(0.7, "rgba(127,127,127,0)");
+        bCtx.fillStyle = g;
+        bCtx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+
+      // Sand-Rippeln (gerichtete Streifen)
+      for (let i = 0; i < 160; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const w = 30 + Math.random() * 80;
+        const rot = Math.PI * (0.1 + Math.random() * 0.2); // leicht geneigt
+        bCtx.save();
+        bCtx.translate(x, y);
+        bCtx.rotate(rot);
+        bCtx.fillStyle = `rgba(255,255,255,${0.12 + Math.random() * 0.15})`;
+        bCtx.fillRect(-w / 2, -1, w, 2);
+        bCtx.fillStyle = `rgba(0,0,0,${0.12 + Math.random() * 0.12})`;
+        bCtx.fillRect(-w / 2, 1, w, 2);
+        bCtx.restore();
+      }
+
+      // Hochfrequentes Per-Pixel-Korn
+      const img = bCtx.getImageData(0, 0, size, size);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const n = (Math.random() - 0.5) * 80;
+        const v = Math.max(0, Math.min(255, img.data[i] + n));
+        img.data[i] = v;
+        img.data[i + 1] = v;
+        img.data[i + 2] = v;
+      }
+      bCtx.putImageData(img, 0, 0);
+    }
+    const bumpTex = new THREE.CanvasTexture(bumpCanvas);
+    bumpTex.wrapS = THREE.RepeatWrapping;
+    bumpTex.wrapT = THREE.RepeatWrapping;
+    bumpTex.repeat.set(20, 20);
+
+    return new THREE.MeshStandardMaterial({
+      color: "#d4b378",
+      map: albedoTex,
+      bumpMap: bumpTex,
+      bumpScale: 0.06,
+      roughness: 0.96, // Sand ist sehr matt
+      metalness: 0,
+    });
+  }, []);
+
+  // Plane mit höherer Subdivision für Dünen-Verformung.
+  // WICHTIG: Im Zentrum (Spielzone, R<70) bleibt der Boden flach bei y=0,
+  // sonst versinken Zombies/Palmen/Gebäude. Außerhalb darf es Dünen geben
+  // für visuelle Tiefe in der Ferne.
+  const geometry = useMemo(() => {
+    const geo = new THREE.PlaneGeometry(300, 300, 80, 80);
+    const pos = geo.attributes.position;
+    const innerRadius = 70; // Spielzone — flach
+    const outerRadius = 140; // Voller Effekt
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const y = pos.getY(i); // PlaneGeometry: y ist die zweite Dimension
+      const dist = Math.sqrt(x * x + y * y);
+      // Smooth-fade-in: 0% bei innerRadius, 100% bei outerRadius
+      let influence = 0;
+      if (dist > innerRadius) {
+        const t = Math.min(1, (dist - innerRadius) / (outerRadius - innerRadius));
+        // ease-in-out für sanften Übergang
+        influence = t * t * (3 - 2 * t);
+      }
+      // Dünen-Noise — und WICHTIG: subtrahiert Maximalwert, damit dunes ≤ 0
+      // (Sand-Boden bleibt unter y=0; wo es flach ist, ist er bei y=0)
+      const noise =
+        Math.sin(x * 0.05) * Math.cos(y * 0.05) * 0.6 +
+        Math.sin(x * 0.12 + y * 0.08) * 0.25 +
+        Math.cos(x * 0.3 + y * 0.2) * 0.08;
+      // Dünen tauchen nur nach unten — kein Vertex über y=0
+      const dune = (noise - 0.93) * influence;
+      pos.setZ(i, dune);
+    }
+    geo.computeVertexNormals();
+    return geo;
+  }, []);
 
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.5, 0]} receiveShadow>
-      <planeGeometry args={[300, 300, 64, 64]} />
-      <primitive object={sandMaterial} attach="material" />
-    </mesh>
+    <mesh
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[0, 0, 0]}
+      geometry={geometry}
+      material={sandMaterial}
+      receiveShadow
+    />
   );
 }
 
@@ -752,6 +1225,9 @@ function SkyDome() {
         vertexShader: skyVertexShader,
         fragmentShader: skyFragmentShader,
         side: THREE.BackSide,
+        uniforms: {
+          uSunDir: { value: SUN_DIR.clone() },
+        },
       }),
     [],
   );
@@ -849,27 +1325,47 @@ export function DesertEnvironment({
 
       <MountainBarrier />
 
-      {/* Lighting */}
-      <ambientLight intensity={0.55} color="#ffbb77" />
+      {/* ─── Atmosphäre: warme Fog für goldene Stunden-Tiefe ─── */}
+      <fog attach="fog" args={["#d8a060", 60, 220]} />
+
+      {/* ─── BELEUCHTUNG (Wüsten-Mittag/Nachmittag) ─── */}
+      {/* Sichtbare 3D-Sonne am Himmel (synchronisiert mit Lichtquelle) */}
+      <Sun />
+
+      {/* Hemispherical Sky-Light: warm oben, sand-bounce unten */}
+      <hemisphereLight args={["#ffd089", "#7a4818", 0.5]} />
+
+      {/* Schwacher Ambient für Schattenseiten (sie sind nicht pechschwarz) */}
+      <ambientLight intensity={0.28} color="#ffb070" />
+
+      {/* HAUPTSONNE als directionalLight an SUN_POSITION
+          → Schatten fallen exakt dorthin, wo der Spieler die Sonne sieht */}
       <directionalLight
-        position={[60, 90, 40]}
-        intensity={1.8}
-        color="#ffe8aa"
+        position={SUN_POSITION}
+        intensity={2.4}
+        color="#ffe6b8"
         castShadow
+        // Höhere Shadow-Map für schärfere Häuser-/Palmen-Schatten
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
-        shadow-camera-far={200}
-        shadow-camera-left={-80}
-        shadow-camera-right={80}
-        shadow-camera-top={80}
-        shadow-camera-bottom={-80}
+        // Shadow-Bounds: deckt die ganze Spielfläche ab (bis ~R=80 wo Berge sind)
+        shadow-camera-far={250}
+        shadow-camera-near={1}
+        shadow-camera-left={-90}
+        shadow-camera-right={90}
+        shadow-camera-top={90}
+        shadow-camera-bottom={-90}
+        // Bias-Tuning für saubere Schatten ohne Shadow-Acne und ohne Peter-Panning
+        shadow-bias={-0.0003}
+        shadow-normalBias={0.05}
       />
-      <hemisphereLight args={["#ffaa55", "#5a3311", 0.35]} />
-      {/* Fill light from opposite side */}
+
+      {/* Schwaches kühles Sky-Bounce-Light von oben — ergänzt die warme
+          Sonne und bringt etwas Tiefe in die Schattenseiten. */}
       <directionalLight
-        position={[-30, 40, -20]}
-        intensity={0.4}
-        color="#aaccff"
+        position={[-40, 80, -30]}
+        intensity={0.3}
+        color="#88aacc"
       />
     </group>
   );

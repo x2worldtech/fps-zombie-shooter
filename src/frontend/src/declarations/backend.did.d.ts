@@ -11,6 +11,7 @@ import type { IDL } from '@icp-sdk/core/candid';
 import type { Principal } from '@icp-sdk/core/principal';
 
 export interface PlayerProfile {
+  'username' : [] | [string],
   'totalHeadshots' : bigint,
   'totalShots' : bigint,
   'totalRounds' : bigint,
@@ -41,9 +42,11 @@ export interface _SERVICE {
   'getOrCreateProfile' : ActorMethod<[], PlayerProfile>,
   'getProfile' : ActorMethod<[Principal], [] | [PlayerProfile]>,
   'getUserProfile' : ActorMethod<[Principal], [] | [PlayerProfile]>,
+  'getUsername' : ActorMethod<[], [] | [string]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
   'saveCallerUserProfile' : ActorMethod<[PlayerProfile], undefined>,
-  'submitScore' : ActorMethod<[string, bigint, bigint], undefined>,
+  'setUsername' : ActorMethod<[string], { 'ok' : null } | { 'err' : string }>,
+  'submitScore' : ActorMethod<[bigint, bigint], undefined>,
   'updateProfile' : ActorMethod<[Principal, SessionStats], PlayerProfile>,
 }
 export declare const idlService: IDL.ServiceClass;

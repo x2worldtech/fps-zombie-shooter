@@ -633,135 +633,64 @@ export function playRocketApproach(durationMs: number): () => void {
 }
 
 // ── Nuclear Impact Boom ────────────────────────────────────────────────────────
-// Massive multi-layer explosion: 15+ seconds of rumble, thunder echoes,
-// shockwave whoosh, and deep sub-bass that slowly decays.
+// Massive sub-bass explosion (20-35hz), deep rumble (50hz), fades over 4 seconds.
 export function playNuclearImpact(): void {
   try {
     const ctx = getAudioContext();
     if (!ctx) return;
     const now = ctx.currentTime;
 
-    // ── Layer 1: Ultra-deep sub-bass thud (15 → 12 hz, 15s) ──────────────────
     const sub = ctx.createOscillator();
     const subGain = ctx.createGain();
     sub.type = "sine";
-    sub.frequency.setValueAtTime(38, now);
-    sub.frequency.exponentialRampToValueAtTime(14, now + 15.0);
-    subGain.gain.setValueAtTime(5.0, now);
-    subGain.gain.linearRampToValueAtTime(3.5, now + 1.5);
-    subGain.gain.exponentialRampToValueAtTime(0.001, now + 15.0);
+    sub.frequency.setValueAtTime(35, now);
+    sub.frequency.exponentialRampToValueAtTime(20, now + 2.0);
+    subGain.gain.setValueAtTime(4.0, now);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + 4.0);
     sub.connect(subGain);
     subGain.connect(ctx.destination);
     sub.start(now);
-    sub.stop(now + 15.0);
+    sub.stop(now + 4.0);
 
-    // ── Layer 2: Deep pressure rumble (55 → 22 hz, 12s) ──────────────────────
     const rumble = ctx.createOscillator();
     const rumbleGain = ctx.createGain();
     rumble.type = "sine";
-    rumble.frequency.setValueAtTime(55, now);
-    rumble.frequency.exponentialRampToValueAtTime(22, now + 12.0);
-    rumbleGain.gain.setValueAtTime(3.5, now);
-    rumbleGain.gain.exponentialRampToValueAtTime(0.001, now + 12.0);
+    rumble.frequency.setValueAtTime(60, now);
+    rumble.frequency.exponentialRampToValueAtTime(30, now + 3.0);
+    rumbleGain.gain.setValueAtTime(2.5, now);
+    rumbleGain.gain.exponentialRampToValueAtTime(0.001, now + 3.5);
     rumble.connect(rumbleGain);
     rumbleGain.connect(ctx.destination);
     rumble.start(now);
-    rumble.stop(now + 12.0);
+    rumble.stop(now + 3.5);
 
-    // ── Layer 3: Initial shockwave crack + noise burst ────────────────────────
-    const crack = createNoise(ctx, 0.6);
-    const crackFilter = ctx.createBiquadFilter();
-    crackFilter.type = "lowpass";
-    crackFilter.frequency.setValueAtTime(3000, now);
-    crackFilter.frequency.exponentialRampToValueAtTime(80, now + 0.6);
-    const crackGain = ctx.createGain();
-    crackGain.gain.setValueAtTime(4.5, now);
-    crackGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-    crack.connect(crackFilter);
-    crackFilter.connect(crackGain);
-    crackGain.connect(ctx.destination);
-    crack.start(now);
-    crack.stop(now + 0.6);
+    const bang = createNoise(ctx, 0.8);
+    const bangFilter = ctx.createBiquadFilter();
+    bangFilter.type = "lowpass";
+    bangFilter.frequency.setValueAtTime(1500, now);
+    bangFilter.frequency.exponentialRampToValueAtTime(50, now + 0.8);
+    const bangGain = ctx.createGain();
+    bangGain.gain.setValueAtTime(3.0, now);
+    bangGain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+    bang.connect(bangFilter);
+    bangFilter.connect(bangGain);
+    bangGain.connect(ctx.destination);
+    bang.start(now);
+    bang.stop(now + 0.8);
 
-    // ── Layer 4: Shockwave whoosh — builds over 3.5s as wave expands ─────────
-    const whoosh = createNoise(ctx, 4.0);
-    const whooshFilter = ctx.createBiquadFilter();
-    whooshFilter.type = "bandpass";
-    whooshFilter.frequency.setValueAtTime(600, now + 0.3);
-    whooshFilter.frequency.exponentialRampToValueAtTime(180, now + 3.5);
-    whooshFilter.Q.value = 0.8;
-    const whooshGain = ctx.createGain();
-    whooshGain.gain.setValueAtTime(0, now);
-    whooshGain.gain.linearRampToValueAtTime(2.8, now + 0.5);
-    whooshGain.gain.linearRampToValueAtTime(1.8, now + 2.0);
-    whooshGain.gain.exponentialRampToValueAtTime(0.001, now + 4.0);
-    whoosh.connect(whooshFilter);
-    whooshFilter.connect(whooshGain);
-    whooshGain.connect(ctx.destination);
-    whoosh.start(now + 0.2);
-    whoosh.stop(now + 4.0);
-
-    // ── Layer 5: Long mid-frequency rumble tail (10s) ─────────────────────────
-    const tail = createNoise(ctx, 12.0);
+    const tail = createNoise(ctx, 4.0);
     const tailFilter = ctx.createBiquadFilter();
     tailFilter.type = "lowpass";
-    tailFilter.frequency.setValueAtTime(500, now + 0.3);
-    tailFilter.frequency.exponentialRampToValueAtTime(45, now + 12.0);
+    tailFilter.frequency.setValueAtTime(400, now + 0.3);
+    tailFilter.frequency.exponentialRampToValueAtTime(60, now + 4.0);
     const tailGain = ctx.createGain();
     tailGain.gain.setValueAtTime(0, now);
-    tailGain.gain.setValueAtTime(2.0, now + 0.15);
-    tailGain.gain.linearRampToValueAtTime(1.2, now + 3.0);
-    tailGain.gain.exponentialRampToValueAtTime(0.001, now + 12.0);
+    tailGain.gain.setValueAtTime(1.5, now + 0.2);
+    tailGain.gain.exponentialRampToValueAtTime(0.001, now + 4.0);
     tail.connect(tailFilter);
     tailFilter.connect(tailGain);
     tailGain.connect(ctx.destination);
     tail.start(now);
-    tail.stop(now + 12.0);
-
-    // ── Layer 6: Rolling thunder echo 1 (delayed ~2.5s) ──────────────────────
-    const thunder1 = createNoise(ctx, 2.5);
-    const t1Filter = ctx.createBiquadFilter();
-    t1Filter.type = "lowpass";
-    t1Filter.frequency.setValueAtTime(300, now + 2.5);
-    t1Filter.frequency.exponentialRampToValueAtTime(60, now + 5.0);
-    const t1Gain = ctx.createGain();
-    t1Gain.gain.setValueAtTime(0, now + 2.5);
-    t1Gain.gain.linearRampToValueAtTime(1.4, now + 2.7);
-    t1Gain.gain.exponentialRampToValueAtTime(0.001, now + 5.0);
-    thunder1.connect(t1Filter);
-    t1Filter.connect(t1Gain);
-    t1Gain.connect(ctx.destination);
-    thunder1.start(now + 2.5);
-    thunder1.stop(now + 5.0);
-
-    // ── Layer 7: Rolling thunder echo 2 (delayed ~5.5s) ──────────────────────
-    const thunder2 = createNoise(ctx, 2.5);
-    const t2Filter = ctx.createBiquadFilter();
-    t2Filter.type = "lowpass";
-    t2Filter.frequency.setValueAtTime(220, now + 5.5);
-    t2Filter.frequency.exponentialRampToValueAtTime(40, now + 8.0);
-    const t2Gain = ctx.createGain();
-    t2Gain.gain.setValueAtTime(0, now + 5.5);
-    t2Gain.gain.linearRampToValueAtTime(0.9, now + 5.7);
-    t2Gain.gain.exponentialRampToValueAtTime(0.001, now + 8.0);
-    thunder2.connect(t2Filter);
-    t2Filter.connect(t2Gain);
-    t2Gain.connect(ctx.destination);
-    thunder2.start(now + 5.5);
-    thunder2.stop(now + 8.0);
-
-    // ── Layer 8: Final distant rumble (8-15s) ─────────────────────────────────
-    const distant = ctx.createOscillator();
-    const distantGain = ctx.createGain();
-    distant.type = "sine";
-    distant.frequency.setValueAtTime(28, now + 8.0);
-    distant.frequency.exponentialRampToValueAtTime(16, now + 15.0);
-    distantGain.gain.setValueAtTime(0, now + 8.0);
-    distantGain.gain.linearRampToValueAtTime(1.2, now + 8.5);
-    distantGain.gain.exponentialRampToValueAtTime(0.001, now + 15.0);
-    distant.connect(distantGain);
-    distantGain.connect(ctx.destination);
-    distant.start(now + 8.0);
-    distant.stop(now + 15.0);
+    tail.stop(now + 4.0);
   } catch (_) {}
 }

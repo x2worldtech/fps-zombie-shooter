@@ -19,6 +19,7 @@ export interface ScoreEntry {
     playerName: string;
 }
 export interface PlayerProfile {
+    username?: string;
     totalHeadshots: bigint;
     totalShots: bigint;
     totalRounds: bigint;
@@ -39,8 +40,16 @@ export interface backendInterface {
     getOrCreateProfile(): Promise<PlayerProfile>;
     getProfile(principal: Principal): Promise<PlayerProfile | null>;
     getUserProfile(user: Principal): Promise<PlayerProfile | null>;
+    getUsername(): Promise<string | null>;
     isCallerAdmin(): Promise<boolean>;
     saveCallerUserProfile(profile: PlayerProfile): Promise<void>;
-    submitScore(playerName: string, score: bigint, wave: bigint): Promise<void>;
+    setUsername(username: string): Promise<{
+        __kind__: "ok";
+        ok: null;
+    } | {
+        __kind__: "err";
+        err: string;
+    }>;
+    submitScore(score: bigint, wave: bigint): Promise<void>;
     updateProfile(principal: Principal, sessionStats: SessionStats): Promise<PlayerProfile>;
 }

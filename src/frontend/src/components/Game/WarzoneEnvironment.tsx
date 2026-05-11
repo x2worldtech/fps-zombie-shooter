@@ -120,46 +120,6 @@ function mat(
 }
 
 // ─── Shaders ──────────────────────────────────────────────────────────────────
-const concreteVertexShader = `
-  varying vec2 vUv;
-  varying vec3 vPos;
-  void main() {
-    vUv = uv;
-    vPos = position;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-
-const concreteFragShader = `
-  varying vec2 vUv;
-  varying vec3 vPos;
-  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-  float noise(vec2 p) {
-    vec2 i = floor(p); vec2 f = fract(p);
-    vec2 u = f*f*(3.0-2.0*f);
-    return mix(mix(hash(i),hash(i+vec2(1,0)),u.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x),u.y);
-  }
-  float fbm(vec2 p) {
-    float v=0.0, a=0.5;
-    for(int i=0;i<5;i++) { v+=a*noise(p); p*=2.1; a*=0.5; }
-    return v;
-  }
-  void main() {
-    vec2 uv = vUv * 24.0;
-    float base = fbm(uv * 0.5);
-    float cracks = smoothstep(0.6, 0.65, fbm(uv * 2.0));
-    float dirt = noise(uv * 0.8 + 3.7) * 0.3;
-    vec3 col = mix(vec3(0.18, 0.17, 0.15), vec3(0.28, 0.26, 0.23), base);
-    col = mix(col, vec3(0.06, 0.05, 0.04), cracks * 0.8);
-    col = mix(col, vec3(0.22, 0.18, 0.12), dirt);
-    float blood = smoothstep(0.72, 0.76, noise(uv * 0.3 + 8.1)) * 0.55;
-    col = mix(col, vec3(0.22, 0.04, 0.04), blood);
-    float scorch = smoothstep(0.68, 0.72, fbm(uv * 0.7 + 5.5)) * 0.4;
-    col = mix(col, vec3(0.03, 0.03, 0.02), scorch);
-    gl_FragColor = vec4(col, 1.0);
-  }
-`;
-
 const warSkyFragShader = `
   varying vec3 vPos;
   void main() {
@@ -179,15 +139,245 @@ const warSkyVertexShader = `
 
 // ─── Ground ───────────────────────────────────────────────────────────────────
 function WarzoneGround() {
-  const groundMat = useMemo(
-    () =>
-      new THREE.ShaderMaterial({
-        vertexShader: concreteVertexShader,
-        fragmentShader: concreteFragShader,
-        side: THREE.FrontSide,
-      }),
-    [],
-  );
+  const groundMat = useMemo(() => {
+    const size = 1024;
+
+    // ── Albedo: zerschossener Asphalt/Beton mit Rissen, Brand, Schutt ──
+    const albedoCanvas = document.createElement("canvas");
+    albedoCanvas.width = size;
+    albedoCanvas.height = size;
+    const aCtx = albedoCanvas.getContext("2d");
+    if (aCtx) {
+      // Basis: dunkles Beton-Grau
+      aCtx.fillStyle = "#3a3833";
+      aCtx.fillRect(0, 0, size, size);
+
+      // Beton-Patches (helle/dunkle Bereiche für Variation)
+      for (let i = 0; i < 36; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const r = 100 + Math.random() * 220;
+        const isLight = Math.random() > 0.5;
+        const g = aCtx.createRadialGradient(x, y, 0, x, y, r);
+        if (isLight) {
+          g.addColorStop(0, `rgba(80,75,65,${0.2 + Math.random() * 0.2})`);
+        } else {
+          g.addColorStop(0, `rgba(20,18,15,${0.25 + Math.random() * 0.25})`);
+        }
+        g.addColorStop(1, "rgba(127,127,127,0)");
+        aCtx.fillStyle = g;
+        aCtx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+
+      // Risse (verzweigte dunkle Linien)
+      aCtx.lineCap = "round";
+      for (let i = 0; i < 50; i++) {
+        const startX = Math.random() * size;
+        const startY = Math.random() * size;
+        const segments = 4 + Math.floor(Math.random() * 8);
+        let x = startX;
+        let y = startY;
+        const baseAngle = Math.random() * Math.PI * 2;
+        let angle = baseAngle;
+        aCtx.strokeStyle = `rgba(8,7,6,${0.55 + Math.random() * 0.3})`;
+        aCtx.lineWidth = 0.8 + Math.random() * 1.6;
+        aCtx.beginPath();
+        aCtx.moveTo(x, y);
+        for (let s = 0; s < segments; s++) {
+          angle += (Math.random() - 0.5) * 0.8;
+          const len = 12 + Math.random() * 30;
+          x += Math.cos(angle) * len;
+          y += Math.sin(angle) * len;
+          aCtx.lineTo(x, y);
+        }
+        aCtx.stroke();
+        // Verzweigung
+        if (Math.random() > 0.5) {
+          aCtx.beginPath();
+          aCtx.moveTo(startX, startY);
+          let bx = startX;
+          let by = startY;
+          let bAngle = baseAngle + (Math.random() - 0.5) * 1.5;
+          for (let s = 0; s < 3; s++) {
+            bAngle += (Math.random() - 0.5) * 0.8;
+            const len = 8 + Math.random() * 20;
+            bx += Math.cos(bAngle) * len;
+            by += Math.sin(bAngle) * len;
+            aCtx.lineTo(bx, by);
+          }
+          aCtx.stroke();
+        }
+      }
+
+      // Brand-/Scorch-Flecken
+      for (let i = 0; i < 14; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const r = 50 + Math.random() * 100;
+        const g = aCtx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, "rgba(5,5,5,0.85)");
+        g.addColorStop(0.4, "rgba(15,12,8,0.5)");
+        g.addColorStop(1, "rgba(15,12,8,0)");
+        aCtx.fillStyle = g;
+        aCtx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+
+      // Öl-/Blut-Pfützen (rotbraun)
+      for (let i = 0; i < 18; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const r = 18 + Math.random() * 35;
+        const g = aCtx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, "rgba(35,8,5,0.7)");
+        g.addColorStop(0.7, "rgba(35,8,5,0.3)");
+        g.addColorStop(1, "rgba(35,8,5,0)");
+        aCtx.fillStyle = g;
+        aCtx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+
+      // Trümmer-Steine/Schutt (kleine helle Punkte)
+      for (let i = 0; i < 600; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const r = 1.5 + Math.random() * 4;
+        const dark = 0.3 + Math.random() * 0.5;
+        aCtx.fillStyle = `rgba(${100 * dark | 0},${95 * dark | 0},${85 * dark | 0},${0.6 + Math.random() * 0.3})`;
+        aCtx.beginPath();
+        aCtx.arc(x, y, r, 0, Math.PI * 2);
+        aCtx.fill();
+        // Highlight für Schutt-3D-Look
+        aCtx.fillStyle = `rgba(180,170,155,${0.3 + Math.random() * 0.3})`;
+        aCtx.beginPath();
+        aCtx.arc(x - r * 0.35, y - r * 0.35, r * 0.4, 0, Math.PI * 2);
+        aCtx.fill();
+      }
+
+      // Per-Pixel-Korn (Beton-Körnung)
+      const img = aCtx.getImageData(0, 0, size, size);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const n = (Math.random() - 0.5) * 30;
+        img.data[i] = Math.max(0, Math.min(255, img.data[i] + n));
+        img.data[i + 1] = Math.max(0, Math.min(255, img.data[i + 1] + n));
+        img.data[i + 2] = Math.max(0, Math.min(255, img.data[i + 2] + n * 0.85));
+      }
+      aCtx.putImageData(img, 0, 0);
+    }
+    const albedoTex = new THREE.CanvasTexture(albedoCanvas);
+    albedoTex.wrapS = THREE.RepeatWrapping;
+    albedoTex.wrapT = THREE.RepeatWrapping;
+    albedoTex.repeat.set(15, 15);
+    albedoTex.colorSpace = THREE.SRGBColorSpace;
+    albedoTex.anisotropy = 8;
+
+    // ── Bump: Risse vertieft + grobe Beton-Körnung ──
+    const bumpCanvas = document.createElement("canvas");
+    bumpCanvas.width = size;
+    bumpCanvas.height = size;
+    const bCtx = bumpCanvas.getContext("2d");
+    if (bCtx) {
+      bCtx.fillStyle = "#7f7f7f";
+      bCtx.fillRect(0, 0, size, size);
+
+      // Aufgeworfene Beton-Buckel
+      for (let i = 0; i < 80; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const r = 25 + Math.random() * 80;
+        const g = bCtx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(255,255,255,${0.18 + Math.random() * 0.22})`);
+        g.addColorStop(0.7, "rgba(127,127,127,0)");
+        bCtx.fillStyle = g;
+        bCtx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+
+      // Risse als tiefe schwarze Linien (= eingedrückt)
+      bCtx.lineCap = "round";
+      for (let i = 0; i < 50; i++) {
+        const startX = Math.random() * size;
+        const startY = Math.random() * size;
+        const segments = 4 + Math.floor(Math.random() * 8);
+        let x = startX;
+        let y = startY;
+        let angle = Math.random() * Math.PI * 2;
+        bCtx.strokeStyle = `rgba(0,0,0,${0.7 + Math.random() * 0.3})`;
+        bCtx.lineWidth = 1.5 + Math.random() * 2.5;
+        bCtx.beginPath();
+        bCtx.moveTo(x, y);
+        for (let s = 0; s < segments; s++) {
+          angle += (Math.random() - 0.5) * 0.8;
+          const len = 12 + Math.random() * 30;
+          x += Math.cos(angle) * len;
+          y += Math.sin(angle) * len;
+          bCtx.lineTo(x, y);
+        }
+        bCtx.stroke();
+      }
+
+      // Brand-Krater-Vertiefungen
+      for (let i = 0; i < 14; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const r = 35 + Math.random() * 70;
+        const g = bCtx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, "rgba(0,0,0,0.5)");
+        g.addColorStop(0.7, "rgba(127,127,127,0)");
+        bCtx.fillStyle = g;
+        bCtx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+
+      // Per-Pixel-hochfrequenz Beton-Körnung
+      const img = bCtx.getImageData(0, 0, size, size);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const n = (Math.random() - 0.5) * 90;
+        const v = Math.max(0, Math.min(255, img.data[i] + n));
+        img.data[i] = v;
+        img.data[i + 1] = v;
+        img.data[i + 2] = v;
+      }
+      bCtx.putImageData(img, 0, 0);
+    }
+    const bumpTex = new THREE.CanvasTexture(bumpCanvas);
+    bumpTex.wrapS = THREE.RepeatWrapping;
+    bumpTex.wrapT = THREE.RepeatWrapping;
+    bumpTex.repeat.set(15, 15);
+
+    // ── Roughness: Risse glänzen wie nasses Öl, Beton matt ──
+    const roughCanvas = document.createElement("canvas");
+    roughCanvas.width = 256;
+    roughCanvas.height = 256;
+    const rCtx = roughCanvas.getContext("2d");
+    if (rCtx) {
+      // Basis: rauer Beton (hohe Roughness)
+      rCtx.fillStyle = "#cccccc";
+      rCtx.fillRect(0, 0, 256, 256);
+      // Glänzendere Stellen (nasse Pfützen, Öl)
+      for (let i = 0; i < 30; i++) {
+        const x = Math.random() * 256;
+        const y = Math.random() * 256;
+        const r = 5 + Math.random() * 22;
+        const g = rCtx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(60,60,60,${0.5 + Math.random() * 0.3})`);
+        g.addColorStop(1, "rgba(204,204,204,0)");
+        rCtx.fillStyle = g;
+        rCtx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+    }
+    const roughTex = new THREE.CanvasTexture(roughCanvas);
+    roughTex.wrapS = THREE.RepeatWrapping;
+    roughTex.wrapT = THREE.RepeatWrapping;
+    roughTex.repeat.set(15, 15);
+
+    return new THREE.MeshStandardMaterial({
+      color: "#5a5550",
+      map: albedoTex,
+      bumpMap: bumpTex,
+      bumpScale: 0.08,
+      roughnessMap: roughTex,
+      roughness: 0.92,
+      metalness: 0,
+    });
+  }, []);
+
   return (
     <mesh
       rotation={[-Math.PI / 2, 0, 0]}
@@ -301,6 +491,21 @@ export const DestroyedBuilding = React.memo(
       color: new THREE.Color("#1a1916"),
       roughness: 0.92,
       metalness: 0,
+    });
+    // Sandsäcke — typische Burlap/Hanf-Farbe (Tan)
+    const sandbagMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color("#7a6042"),
+      roughness: 1.0,
+      metalness: 0,
+    });
+    // Tarnnetz (oliv)
+    const camoNetMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color("#3a4218"),
+      roughness: 0.95,
+      metalness: 0,
+      transparent: true,
+      opacity: 0.65,
+      side: THREE.DoubleSide,
     });
 
     // ── Geometry parameters — must consume rng in same order as before ────────
@@ -662,6 +867,70 @@ export const DestroyedBuilding = React.memo(
             <dodecahedronGeometry args={[0.55, 0]} />
           </mesh>
         ))}
+
+        {/* ── Sandsäcke an einer Basis-Ecke (Defensive Stellung) ─────────────── */}
+        {/* Untere Reihe (5 Sandsäcke entlang einer Kante) */}
+        {[0, 1, 2, 3, 4].map((i) => {
+          const sx = -width / 2 + 0.5 + i * 0.55;
+          return (
+            <mesh
+              key={`sb-l-${sx.toFixed(3)}`}
+              material={sandbagMat}
+              position={[sx, -intactH / 2 + 0.18, depth / 2 + 0.32]}
+              rotation={[0, (i % 2) * 0.15, 0]}
+              castShadow
+            >
+              <boxGeometry args={[0.5, 0.28, 0.32]} />
+            </mesh>
+          );
+        })}
+        {/* Obere Reihe (3 Sandsäcke versetzt) */}
+        {[0, 1, 2].map((i) => {
+          const sx = -width / 2 + 0.78 + i * 0.55;
+          return (
+            <mesh
+              key={`sb-u-${sx.toFixed(3)}`}
+              material={sandbagMat}
+              position={[sx, -intactH / 2 + 0.45, depth / 2 + 0.32]}
+              rotation={[0, (i % 2 === 0 ? 1 : -1) * 0.12, 0]}
+              castShadow
+            >
+              <boxGeometry args={[0.5, 0.28, 0.32]} />
+            </mesh>
+          );
+        })}
+        {/* Sandsäcke gegenüberliegende Ecke (kleinerer Stapel) */}
+        {[0, 1, 2, 3].map((i) => {
+          const sx = width / 2 - 0.5 - i * 0.55;
+          return (
+            <mesh
+              key={`sb-r-${sx.toFixed(3)}`}
+              material={sandbagMat}
+              position={[sx, -intactH / 2 + 0.18, -(depth / 2 + 0.32)]}
+              rotation={[0, (i % 2) * 0.15, 0]}
+              castShadow
+            >
+              <boxGeometry args={[0.5, 0.28, 0.32]} />
+            </mesh>
+          );
+        })}
+
+        {/* ── Tarnnetz-Rest hängend von einer Dachkante ──────────────────────── */}
+        <mesh
+          material={camoNetMat}
+          position={[0, intactH / 2 - 0.4, depth / 2 + 0.05]}
+          rotation={[0.3, 0, 0]}
+        >
+          <planeGeometry args={[width * 0.65, 1.2]} />
+        </mesh>
+        {/* Zweites Tarnnetz-Stück versetzt */}
+        <mesh
+          material={camoNetMat}
+          position={[width * 0.2, intactH / 2 - 0.7, depth / 2 + 0.15]}
+          rotation={[0.5, 0.1, 0]}
+        >
+          <planeGeometry args={[width * 0.35, 0.9]} />
+        </mesh>
       </group>
     );
   },
@@ -1592,34 +1861,64 @@ export function WarzoneEnvironment({
         <Bird key={i} data={b} />
       ))}
 
-      {/* ── Lighting ─────────────────────────────────────────────── */}
-      <ambientLight intensity={0.3} color="#5a6070" />
+      {/* ── Atmosphäre: kalter blauer Nebel für Apokalypse-Stimmung ── */}
+      <fog attach="fog" args={["#3a4055", 50, 200]} />
+
+      {/* ── BELEUCHTUNG (Kriegsgebiet — kalt, mit warmen Feuer-Akzenten) ── */}
+      {/* Hemisphere: kühler bedeckter Himmel oben, dunkler Boden-Bounce */}
+      <hemisphereLight args={["#5070a0", "#1a1208", 0.35]} />
+
+      {/* Schwaches kaltes Ambient — entsaturiert die Schatten */}
+      <ambientLight intensity={0.25} color="#5a6478" />
+
+      {/* Hauptlicht: kalter bewölkter Tag */}
       <directionalLight
         position={[40, 70, 30]}
-        intensity={1.0}
-        color="#8090aa"
+        intensity={1.2}
+        color="#a0b0cc"
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-camera-far={200}
-        shadow-camera-left={-80}
-        shadow-camera-right={80}
-        shadow-camera-top={80}
-        shadow-camera-bottom={-80}
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
+        shadow-camera-far={120}
+        shadow-camera-left={-60}
+        shadow-camera-right={60}
+        shadow-camera-top={60}
+        shadow-camera-bottom={-60}
+        shadow-bias={-0.0002}
+        shadow-normalBias={0.04}
       />
+
+      {/* Warmes Feuer-Punktlicht 1 — flackert leicht für lebendige Atmosphäre */}
       <pointLight
         position={[-8, 4, 5]}
-        intensity={1.2}
+        intensity={1.6}
         distance={28}
-        color="#ff4400"
+        decay={2}
+        color="#ff5500"
       />
+      {/* Warmes Feuer-Punktlicht 2 */}
       <pointLight
         position={[7, 4, -4]}
-        intensity={0.9}
+        intensity={1.2}
         distance={22}
-        color="#ff6600"
+        decay={2}
+        color="#ff7722"
       />
-      <hemisphereLight args={["#404560", "#1a1208", 0.25]} />
+      {/* Drittes Feuer entferntere Glut für Tiefe */}
+      <pointLight
+        position={[-25, 3, -18]}
+        intensity={0.9}
+        distance={30}
+        decay={2}
+        color="#cc4400"
+      />
+
+      {/* Rim-Light von hinten — kalt-blau, schafft Silhouetten-Trennung */}
+      <directionalLight
+        position={[-30, 50, -40]}
+        intensity={0.5}
+        color="#6688aa"
+      />
 
       {/* ── Nuclear Machine ───────────────────────────────────────── */}
       {onActivateNuclear && playerPosRef && (

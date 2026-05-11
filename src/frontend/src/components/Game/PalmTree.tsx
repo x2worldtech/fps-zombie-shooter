@@ -20,42 +20,71 @@ function createTrunkGeometry(
   topRadius: number,
   seed: number,
 ): THREE.BufferGeometry {
-  const rng = seededRng(seed);
+  // Höhere Subdivision: 18 radial × 32 vertikal — keine sichtbaren Polygone mehr,
+  // glatte runde Form ohne Lücken zwischen Segmenten
   const geo = new THREE.CylinderGeometry(
     topRadius,
     baseRadius,
     trunkHeight,
-    10,
-    16,
+    18,
+    32,
     false,
   );
   const positions = geo.attributes.position as THREE.BufferAttribute;
+
+  // ── Deterministische Werte pro Trunk (kein per-Vertex-Random) ──
+  // Sway-Richtung: feste Achse über die ganze Trunk-Länge (echte Palmen-Lean)
+  const rngTrunk = seededRng(seed);
+  const swayDirX = (rngTrunk() - 0.5) * 1.2; // Lean-Richtung X
+  const swayDirZ = (rngTrunk() - 0.5) * 1.2; // Lean-Richtung Z
+  const swayAmount = 0.35 + rngTrunk() * 0.25; // wie stark gebogen
 
   for (let i = 0; i < positions.count; i++) {
     const x = positions.getX(i);
     const y = positions.getY(i);
     const z = positions.getZ(i);
+    // Höhen-Parameter t: 0 (Boden) bis 1 (Spitze)
     const t = (y + trunkHeight / 2) / trunkHeight;
 
-    // Natural lean with smooth curve
-    const swayX = Math.sin(t * Math.PI * 0.8) * 0.5 * (rng() - 0.35);
-    const swayZ = Math.sin(t * Math.PI * 0.8) * 0.35 * (rng() - 0.35);
+    // ── Natürliche S-Kurve mit fester Richtung ──
+    // Sin-Kurve startet bei 0 am Boden, kommt am oberen Drittel zur stärksten Auslenkung
+    // (echte Palmen wachsen leicht gebogen — kein Random pro Vertex)
+    const sway = Math.sin(t * Math.PI * 0.7) * swayAmount;
+    const offsetX = swayDirX * sway;
+    const offsetZ = swayDirZ * sway;
 
-    // Ring bumps (characteristic palm bark texture)
-    const ringBump = Math.sin(t * Math.PI * 18) * 0.045 * (1 - t * 0.4);
-    // Secondary roughness
-    const roughBump = (rng() - 0.5) * 0.02;
+    // ── Wurzelbasis-Verbreiterung in den untersten 15% ──
+    // Exponentieller Anstieg zur Basis (1.0 → 1.4 als Multiplier)
+    const baseFlare = t < 0.15
+      ? 1 + ((0.15 - t) / 0.15) ** 2 * 0.4
+      : 1;
 
+    // ── Ring-Wachstumsringe als sichtbare Vertikalstruktur ──
+    // Charakteristische Palmenringe — markant, gleichmäßig
+    const ringFreq = 22; // Anzahl der Ringe entlang der Trunk-Länge
+    const ringPhase = t * Math.PI * ringFreq;
+    // Sägezahn-artig: scharf nach außen springen, sanft nach innen — wie echte Ringe
+    const ringBump = Math.sin(ringPhase) * 0.025 * (1 - t * 0.35);
+
+    // ── Vertikale Faser (subtle 8-fach Bark-Riefen) ──
+    const angle = Math.atan2(z, x);
+    const fiberBump = Math.sin(angle * 8) * 0.012;
+
+    // Radiale Position neu berechnen
     const len = Math.sqrt(x * x + z * z);
     if (len > 0.001) {
       const nx = x / len;
       const nz = z / len;
+      const newR = len * baseFlare + ringBump + fiberBump;
       positions.setXYZ(
         i,
-        x + nx * (ringBump + roughBump) + swayX,
+        nx * newR + offsetX,
         y,
-        z + nz * (ringBump + roughBump) + swayZ,
+        nz * newR + offsetZ,
       );
+    } else {
+      // Top/Bottom-Vertices (Mittelpunkte): nur Sway anwenden
+      positions.setXYZ(i, x + offsetX, y, z + offsetZ);
     }
   }
 
@@ -209,10 +238,14 @@ function CoconutCluster({ trunkHeight }: { trunkHeight: number }) {
 
   return (
     <group position={[0, trunkHeight, 0]}>
-      {offsets.map((off, i) => (
-        // biome-ignore lint: pre-existing issue
-        <mesh key={i} material={coconutMat} position={off} castShadow>
-          <sphereGeometry args={[0.2, 7, 6]} />
+      {offsets.map((off) => (
+        <mesh
+          key={`coco-${off[0]}-${off[1]}-${off[2]}`}
+          material={coconutMat}
+          position={off}
+          castShadow
+        >
+          <sphereGeometry args={[0.2, 14, 10]} />
         </mesh>
       ))}
     </group>
@@ -281,15 +314,158 @@ export function PalmTree({ position, seed = 0 }: PalmTreeProps) {
     [trunkHeight, baseRadius, topRadius, seed],
   );
 
-  const trunkMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: new THREE.Color("#7a5c2e"),
-        roughness: 0.95,
-        metalness: 0.0,
-      }),
-    [],
-  );
+  const trunkMat = useMemo(() => {
+    const size = 512;
+    // ── Albedo: Palmen-Bark mit horizontalen Wachstumsringen, Faserung, Patches ──
+    const albedoCanvas = document.createElement("canvas");
+    albedoCanvas.width = size;
+    albedoCanvas.height = size;
+    const aCtx = albedoCanvas.getContext("2d");
+    if (aCtx) {
+      // Basis: warmer Holzton
+      aCtx.fillStyle = "#7a5c2e";
+      aCtx.fillRect(0, 0, size, size);
+
+      // Horizontale Bands (Wachstumsringe) als dunklere Streifen
+      // Palmenstämme haben ~20 sichtbare Ringe über die Länge
+      const ringCount = 24;
+      const ringH = size / ringCount;
+      for (let r = 0; r < ringCount; r++) {
+        const y = r * ringH;
+        // Variation: manche Ringe dunkler, manche heller
+        const isDark = Math.random() > 0.6;
+        if (isDark) {
+          // Dunkler Ring (Schatten in der Vertiefung)
+          aCtx.fillStyle = `rgba(40,28,12,${0.3 + Math.random() * 0.2})`;
+          aCtx.fillRect(0, y + ringH * 0.7, size, ringH * 0.3);
+        } else {
+          // Heller Ring (Wachstumsband)
+          aCtx.fillStyle = `rgba(150,118,70,${0.18 + Math.random() * 0.18})`;
+          aCtx.fillRect(0, y + ringH * 0.1, size, ringH * 0.25);
+        }
+      }
+
+      // Vertikale Faser-Strähnen
+      for (let i = 0; i < 80; i++) {
+        const x = Math.random() * size;
+        const len = 40 + Math.random() * 180;
+        const startY = Math.random() * size;
+        aCtx.strokeStyle = `rgba(${50 + Math.random() * 40 | 0},${35 + Math.random() * 30 | 0},${15 + Math.random() * 15 | 0},${0.3 + Math.random() * 0.25})`;
+        aCtx.lineWidth = 0.6 + Math.random() * 1.2;
+        aCtx.beginPath();
+        aCtx.moveTo(x, startY);
+        // Leicht wellige Faser
+        let cy = startY;
+        for (let s = 0; s < len / 8; s++) {
+          cy += 8;
+          const dx = (Math.random() - 0.5) * 2;
+          aCtx.lineTo(x + dx, cy);
+        }
+        aCtx.stroke();
+      }
+
+      // Dunkle Flecken (Schadensstellen, abgefallene Frondbasen)
+      for (let i = 0; i < 30; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const r = 4 + Math.random() * 14;
+        const g = aCtx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(25,15,5,${0.5 + Math.random() * 0.3})`);
+        g.addColorStop(1, "rgba(25,15,5,0)");
+        aCtx.fillStyle = g;
+        aCtx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+
+      // Helle Highlights für sonnige Stellen
+      for (let i = 0; i < 25; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const r = 8 + Math.random() * 20;
+        const g = aCtx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(190,160,110,${0.2 + Math.random() * 0.2})`);
+        g.addColorStop(1, "rgba(190,160,110,0)");
+        aCtx.fillStyle = g;
+        aCtx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+
+      // Per-Pixel-Korn für Holz-Körnung
+      const img = aCtx.getImageData(0, 0, size, size);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const n = (Math.random() - 0.5) * 20;
+        img.data[i] = Math.max(0, Math.min(255, img.data[i] + n));
+        img.data[i + 1] = Math.max(0, Math.min(255, img.data[i + 1] + n * 0.9));
+        img.data[i + 2] = Math.max(0, Math.min(255, img.data[i + 2] + n * 0.7));
+      }
+      aCtx.putImageData(img, 0, 0);
+    }
+    const albedoTex = new THREE.CanvasTexture(albedoCanvas);
+    albedoTex.wrapS = THREE.RepeatWrapping;
+    albedoTex.wrapT = THREE.RepeatWrapping;
+    // Kacheln: 1× horizontal um den Stamm, 1× vertikal (Stamm ist ca. 10m hoch,
+    // Textur ist eine vollständige Stamm-Variation)
+    albedoTex.repeat.set(1, 1);
+    albedoTex.colorSpace = THREE.SRGBColorSpace;
+    albedoTex.anisotropy = 8;
+
+    // ── Bump: Horizontale Ringe vertieft + vertikale Fasern ──
+    const bumpCanvas = document.createElement("canvas");
+    bumpCanvas.width = size;
+    bumpCanvas.height = size;
+    const bCtx = bumpCanvas.getContext("2d");
+    if (bCtx) {
+      bCtx.fillStyle = "#7f7f7f";
+      bCtx.fillRect(0, 0, size, size);
+
+      // Horizontale Ringe als tiefe schwarze Linien
+      const ringCount = 24;
+      const ringH = size / ringCount;
+      for (let r = 0; r < ringCount; r++) {
+        const y = r * ringH;
+        // Helle obere Kante des Rings
+        bCtx.fillStyle = "rgba(255,255,255,0.5)";
+        bCtx.fillRect(0, y, size, 2);
+        // Dunkle Ring-Vertiefung
+        bCtx.fillStyle = "rgba(0,0,0,0.7)";
+        bCtx.fillRect(0, y + 4, size, 4);
+      }
+
+      // Vertikale Fasern als helle Linien
+      for (let i = 0; i < 60; i++) {
+        const x = Math.random() * size;
+        bCtx.strokeStyle = `rgba(${Math.random() > 0.5 ? 255 : 0},${Math.random() > 0.5 ? 255 : 0},${Math.random() > 0.5 ? 255 : 0},${0.2 + Math.random() * 0.2})`;
+        bCtx.lineWidth = 0.5 + Math.random() * 1;
+        bCtx.beginPath();
+        bCtx.moveTo(x, 0);
+        bCtx.lineTo(x + (Math.random() - 0.5) * 6, size);
+        bCtx.stroke();
+      }
+
+      // Per-Pixel-Korn
+      const img = bCtx.getImageData(0, 0, size, size);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const n = (Math.random() - 0.5) * 60;
+        const v = Math.max(0, Math.min(255, img.data[i] + n));
+        img.data[i] = v;
+        img.data[i + 1] = v;
+        img.data[i + 2] = v;
+      }
+      bCtx.putImageData(img, 0, 0);
+    }
+    const bumpTex = new THREE.CanvasTexture(bumpCanvas);
+    bumpTex.wrapS = THREE.RepeatWrapping;
+    bumpTex.wrapT = THREE.RepeatWrapping;
+    bumpTex.repeat.set(1, 1);
+    bumpTex.anisotropy = 8;
+
+    return new THREE.MeshStandardMaterial({
+      color: new THREE.Color("#a4824a"),
+      map: albedoTex,
+      bumpMap: bumpTex,
+      bumpScale: 0.03,
+      roughness: 0.95,
+      metalness: 0,
+    });
+  }, []);
 
   const baseMat = useMemo(
     () =>
@@ -297,13 +473,12 @@ export function PalmTree({ position, seed = 0 }: PalmTreeProps) {
         color: new THREE.Color("#5a3e1a"),
         roughness: 0.98,
         metalness: 0.0,
-        flatShading: true,
       }),
     [],
   );
 
-  // 14 fronds — dense, realistic palm crown
-  const frondCount = 14;
+  // 16 fronds — dense, realistic palm crown
+  const frondCount = 16;
   // biome-ignore lint: pre-existing issue
   const fronds = useMemo(() => {
     const rngF = seededRng(seed + 77);
@@ -328,7 +503,7 @@ export function PalmTree({ position, seed = 0 }: PalmTreeProps) {
       {/* Ground base flare */}
       <mesh material={baseMat} position={[0, 0.15, 0]} receiveShadow>
         <cylinderGeometry
-          args={[baseRadius * 1.5, baseRadius * 2.1, 0.3, 9, 1]}
+          args={[baseRadius * 1.5, baseRadius * 2.1, 0.3, 18, 1]}
         />
       </mesh>
 
@@ -343,7 +518,7 @@ export function PalmTree({ position, seed = 0 }: PalmTreeProps) {
 
       {/* Crown knob */}
       <mesh material={baseMat} position={[0, trunkHeight, 0]} castShadow>
-        <sphereGeometry args={[topRadius * 2.4, 9, 7]} />
+        <sphereGeometry args={[topRadius * 2.4, 16, 12]} />
       </mesh>
 
       {/* Palm fronds */}

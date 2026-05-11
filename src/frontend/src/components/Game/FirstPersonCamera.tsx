@@ -4,9 +4,9 @@ import * as THREE from "three";
 import {
   type CollisionAABB,
   generateCollisionAABBs,
-  generateMountainCollisionAABBs,
 } from "../../utils/proceduralGeometry";
 import { PACK_A_PUNCH_POSITION } from "./PackAPunchMachine";
+import { generateWarzoneAABBs } from "./WarzoneEnvironment";
 
 interface FirstPersonCameraProps {
   isLocked: boolean;
@@ -15,6 +15,8 @@ interface FirstPersonCameraProps {
   isGameActive: boolean;
   isPaused: boolean;
   extraAABBs?: CollisionAABB[];
+  /** Welt bestimmt welches Kollisions-Set aktiv ist */
+  world: "desert" | "warzone";
 }
 
 const MOVE_SPEED = 8;
@@ -24,6 +26,8 @@ const GRAVITY = -18;
 const PLAYER_HEIGHT = 1.7;
 // Player collision radius (must match the margin used in generateCollisionAABBs)
 const PLAYER_RADIUS = 0.4;
+// Map-Grenzen-Radius (kreisförmig statt fehlerhafter Mountain-AABBs)
+const MAP_BOUNDARY_RADIUS = 78;
 
 // Pack-a-Punch machine AABB (fixed position, size ~1.4 x 1.1)
 const PAP_HALF_W = 0.7 + PLAYER_RADIUS;
@@ -36,31 +40,39 @@ export function FirstPersonCamera({
   isGameActive,
   isPaused,
   extraAABBs = [],
+  world,
 }: FirstPersonCameraProps) {
   const { camera } = useThree();
 
-  // Pre-generate collision AABBs once (deterministic, same seed)
+  // Pre-generate collision AABBs once per world change
   const collisionAABBs = useMemo<CollisionAABB[]>(() => {
-    const aabbs = generateCollisionAABBs(PLAYER_RADIUS);
+    // Pro Welt das richtige Building-Set (vorher: immer Desert + Mountain — falsch)
+    const aabbs: CollisionAABB[] =
+      world === "desert"
+        ? generateCollisionAABBs(PLAYER_RADIUS)
+        : generateWarzoneAABBs(PLAYER_RADIUS).map((a) => ({
+            minX: a.minX,
+            maxX: a.maxX,
+            minZ: a.minZ,
+            maxZ: a.maxZ,
+          }));
 
-    // Add Pack-a-Punch machine AABB
-    const [px, , pz] = PACK_A_PUNCH_POSITION;
-    aabbs.push({
-      minX: px - PAP_HALF_W,
-      maxX: px + PAP_HALF_W,
-      minZ: pz - PAP_HALF_D,
-      maxZ: pz + PAP_HALF_D,
-    });
+    // Pack-a-Punch machine ist nur in Desert relevant — aber sicher ist sicher
+    if (world === "desert") {
+      const [px, , pz] = PACK_A_PUNCH_POSITION;
+      aabbs.push({
+        minX: px - PAP_HALF_W,
+        maxX: px + PAP_HALF_W,
+        minZ: pz - PAP_HALF_D,
+        maxZ: pz + PAP_HALF_D,
+      });
+    }
 
-    // Add mountain ring collision AABBs
-    const mountainAABBs = generateMountainCollisionAABBs(PLAYER_RADIUS);
-    aabbs.push(...mountainAABBs);
-
-    // Add any extra AABBs passed from outside (e.g. nuclear machine in warzone)
+    // Extra-AABBs (Nuclear Machine + Speed Cola in Warzone)
     aabbs.push(...extraAABBs);
 
     return aabbs;
-  }, [extraAABBs]);
+  }, [extraAABBs, world]);
 
   const keysRef = useRef({
     w: false,
@@ -263,8 +275,10 @@ export function FirstPersonCamera({
       isGroundedRef.current = true;
     }
 
-    // Clamp to arena (soft fallback, mountains should stop player first)
-    const maxDist = 62;
+    // Clamp to arena — kreisförmiger weicher Rand statt fehlerhafter Mountain-AABBs
+    // Desert: kleinerer Radius (Berge sind sichtbar bei R=60)
+    // Warzone: größer (Häuser stehen bis z=±56, Spieler darf bis ~78 raus)
+    const maxDist = world === "desert" ? 62 : MAP_BOUNDARY_RADIUS;
     const dist = Math.sqrt(posRef.current.x ** 2 + posRef.current.z ** 2);
     if (dist > maxDist) {
       posRef.current.x *= maxDist / dist;

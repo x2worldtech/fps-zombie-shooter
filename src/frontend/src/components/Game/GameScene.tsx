@@ -1,4 +1,9 @@
-import { PointerLockControls } from "@react-three/drei";
+import {
+  AdaptiveDpr,
+  AdaptiveEvents,
+  PerformanceMonitor,
+  PointerLockControls,
+} from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
@@ -179,6 +184,37 @@ function EnemyUpdater({
   useFrame((_, delta) => {
     if (isPaused) return;
     updatePositions(playerPos.current, delta, onPlayerHit);
+  });
+  return null;
+}
+
+/**
+ * Animiert das Kamera-FOV smooth zwischen Hip-Fire (75°) und Aim-Down-Sights.
+ * Pro Waffe unterschiedlicher ADS-FOV:
+ *   - Pistol/Shotgun: 60° (leichter Zoom, schnelles handling)
+ *   - Assault Rifle: 52° (mehr Zoom für Mittel-/Langstrecke)
+ *   - Sniper: kein FOV-Change (separates Scope-Overlay handhabt Zoom)
+ */
+function CameraFOVController({
+  isAiming,
+  weapon,
+}: {
+  isAiming: boolean;
+  weapon: string;
+}) {
+  const { camera } = useThree();
+  useFrame((_, delta) => {
+    if (!(camera instanceof THREE.PerspectiveCamera)) return;
+    let targetFov = 75;
+    if (isAiming) {
+      if (weapon === "assault_rifle") targetFov = 52;
+      else if (weapon === "sniper_rifle") targetFov = 75; // unchanged (scope handles zoom)
+      else targetFov = 60; // pistol, shotgun
+    }
+    // Smooth lerp — schnell genug zum Folgen, weich genug für visual polish
+    const lerpSpeed = Math.min(delta * 12, 1);
+    camera.fov += (targetFov - camera.fov) * lerpSpeed;
+    camera.updateProjectionMatrix();
   });
   return null;
 }
@@ -635,12 +671,16 @@ export function GameScene({ onGameOver }: GameSceneProps) {
       shotsFiredRef.current += 1;
       playGunshot(weaponState.currentWeapon);
       const effectiveDamage = getEffectiveDamage(currentConfig.damage);
+      // ADS reduziert Spread auf 35% (Sniper hat ohnehin fast 0 Spread)
+      const effectiveSpread = isAiming
+        ? currentConfig.spread * 0.35
+        : currentConfig.spread;
       window.dispatchEvent(
         new CustomEvent("game:fire", {
           detail: {
             damage: effectiveDamage,
             pellets: currentConfig.pellets,
-            spread: currentConfig.spread,
+            spread: effectiveSpread,
           },
         }),
       );
@@ -652,6 +692,7 @@ export function GameScene({ onGameOver }: GameSceneProps) {
     getEffectiveDamage,
     playGunshot,
     weaponState.currentWeapon,
+    isAiming,
   ]);
 
   const handleEnemyHit = useCallback(
@@ -737,16 +778,6 @@ export function GameScene({ onGameOver }: GameSceneProps) {
     [],
   );
 
-  const handleKillZombiesByShockwave = useCallback(
-    (killedIds: string[]) => {
-      for (const id of killedIds) {
-        // Deal 9999 damage — guaranteed kill with burn effect
-        damageEnemy(id, 9999, false, { x: 0, y: 0, z: 0 });
-      }
-    },
-    [damageEnemy],
-  );
-
   const isGameActive = isLocked && waveState.phase !== "gameover" && !isPaused;
 
   return (
@@ -759,9 +790,30 @@ export function GameScene({ onGameOver }: GameSceneProps) {
           height: "100%",
         }}
         camera={{ fov: 75, near: 0.1, far: 300 }}
-        gl={{ antialias: true }}
-        shadows
+        // Performance: cappe DPR auf 1.5 (4K-Displays renderen sonst 4x zu viel),
+        // adaptive über PerformanceMonitor unten weiter runter wenn FPS einbricht
+        dpr={[1, 1.5]}
+        gl={{
+          antialias: true,
+          powerPreference: "high-performance",
+          // Stencil/Depth nur was wir brauchen
+          stencil: false,
+          // HDR-Look durch ACES-Filmic Tone Mapping
+          toneMapping: THREE.ACESFilmicToneMapping,
+          toneMappingExposure: 1.05,
+          // Korrektes sRGB-Output (Three default sonst LinearSRGB)
+          outputColorSpace: THREE.SRGBColorSpace,
+        }}
+        shadows={{ type: THREE.PCFSoftShadowMap }}
+        // Frame-Loop "demand" wäre für Standbilder optimal — hier "always" weil
+        // ständig Animationen laufen
+        frameloop="always"
       >
+        {/* Adaptive performance helpers from drei */}
+        <PerformanceMonitor />
+        <AdaptiveDpr pixelated={false} />
+        <AdaptiveEvents />
+
         <PointerLockControls
           ref={
             controlsRef as React.Ref<
@@ -815,8 +867,6 @@ export function GameScene({ onGameOver }: GameSceneProps) {
             destroyedBuildingIds={destroyedBuildingIds}
             flashRef={nuclearFlashRef}
             onCountdownUpdate={handleNuclearCountdownUpdate}
-            onKillZombiesByShockwave={handleKillZombiesByShockwave}
-            enemies={enemies}
           />
         )}
 
@@ -831,6 +881,13 @@ export function GameScene({ onGameOver }: GameSceneProps) {
           extraAABBs={
             currentWorld === "warzone" ? WARZONE_EXTRA_AABBS : EMPTY_AABBS
           }
+          world={currentWorld}
+        />
+
+        {/* FOV-Animation: Zoom beim Aim-Down-Sights für alle Waffen */}
+        <CameraFOVController
+          isAiming={isAiming}
+          weapon={weaponState.currentWeapon}
         />
 
         {!(weaponState.currentWeapon === "sniper_rifle" && isAiming) && (
@@ -839,6 +896,9 @@ export function GameScene({ onGameOver }: GameSceneProps) {
             recoilOffset={weaponState.recoilOffset}
             isReloading={weaponState.isReloading}
             upgradeTier={weaponState.upgradeTier}
+            lastFireTime={weaponState.lastFireTime}
+            reloadProgress={weaponState.reloadProgress}
+            isAiming={isAiming}
           />
         )}
 
@@ -885,6 +945,33 @@ export function GameScene({ onGameOver }: GameSceneProps) {
           />
         ))}
       </Canvas>
+
+      {/* ─── Post-Process: Vignette + leichter Color-Grade Overlay ───
+       * Reine CSS-Overlays, kosten keine GPU-Frame-Budget.
+       * - Vignette: dunkler Rand verstärkt Tiefe + Fokus auf Bildmitte
+       * - Color-Grade: leichter warmer Tint (Desert) / kalter Tint (Warzone)
+       *   → kommt durch mix-blend-mode subtil drüber
+       */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            "radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.55) 100%)",
+          mixBlendMode: "multiply",
+          zIndex: 5,
+        }}
+      />
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            currentWorld === "desert"
+              ? "linear-gradient(180deg, rgba(255,180,80,0.06) 0%, transparent 40%, rgba(80,40,0,0.12) 100%)"
+              : "linear-gradient(180deg, rgba(80,100,140,0.10) 0%, transparent 50%, rgba(20,10,5,0.18) 100%)",
+          mixBlendMode: "overlay",
+          zIndex: 5,
+        }}
+      />
 
       <HUD
         health={health}

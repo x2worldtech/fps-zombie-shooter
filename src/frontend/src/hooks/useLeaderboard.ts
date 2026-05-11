@@ -4,7 +4,7 @@ import { useInternetIdentity } from "./useInternetIdentity";
 
 // Inline type until backend generates it
 interface ScoreEntry {
-  name: string;
+  playerName: string;
   score: bigint;
   wave: bigint;
   principal?: unknown;
@@ -30,14 +30,10 @@ export function useLeaderboard() {
   });
 
   const submitMutation = useMutation({
-    mutationFn: async ({
-      name,
-      score,
-      wave,
-    }: { name: string; score: number; wave: number }) => {
+    mutationFn: async ({ score, wave }: { score: number; wave: number }) => {
       if (!actor) throw new Error("No actor");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (actor as any).submitScore(name, BigInt(score), BigInt(wave));
+      await (actor as any).submitScore(BigInt(score), BigInt(wave));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["leaderboard"] });

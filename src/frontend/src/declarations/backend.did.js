@@ -14,6 +14,7 @@ export const UserRole = IDL.Variant({
   'guest' : IDL.Null,
 });
 export const PlayerProfile = IDL.Record({
+  'username' : IDL.Opt(IDL.Text),
   'totalHeadshots' : IDL.Nat,
   'totalShots' : IDL.Nat,
   'totalRounds' : IDL.Nat,
@@ -46,9 +47,15 @@ export const idlService = IDL.Service({
       [IDL.Opt(PlayerProfile)],
       ['query'],
     ),
+  'getUsername' : IDL.Func([], [IDL.Opt(IDL.Text)], ['query']),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
   'saveCallerUserProfile' : IDL.Func([PlayerProfile], [], []),
-  'submitScore' : IDL.Func([IDL.Text, IDL.Nat, IDL.Nat], [], []),
+  'setUsername' : IDL.Func(
+      [IDL.Text],
+      [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
+      [],
+    ),
+  'submitScore' : IDL.Func([IDL.Nat, IDL.Nat], [], []),
   'updateProfile' : IDL.Func(
       [IDL.Principal, SessionStats],
       [PlayerProfile],
@@ -65,6 +72,7 @@ export const idlFactory = ({ IDL }) => {
     'guest' : IDL.Null,
   });
   const PlayerProfile = IDL.Record({
+    'username' : IDL.Opt(IDL.Text),
     'totalHeadshots' : IDL.Nat,
     'totalShots' : IDL.Nat,
     'totalRounds' : IDL.Nat,
@@ -101,9 +109,15 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Opt(PlayerProfile)],
         ['query'],
       ),
+    'getUsername' : IDL.Func([], [IDL.Opt(IDL.Text)], ['query']),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
     'saveCallerUserProfile' : IDL.Func([PlayerProfile], [], []),
-    'submitScore' : IDL.Func([IDL.Text, IDL.Nat, IDL.Nat], [], []),
+    'setUsername' : IDL.Func(
+        [IDL.Text],
+        [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
+        [],
+      ),
+    'submitScore' : IDL.Func([IDL.Nat, IDL.Nat], [], []),
     'updateProfile' : IDL.Func(
         [IDL.Principal, SessionStats],
         [PlayerProfile],

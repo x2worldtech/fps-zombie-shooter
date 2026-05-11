@@ -25,18 +25,28 @@ export function GameOver({
   onMainMenu,
   onShowLeaderboard,
 }: GameOverProps) {
-  const [playerName, setPlayerName] = useState("");
-  const [submitted, setSubmitted] = useState(false);
   const [statsSaved, setStatsSaved] = useState(false);
   const [statsSaveError, setStatsSaveError] = useState(false);
-  const { submitScore, isSubmitting } = useLeaderboard();
+  const { submitScore } = useLeaderboard();
   const { identity } = useInternetIdentity();
   const { actor, isFetching: actorFetching } = useActor();
   const updateProfile = useUpdateProfile();
   const statsSavedRef = useRef(false);
+  const scoreSubmittedRef = useRef(false);
 
   const isAuthenticated = !!identity;
   const actorReady = !!actor && !actorFetching;
+
+  // Auto-submit highscore silently on mount when authenticated and actor ready
+  // biome-ignore lint: pre-existing issue
+  useEffect(() => {
+    if (!isAuthenticated || !actorReady || scoreSubmittedRef.current) return;
+    scoreSubmittedRef.current = true;
+    submitScore({ score, wave }).catch((err) =>
+      console.error("Failed to auto-submit score:", err),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, actorReady]);
 
   // Submit session stats to backend when authenticated and actor is ready
   // biome-ignore lint: pre-existing issue
@@ -64,17 +74,6 @@ export function GameOver({
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, actorReady]);
-
-  const handleSubmit = async () => {
-    if (!isAuthenticated || !playerName.trim()) return;
-    const name = playerName.trim().slice(0, 16);
-    try {
-      await submitScore({ name, score, wave });
-      setSubmitted(true);
-    } catch (err) {
-      console.error("Failed to submit score:", err);
-    }
-  };
 
   return (
     <div
@@ -254,97 +253,7 @@ export function GameOver({
           </div>
         )}
 
-        {/* Score submission */}
-        {isAuthenticated ? (
-          !submitted ? (
-            <div className="w-full flex flex-col gap-3">
-              <div
-                style={{
-                  fontFamily: "'Oswald', sans-serif",
-                  fontWeight: 600,
-                  fontSize: "0.8rem",
-                  letterSpacing: "0.15em",
-                  textTransform: "uppercase",
-                  color: "rgba(255,255,255,0.45)",
-                  textAlign: "center",
-                }}
-              >
-                SUBMIT YOUR SCORE
-              </div>
-              <input
-                type="text"
-                maxLength={16}
-                placeholder="Enter name (max 16 chars)"
-                value={playerName}
-                onChange={(e) => setPlayerName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                data-ocid="gameover.input"
-                className="w-full px-3 py-2 outline-none"
-                style={{
-                  fontFamily: "'Sora', system-ui, sans-serif",
-                  fontSize: "0.9rem",
-                  background: "rgba(255,255,255,0.05)",
-                  border: "1px solid rgba(255,122,0,0.4)",
-                  color: "rgba(255,255,255,0.85)",
-                  letterSpacing: "0.04em",
-                }}
-              />
-              <button
-                type="button"
-                className="cod-premium-btn w-full"
-                data-ocid="gameover.submit_button"
-                onClick={handleSubmit}
-                disabled={isSubmitting || !playerName.trim()}
-                style={{
-                  opacity: isSubmitting || !playerName.trim() ? 0.45 : 1,
-                }}
-              >
-                {isSubmitting ? "SUBMITTING..." : "SUBMIT SCORE"}
-              </button>
-            </div>
-          ) : (
-            <div
-              data-ocid="gameover.success_state"
-              className="w-full flex items-center justify-center gap-2 px-3 py-3"
-              style={{
-                background: "rgba(20,80,20,0.1)",
-                border: "1px solid rgba(40,160,70,0.3)",
-              }}
-            >
-              <span
-                style={{
-                  fontFamily: "'Oswald', sans-serif",
-                  fontWeight: 600,
-                  fontSize: "1rem",
-                  letterSpacing: "0.08em",
-                  color: "#44ee88",
-                }}
-              >
-                SCORE SUBMITTED
-              </span>
-            </div>
-          )
-        ) : (
-          <div
-            className="w-full flex flex-col items-center gap-2 px-3 py-3"
-            style={{
-              background: "rgba(255,255,255,0.03)",
-              border: "1px solid rgba(255,255,255,0.08)",
-            }}
-          >
-            <span style={{ fontSize: "1.2rem" }}>🔒</span>
-            <span
-              style={{
-                fontFamily: "'Sora', system-ui, sans-serif",
-                fontSize: "0.78rem",
-                textAlign: "center",
-                color: "rgba(255,255,255,0.4)",
-              }}
-            >
-              Sign in to submit your score and save your stats.
-            </span>
-          </div>
-        )}
+        {/* Score auto-submitted silently — no UI feedback needed */}
 
         {/* Divider */}
         <div

@@ -22,6 +22,8 @@ interface SessionStats {
 
 // Re-export leaderboard hook for convenience
 export { useLeaderboard } from "./useLeaderboard";
+// Re-export username hooks
+export { useGetUsername, useSetUsername } from "./useUsername";
 
 /**
  * Fetches or creates the authenticated caller's player profile.

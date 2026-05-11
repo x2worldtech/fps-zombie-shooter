@@ -5,6 +5,9 @@ import { GameOver } from "./components/GameOver";
 import { Leaderboard } from "./components/Leaderboard";
 import { MainMenu } from "./components/MainMenu";
 import { PlayerProfile } from "./components/PlayerProfile";
+import { UsernameSetup } from "./components/UsernameSetup";
+import { useInternetIdentity } from "./hooks/useInternetIdentity";
+import { useGetUsername } from "./hooks/useUsername";
 
 type Screen =
   | "menu"
@@ -24,6 +27,16 @@ interface GameResult {
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>("menu");
+  const { identity } = useInternetIdentity();
+  const {
+    data: username,
+    refetch: refetchUsername,
+    isLoading: usernameLoading,
+  } = useGetUsername();
+  const isAuthenticated = !!identity;
+  // Show username setup if logged in but username not yet set (and query has resolved)
+  const showUsernameSetup =
+    isAuthenticated && !usernameLoading && username === null;
   const [gameResult, setGameResult] = useState<GameResult>({
     score: 0,
     wave: 0,
@@ -72,6 +85,13 @@ export default function App() {
       className="w-screen h-screen overflow-hidden"
       style={{ background: "#0a0500" }}
     >
+      {showUsernameSetup && (
+        <UsernameSetup
+          onComplete={() => {
+            refetchUsername();
+          }}
+        />
+      )}
       {screen === "menu" && (
         <MainMenu
           onStartGame={handleStartGame}

@@ -83,10 +83,11 @@ export function generateBuildingData(): BuildingData[] {
     const color = desertColors[Math.floor(rng() * desertColors.length)];
 
     if (typeRoll < 0.5) {
-      // Building
-      const w = 4 + rng() * 8;
-      const h = 5 + rng() * 15;
-      const d = 4 + rng() * 8;
+      // Building — Mindestgröße angehoben damit kleine Häuser nicht wie
+      // Würfel aussehen. Mindesthöhe 8m (2-3 Stockwerke), Mindestbreite 7m.
+      const w = 7 + rng() * 6;
+      const h = 8 + rng() * 12;
+      const d = 7 + rng() * 6;
       buildings.push({
         position: [x, h / 2, z],
         width: w,
@@ -96,10 +97,10 @@ export function generateBuildingData(): BuildingData[] {
         type: "building",
       });
     } else if (typeRoll < 0.75) {
-      // Ruin (shorter, irregular)
-      const w = 5 + rng() * 6;
+      // Ruin (shorter, irregular) — auch hier Mindestbreite angehoben
+      const w = 6 + rng() * 5;
       const h = 2 + rng() * 5;
-      const d = 5 + rng() * 6;
+      const d = 6 + rng() * 5;
       buildings.push({
         position: [x, h / 2, z],
         width: w,
@@ -173,8 +174,10 @@ export function generateMountainRingGeometry(): MountainSegmentData[] {
 
   for (let i = 0; i < totalPeaks; i++) {
     const angle = (i / totalPeaks) * Math.PI * 2;
-    // Vary the radius slightly for a natural, uneven ring
-    const radius = 68 + rng() * 10;
+    // Vary the radius slightly for a natural, uneven ring.
+    // Verschoben von 68-78 auf 76-86, damit die äußersten Gebäude (R~57)
+    // nicht mehr in Berg-Boulder ragen.
+    const radius = 76 + rng() * 10;
     const x = Math.cos(angle) * radius;
     const z = Math.sin(angle) * radius;
 

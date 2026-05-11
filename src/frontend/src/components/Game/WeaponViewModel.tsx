@@ -2,12 +2,19 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { WeaponName } from "../../types/weapon";
+import { MuzzleFlash } from "./MuzzleFlash";
 
 interface WeaponViewModelProps {
   weapon: WeaponName;
   recoilOffset: number;
   isReloading: boolean;
   upgradeTier: number;
+  /** Zeitpunkt des letzten Schusses (Date.now()) — triggert MuzzleFlash */
+  lastFireTime: number;
+  /** 0–1 während Reload, sonst 0 */
+  reloadProgress: number;
+  /** Right-mouse aim-down-sights aktiv */
+  isAiming?: boolean;
 }
 
 // Animated glow material for upgraded weapons
@@ -138,12 +145,21 @@ function PistolModel({
   recoilOffset,
   isReloading,
   upgradeTier,
+  lastFireTime,
+  reloadProgress,
+  isAiming,
 }: {
   recoilOffset: number;
   isReloading: boolean;
   upgradeTier: number;
+  lastFireTime: number;
+  reloadProgress: number;
+  isAiming: boolean;
 }) {
   const groupRef = useRef<THREE.Group>(null);
+  const magazineRef = useRef<THREE.Group>(null);
+  const droppedMagRef = useRef<THREE.Group>(null);
+  const dropMagDataRef = useRef({ active: false, startTime: 0 });
 
   const {
     steelBlued,
@@ -189,17 +205,94 @@ function PistolModel({
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
-    const targetY = -0.25 - recoilOffset * 0.35;
-    const targetZ = -0.5 + recoilOffset * 0.08;
-    const reloadBob = isReloading ? Math.sin(Date.now() * 0.005) * 0.05 : 0;
+
+    // Reload-Phasen:
+    //   0.0–0.20  Hochkippen
+    //   0.20–0.35 Magazin rausfallen
+    //   0.35–0.65 neues Magazin reinschieben
+    //   0.65–0.85 Slide-Pull-Geste (über Recoil-Tilt simuliert)
+    //   0.85–1.00 Wieder runter
+    let tiltX = 0;
+    let magOffsetY = 0;
+
+    if (isReloading && reloadProgress > 0) {
+      const p = reloadProgress;
+      if (p < 0.2) {
+        tiltX = (p / 0.2) * 0.35;
+      } else if (p < 0.35) {
+        tiltX = 0.35;
+        if (!dropMagDataRef.current.active) {
+          dropMagDataRef.current.active = true;
+          dropMagDataRef.current.startTime = performance.now();
+        }
+        magOffsetY = -1; // Magazin unsichtbar
+      } else if (p < 0.65) {
+        tiltX = 0.32;
+        const localT = (p - 0.35) / 0.3;
+        magOffsetY = -0.06 * (1 - localT);
+      } else if (p < 0.85) {
+        tiltX = 0.25;
+        const localT = (p - 0.65) / 0.2;
+        // Slide-Pull-Bewegung simulieren: Waffe ruckartig hin und zurück
+        if (localT < 0.5) {
+          tiltX = 0.25 + (localT / 0.5) * 0.08;
+        } else {
+          tiltX = 0.33 - ((localT - 0.5) / 0.5) * 0.08;
+        }
+      } else {
+        tiltX = 0.2 * (1 - (p - 0.85) / 0.15);
+      }
+    } else {
+      dropMagDataRef.current.active = false;
+    }
+
+    // Magazin-Animation
+    if (magazineRef.current) {
+      if (magOffsetY <= -0.99) {
+        magazineRef.current.visible = false;
+      } else {
+        magazineRef.current.visible = true;
+        magazineRef.current.position.y +=
+          (magOffsetY - magazineRef.current.position.y) *
+          Math.min(delta * 25, 1);
+      }
+    }
+
+    // ADS (Aim-Down-Sights): wenn aktiv, Pistole zur Mitte hoch, näher zur Kamera
+    // Standard (hip): x=0.22, y=-0.25, z=-0.5
+    // ADS:            x=0,    y=-0.13, z=-0.32
+    const targetX = isAiming ? 0 : 0.22;
+    const targetY = (isAiming ? -0.13 : -0.25) - recoilOffset * 0.35;
+    const targetZ = (isAiming ? -0.32 : -0.5) + recoilOffset * 0.08;
+    groupRef.current.position.x +=
+      (targetX - groupRef.current.position.x) * Math.min(delta * 15, 1);
     groupRef.current.position.y +=
-      (targetY + reloadBob - groupRef.current.position.y) *
-      Math.min(delta * 15, 1);
+      (targetY - groupRef.current.position.y) * Math.min(delta * 15, 1);
     groupRef.current.position.z +=
       (targetZ - groupRef.current.position.z) * Math.min(delta * 15, 1);
     groupRef.current.rotation.x +=
-      (-recoilOffset * 0.3 - groupRef.current.rotation.x) *
-      Math.min(delta * 15, 1);
+      (-recoilOffset * 0.3 + tiltX - groupRef.current.rotation.x) *
+      Math.min(delta * 12, 1);
+
+    // Fallendes Magazin
+    if (droppedMagRef.current) {
+      if (dropMagDataRef.current.active) {
+        const elapsed =
+          (performance.now() - dropMagDataRef.current.startTime) / 1000;
+        if (elapsed < 1.2) {
+          droppedMagRef.current.visible = true;
+          droppedMagRef.current.position.y = -0.05 - 4.5 * elapsed * elapsed;
+          droppedMagRef.current.position.x = 0.08;
+          droppedMagRef.current.position.z = 0.05 - elapsed * 0.3;
+          droppedMagRef.current.rotation.x = elapsed * 5;
+          droppedMagRef.current.rotation.z = elapsed * 3;
+        } else {
+          droppedMagRef.current.visible = false;
+        }
+      } else {
+        droppedMagRef.current.visible = false;
+      }
+    }
   });
 
   return (
@@ -497,6 +590,40 @@ function PistolModel({
         <sphereGeometry args={[0.003, 6, 6]} />
       </mesh>
 
+      {/* ══ MAGAZIN (animiert während Reload) ══ */}
+      <group ref={magazineRef} position={[0, 0, 0]}>
+        {/* Magazin-Körper unten am Griff */}
+        <mesh material={steelBlued} position={[0, -0.13, 0.04]}>
+          <boxGeometry args={[0.046, 0.06, 0.082]} />
+        </mesh>
+        {/* Magazin-Bodenplatte */}
+        <mesh material={steelBright} position={[0, -0.165, 0.04]}>
+          <boxGeometry args={[0.05, 0.008, 0.086]} />
+        </mesh>
+        {/* Sichtbarer Patrone in Mag-Top (Brass) */}
+        <mesh material={brassMat} position={[0, -0.099, 0.06]}>
+          <cylinderGeometry args={[0.0055, 0.0055, 0.012, 8]} />
+        </mesh>
+      </group>
+
+      {/* ══ FALLENDES Magazin (separates Item nach Drop) ══ */}
+      <group ref={droppedMagRef} visible={false}>
+        <mesh material={steelBlued}>
+          <boxGeometry args={[0.046, 0.07, 0.082]} />
+        </mesh>
+        <mesh material={steelBright} position={[0, -0.038, 0]}>
+          <boxGeometry args={[0.05, 0.008, 0.086]} />
+        </mesh>
+      </group>
+
+      {/* ══ MÜNDUNGSFEUER am Lauf-Ende ══ */}
+      <MuzzleFlash
+        fireTimestamp={lastFireTime}
+        position={[0, 0.07, -0.265]}
+        scale={0.85}
+        compact
+      />
+
       <GoldSparkles active={upgradeTier === 3} />
     </group>
   );
@@ -509,12 +636,21 @@ function ShotgunModel({
   recoilOffset,
   isReloading,
   upgradeTier,
+  lastFireTime,
+  reloadProgress,
+  isAiming,
 }: {
   recoilOffset: number;
   isReloading: boolean;
   upgradeTier: number;
+  lastFireTime: number;
+  reloadProgress: number;
+  isAiming: boolean;
 }) {
   const groupRef = useRef<THREE.Group>(null);
+  const shellRef = useRef<THREE.Group>(null);
+  const ejectedShellRef = useRef<THREE.Group>(null);
+  const ejectShellDataRef = useRef({ active: false, startTime: 0 });
 
   const {
     metalMat,
@@ -526,6 +662,7 @@ function ShotgunModel({
     brassMat,
     beadMat,
     redDotMat,
+    shellHullMat,
   } = useMemo(() => {
     return {
       metalMat: new THREE.MeshStandardMaterial({
@@ -575,19 +712,122 @@ function ShotgunModel({
         emissive: "#880000",
         emissiveIntensity: 1,
       }),
+      shellHullMat: new THREE.MeshStandardMaterial({
+        color: "#a01818",
+        roughness: 0.6,
+        metalness: 0.05,
+      }),
     };
   }, []);
 
+  const pumpRecoilRef = useRef(0);
+
   useFrame((_, delta) => {
     if (!groupRef.current) return;
-    const targetY = -0.3 - recoilOffset * 0.6;
-    const reloadBob = isReloading ? Math.sin(Date.now() * 0.004) * 0.07 : 0;
+
+    // Shotgun-Reload-Phasen:
+    //  0.0–0.15 Hochkippen
+    //  0.15–0.45 Patrone unten reinschieben (sichtbarer Shell)
+    //  0.45–0.65 Pump-Action: Pump nach hinten
+    //  0.65–0.85 Pump nach vorne (lädt durch)
+    //  0.85–1.00 Wieder runter
+    let tiltX = 0;
+    let pumpZ = 0;
+    let shellY = -1; // -1 = unsichtbar
+
+    if (isReloading && reloadProgress > 0) {
+      const p = reloadProgress;
+      if (p < 0.15) {
+        tiltX = (p / 0.15) * 0.2;
+      } else if (p < 0.45) {
+        tiltX = 0.2;
+        const localT = (p - 0.15) / 0.3;
+        // Shell taucht von unten auf, fährt nach oben in den Loader
+        shellY = -0.08 + localT * 0.06;
+      } else if (p < 0.65) {
+        tiltX = 0.18;
+        const localT = (p - 0.45) / 0.2;
+        pumpZ = 0.06 * localT; // Pump nach hinten (positiv Z = zum Spieler)
+        // Trigger ejected shell wenn nicht aktiv
+        if (!ejectShellDataRef.current.active && localT > 0.5) {
+          ejectShellDataRef.current.active = true;
+          ejectShellDataRef.current.startTime = performance.now();
+        }
+      } else if (p < 0.85) {
+        tiltX = 0.18;
+        const localT = (p - 0.65) / 0.2;
+        pumpZ = 0.06 * (1 - localT); // Pump zurück nach vorne
+      } else {
+        tiltX = 0.15 * (1 - (p - 0.85) / 0.15);
+      }
+    } else {
+      ejectShellDataRef.current.active = false;
+    }
+
+    // Pump-Recoil nach jedem Schuss (auto-pump nicht echt, aber visuell)
+    const sinceShot = (Date.now() - lastFireTime) / 1000;
+    if (sinceShot < 0.18 && lastFireTime > 0) {
+      const t = sinceShot / 0.18;
+      // Pump zuckt schnell zurück und vor
+      pumpRecoilRef.current = Math.sin(t * Math.PI) * 0.04;
+    } else {
+      pumpRecoilRef.current *= 0.6;
+    }
+
+    if (groupRef.current) {
+      // Pump-Bewegung als ganze-Waffe-Z-Drift simulieren
+      // (statt einzelne Pump-Geometrie zu animieren)
+      // ADS: Shotgun zur Mitte hoch, näher zur Kamera
+      // Standard (hip): x=0.3, y=-0.3, z=-0.65
+      // ADS:            x=0.04, y=-0.18, z=-0.42
+      const baseZ = isAiming ? -0.42 : -0.65;
+      const pumpTotalZ = pumpZ + pumpRecoilRef.current;
+      const targetZ = baseZ + pumpTotalZ * 0.6;
+      groupRef.current.position.z +=
+        (targetZ - groupRef.current.position.z) * Math.min(delta * 25, 1);
+    }
+
+    if (shellRef.current) {
+      if (shellY <= -0.99) {
+        shellRef.current.visible = false;
+      } else {
+        shellRef.current.visible = true;
+        shellRef.current.position.y +=
+          (shellY - shellRef.current.position.y) * Math.min(delta * 25, 1);
+      }
+    }
+
+    const targetX = isAiming ? 0.04 : 0.3;
+    const targetY = (isAiming ? -0.18 : -0.3) - recoilOffset * 0.6;
+    groupRef.current.position.x +=
+      (targetX - groupRef.current.position.x) * Math.min(delta * 12, 1);
     groupRef.current.position.y +=
-      (targetY + reloadBob - groupRef.current.position.y) *
-      Math.min(delta * 12, 1);
+      (targetY - groupRef.current.position.y) * Math.min(delta * 12, 1);
     groupRef.current.rotation.x +=
-      (-recoilOffset * 0.55 - groupRef.current.rotation.x) *
+      (-recoilOffset * 0.55 + tiltX - groupRef.current.rotation.x) *
       Math.min(delta * 12, 1);
+
+    // Ausgeworfene Hülse
+    if (ejectedShellRef.current) {
+      if (ejectShellDataRef.current.active) {
+        const elapsed =
+          (performance.now() - ejectShellDataRef.current.startTime) / 1000;
+        if (elapsed < 1.0) {
+          ejectedShellRef.current.visible = true;
+          // fliegt nach rechts oben raus, fällt
+          ejectedShellRef.current.position.x = 0.05 + elapsed * 0.6;
+          ejectedShellRef.current.position.y =
+            0.04 + elapsed * 0.6 - 5 * elapsed * elapsed;
+          ejectedShellRef.current.position.z = -0.05;
+          ejectedShellRef.current.rotation.x = elapsed * 12;
+          ejectedShellRef.current.rotation.z = elapsed * 8;
+        } else {
+          ejectedShellRef.current.visible = false;
+        }
+      } else {
+        ejectedShellRef.current.visible = false;
+      }
+    }
   });
 
   return (
@@ -851,11 +1091,51 @@ function ShotgunModel({
         <cylinderGeometry args={[0.006, 0.006, 0.025, 8]} />
       </mesh>
 
+      {/* ══ EINZUSCHIEBENDE Patrone (sichtbar während Reload-Phase 2) ══ */}
+      <group ref={shellRef} visible={false}>
+        {/* Rote Hülse */}
+        <mesh
+          material={shellHullMat}
+          position={[0, 0, -0.05]}
+          rotation={[Math.PI / 2, 0, 0]}
+        >
+          <cylinderGeometry args={[0.011, 0.011, 0.06, 10]} />
+        </mesh>
+        {/* Brass-Boden */}
+        <mesh
+          material={brassMat}
+          position={[0, 0, -0.085]}
+          rotation={[Math.PI / 2, 0, 0]}
+        >
+          <cylinderGeometry args={[0.012, 0.012, 0.012, 10]} />
+        </mesh>
+      </group>
+
+      {/* ══ AUSGEWORFENE Hülse ══ */}
+      <group ref={ejectedShellRef} visible={false}>
+        <mesh material={shellHullMat} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.011, 0.011, 0.06, 10]} />
+        </mesh>
+        <mesh
+          material={brassMat}
+          position={[0, 0, -0.035]}
+          rotation={[Math.PI / 2, 0, 0]}
+        >
+          <cylinderGeometry args={[0.012, 0.012, 0.012, 10]} />
+        </mesh>
+      </group>
+
+      {/* ══ MÜNDUNGSFEUER am Lauf-Ende ══ */}
+      <MuzzleFlash
+        fireTimestamp={lastFireTime}
+        position={[0, 0.028, -0.51]}
+        scale={1.6}
+      />
+
       <GoldSparkles active={upgradeTier === 3} />
     </group>
   );
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 // ASSAULT RIFLE — M4A1/HK416 style (realistic PBR materials, no cell shading)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -863,15 +1143,34 @@ function AssaultRifleModel({
   recoilOffset,
   isReloading,
   upgradeTier,
+  lastFireTime,
+  reloadProgress,
+  isAiming,
 }: {
   recoilOffset: number;
   isReloading: boolean;
   upgradeTier: number;
+  lastFireTime: number;
+  reloadProgress: number;
+  isAiming: boolean;
 }) {
   const groupRef = useRef<THREE.Group>(null);
+  const magazineRef = useRef<THREE.Group>(null);
+  const droppedMagRef = useRef<THREE.Group>(null);
+  const dropMagDataRef = useRef({ active: false, startTime: 0 });
+  // Auto-Eject pro Schuss
+  const autoEjectRef = useRef<THREE.Group>(null);
+  const autoEjectDataRef = useRef({ lastShotProcessed: 0, startTime: 0 });
 
-  const { steelMat, steelLtMat, woodMat, woodDarkMat, detailMat, chromeMat } =
-    useMemo(() => {
+  const {
+    steelMat,
+    steelLtMat,
+    woodMat,
+    woodDarkMat,
+    detailMat,
+    chromeMat,
+    brassShellMat,
+  } = useMemo(() => {
       return {
         steelMat: new THREE.MeshStandardMaterial({
           color: "#2e2e2e",
@@ -903,19 +1202,137 @@ function AssaultRifleModel({
           metalness: 1.0,
           roughness: 0.1,
         }),
+        brassShellMat: new THREE.MeshStandardMaterial({
+          color: "#c8a035",
+          metalness: 0.9,
+          roughness: 0.2,
+        }),
       };
     }, []);
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
-    const targetY = -0.26 - recoilOffset * 0.22;
-    const reloadBob = isReloading ? Math.sin(Date.now() * 0.006) * 0.04 : 0;
+
+    // Reload-Phasen für AR (Magazin-Wechsel mit Knopfdruck):
+    //  0.0–0.15  Hochkippen
+    //  0.15–0.30 Magazin rausziehen (nach unten + leicht vorne)
+    //  0.30–0.55 neues Magazin rein (von unten)
+    //  0.55–0.75 Bolt-Release (kurzer Tilt)
+    //  0.75–1.00 Wieder runter
+    let tiltX = 0;
+    let magOffsetY = 0;
+    let magOffsetZ = 0;
+    let magVisible = true;
+
+    if (isReloading && reloadProgress > 0) {
+      const p = reloadProgress;
+      if (p < 0.15) {
+        tiltX = (p / 0.15) * 0.25;
+      } else if (p < 0.3) {
+        tiltX = 0.25;
+        const localT = (p - 0.15) / 0.15;
+        magOffsetY = -0.06 * localT;
+        magOffsetZ = 0.02 * localT;
+        if (!dropMagDataRef.current.active) {
+          dropMagDataRef.current.active = true;
+          dropMagDataRef.current.startTime = performance.now();
+        }
+      } else if (p < 0.55) {
+        tiltX = 0.22;
+        magVisible = false; // alte Mag schon weg
+      } else if (p < 0.75) {
+        tiltX = 0.18;
+        const localT = (p - 0.55) / 0.2;
+        // Neue Mag von unten
+        magOffsetY = -0.08 * (1 - localT);
+        // Bolt-Release-Snap am Ende
+        if (localT > 0.7) {
+          tiltX = 0.18 + Math.sin((localT - 0.7) * 10) * 0.04;
+        }
+      } else {
+        tiltX = 0.15 * (1 - (p - 0.75) / 0.25);
+      }
+    } else {
+      dropMagDataRef.current.active = false;
+    }
+
+    if (magazineRef.current) {
+      if (!magVisible) {
+        magazineRef.current.visible = false;
+      } else {
+        magazineRef.current.visible = true;
+        magazineRef.current.position.y +=
+          (magOffsetY - magazineRef.current.position.y) *
+          Math.min(delta * 25, 1);
+        magazineRef.current.position.z +=
+          (magOffsetZ - magazineRef.current.position.z) *
+          Math.min(delta * 25, 1);
+      }
+    }
+
+    // ADS (Aim-Down-Sights): AR zur Mitte hoch, näher zur Kamera
+    // Standard (hip): x=0.26, y=-0.26, z=-0.55
+    // ADS:            x=0.02, y=-0.14, z=-0.36
+    const targetX = isAiming ? 0.02 : 0.26;
+    const targetY = (isAiming ? -0.14 : -0.26) - recoilOffset * 0.22;
+    const targetZ = isAiming ? -0.36 : -0.55;
+    groupRef.current.position.x +=
+      (targetX - groupRef.current.position.x) * Math.min(delta * 18, 1);
     groupRef.current.position.y +=
-      (targetY + reloadBob - groupRef.current.position.y) *
-      Math.min(delta * 18, 1);
+      (targetY - groupRef.current.position.y) * Math.min(delta * 18, 1);
+    groupRef.current.position.z +=
+      (targetZ - groupRef.current.position.z) * Math.min(delta * 18, 1);
     groupRef.current.rotation.x +=
-      (-recoilOffset * 0.2 - groupRef.current.rotation.x) *
+      (-recoilOffset * 0.2 + tiltX - groupRef.current.rotation.x) *
       Math.min(delta * 18, 1);
+
+    // Fallendes Magazin
+    if (droppedMagRef.current) {
+      if (dropMagDataRef.current.active) {
+        const elapsed =
+          (performance.now() - dropMagDataRef.current.startTime) / 1000;
+        if (elapsed < 1.4) {
+          droppedMagRef.current.visible = true;
+          droppedMagRef.current.position.y = -0.07 - 4.5 * elapsed * elapsed;
+          droppedMagRef.current.position.x = 0.05 + elapsed * 0.1;
+          droppedMagRef.current.position.z = 0.02 - elapsed * 0.4;
+          droppedMagRef.current.rotation.x = elapsed * 4;
+          droppedMagRef.current.rotation.z = elapsed * 2;
+        } else {
+          droppedMagRef.current.visible = false;
+        }
+      } else {
+        droppedMagRef.current.visible = false;
+      }
+    }
+
+    // Auto-Hülsen-Auswurf bei jedem Schuss.
+    // Beim ersten Render: lastFireTime nur "registrieren", keinen Trigger auslösen
+    // (verhindert falsches Eject beim Waffenwechsel).
+    if (autoEjectDataRef.current.lastShotProcessed === 0) {
+      autoEjectDataRef.current.lastShotProcessed = lastFireTime;
+    } else if (
+      lastFireTime > 0 &&
+      lastFireTime !== autoEjectDataRef.current.lastShotProcessed
+    ) {
+      autoEjectDataRef.current.lastShotProcessed = lastFireTime;
+      autoEjectDataRef.current.startTime = performance.now();
+    }
+    if (autoEjectRef.current) {
+      const elapsed =
+        (performance.now() - autoEjectDataRef.current.startTime) / 1000;
+      if (elapsed < 0.5 && autoEjectDataRef.current.startTime > 0) {
+        autoEjectRef.current.visible = true;
+        autoEjectRef.current.position.x = 0.04 + elapsed * 0.5;
+        autoEjectRef.current.position.y =
+          0.04 + elapsed * 0.4 - 4 * elapsed * elapsed;
+        autoEjectRef.current.position.z = -0.05;
+        autoEjectRef.current.rotation.x = elapsed * 14;
+        autoEjectRef.current.rotation.z = elapsed * 10;
+      } else {
+        autoEjectRef.current.visible = false;
+      }
+    }
   });
 
   return (
@@ -1086,46 +1503,48 @@ function AssaultRifleModel({
         <boxGeometry args={[0.01, 0.04, 0.008]} />
       </mesh>
 
-      {/* ── CURVED MAGAZINE (AK-style) ── */}
-      {/* Upper magazine body – connects to receiver */}
-      <mesh material={steelMat} position={[0, -0.07, 0.04]}>
-        <boxGeometry args={[0.052, 0.06, 0.075]} />
-      </mesh>
-      <GlowOverlay
-        tier={upgradeTier}
-        position={[0, -0.07, 0.04]}
-        args={[0.052, 0.06, 0.075]}
-      />
+      {/* ── CURVED MAGAZINE (AK-style) — animierbar ── */}
+      <group ref={magazineRef}>
+        {/* Upper magazine body – connects to receiver */}
+        <mesh material={steelMat} position={[0, -0.07, 0.04]}>
+          <boxGeometry args={[0.052, 0.06, 0.075]} />
+        </mesh>
+        <GlowOverlay
+          tier={upgradeTier}
+          position={[0, -0.07, 0.04]}
+          args={[0.052, 0.06, 0.075]}
+        />
 
-      {/* Lower magazine body – curved forward (AK banana mag) */}
-      <mesh
-        material={steelMat}
-        position={[0, -0.115, 0.01]}
-        rotation={[0.35, 0, 0]}
-      >
-        <boxGeometry args={[0.05, 0.075, 0.065]} />
-      </mesh>
-
-      {/* Magazine base plate */}
-      <mesh
-        material={steelLtMat}
-        position={[0, -0.155, -0.01]}
-        rotation={[0.35, 0, 0]}
-      >
-        <boxGeometry args={[0.053, 0.012, 0.068]} />
-      </mesh>
-
-      {/* Magazine ribs (AK-style horizontal ridges) */}
-      {[-0.03, 0, 0.03].map((yOff) => (
+        {/* Lower magazine body – curved forward (AK banana mag) */}
         <mesh
-          key={`mag-rib-${yOff}`}
-          material={detailMat}
-          position={[0, -0.115 + yOff, 0.01]}
+          material={steelMat}
+          position={[0, -0.115, 0.01]}
           rotation={[0.35, 0, 0]}
         >
-          <boxGeometry args={[0.052, 0.008, 0.067]} />
+          <boxGeometry args={[0.05, 0.075, 0.065]} />
         </mesh>
-      ))}
+
+        {/* Magazine base plate */}
+        <mesh
+          material={steelLtMat}
+          position={[0, -0.155, -0.01]}
+          rotation={[0.35, 0, 0]}
+        >
+          <boxGeometry args={[0.053, 0.012, 0.068]} />
+        </mesh>
+
+        {/* Magazine ribs (AK-style horizontal ridges) */}
+        {[-0.03, 0, 0.03].map((yOff) => (
+          <mesh
+            key={`mag-rib-${yOff}`}
+            material={detailMat}
+            position={[0, -0.115 + yOff, 0.01]}
+            rotation={[0.35, 0, 0]}
+          >
+            <boxGeometry args={[0.052, 0.008, 0.067]} />
+          </mesh>
+        ))}
+      </group>
 
       {/* ── STOCK (AK-style solid wood) ── */}
       {/* Main stock body */}
@@ -1159,6 +1578,30 @@ function AssaultRifleModel({
         </mesh>
       ))}
 
+      {/* ══ FALLENDES Magazin (separates Item nach Drop) ══ */}
+      <group ref={droppedMagRef} visible={false}>
+        <mesh material={steelMat}>
+          <boxGeometry args={[0.052, 0.13, 0.075]} />
+        </mesh>
+        <mesh material={steelLtMat} position={[0, -0.07, 0]}>
+          <boxGeometry args={[0.053, 0.012, 0.078]} />
+        </mesh>
+      </group>
+
+      {/* ══ AUTO-AUSGEWORFENE Hülse pro Schuss ══ */}
+      <group ref={autoEjectRef} visible={false}>
+        <mesh material={brassShellMat} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.005, 0.005, 0.03, 8]} />
+        </mesh>
+      </group>
+
+      {/* ══ MÜNDUNGSFEUER am Lauf-Ende (nach Flash Hider) ══ */}
+      <MuzzleFlash
+        fireTimestamp={lastFireTime}
+        position={[0, 0.02, -0.51]}
+        scale={1.1}
+      />
+
       <GoldSparkles active={upgradeTier === 3} />
     </group>
   );
@@ -1171,12 +1614,21 @@ function SniperRifleModel({
   recoilOffset,
   isReloading,
   upgradeTier,
+  lastFireTime,
+  reloadProgress,
 }: {
   recoilOffset: number;
   isReloading: boolean;
   upgradeTier: number;
+  lastFireTime: number;
+  reloadProgress: number;
 }) {
   const groupRef = useRef<THREE.Group>(null);
+  const boltRef = useRef<THREE.Group>(null);
+  const ejectedShellRef = useRef<THREE.Group>(null);
+  const ejectShellDataRef = useRef({ active: false, startTime: 0 });
+  // Auto-Bolt-Cycle nach jedem Schuss (wie ein Bolt-Action-Sniper)
+  const autoBoltRef = useRef({ lastShot: 0, startTime: 0, active: false });
 
   const {
     steelMat,
@@ -1187,32 +1639,133 @@ function SniperRifleModel({
     scopeGlassMat,
     brassRingMat,
     rubberMat,
-  } = useMemo(
-    () => ({
+    polymerMat,
+    fluteMat,
+  } = useMemo(() => {
+    // ── Prozedurale Textur 1: Mattlackiertes Metall mit Mikrokratzern ──
+    const makeMetalTexture = (baseHex: string, scratchAlpha: number) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        // Basis-Farbe
+        ctx.fillStyle = baseHex;
+        ctx.fillRect(0, 0, 256, 256);
+        // Subtile horizontale Brushed-Metal-Linien
+        for (let i = 0; i < 380; i++) {
+          const y = Math.random() * 256;
+          const x = Math.random() * 256;
+          const len = 8 + Math.random() * 30;
+          const a = 0.05 + Math.random() * 0.12;
+          ctx.strokeStyle = `rgba(255,255,255,${a * 0.3})`;
+          ctx.lineWidth = 0.5;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + len, y + (Math.random() - 0.5) * 1.2);
+          ctx.stroke();
+        }
+        // Mikrokratzer (heller, kürzer, schräger)
+        for (let i = 0; i < 18; i++) {
+          const x = Math.random() * 256;
+          const y = Math.random() * 256;
+          const len = 2 + Math.random() * 8;
+          const angle = (Math.random() - 0.5) * 0.4;
+          ctx.strokeStyle = `rgba(255,255,255,${scratchAlpha})`;
+          ctx.lineWidth = 0.4;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + Math.cos(angle) * len, y + Math.sin(angle) * len);
+          ctx.stroke();
+        }
+        // Punkt-Noise (sehr subtil)
+        const img = ctx.getImageData(0, 0, 256, 256);
+        for (let i = 0; i < img.data.length; i += 4) {
+          const n = (Math.random() - 0.5) * 12;
+          img.data[i] = Math.max(0, Math.min(255, img.data[i] + n));
+          img.data[i + 1] = Math.max(0, Math.min(255, img.data[i + 1] + n));
+          img.data[i + 2] = Math.max(0, Math.min(255, img.data[i + 2] + n));
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    };
+
+    // ── Prozedurale Textur 2: Stippling auf Soft-Touch-Polymer (Schaft) ──
+    const makePolymerTexture = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = "#0e0e10";
+        ctx.fillRect(0, 0, 256, 256);
+        // Stippling-Pattern (zufällige helle Punkte)
+        for (let i = 0; i < 1800; i++) {
+          const x = Math.random() * 256;
+          const y = Math.random() * 256;
+          const a = 0.06 + Math.random() * 0.12;
+          ctx.fillStyle = `rgba(255,255,255,${a})`;
+          ctx.beginPath();
+          ctx.arc(x, y, 0.6 + Math.random() * 0.7, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // Dunkle Schatten-Punkte für Tiefe
+        for (let i = 0; i < 600; i++) {
+          const x = Math.random() * 256;
+          const y = Math.random() * 256;
+          ctx.fillStyle = `rgba(0,0,0,${0.15 + Math.random() * 0.2})`;
+          ctx.beginPath();
+          ctx.arc(x, y, 0.5 + Math.random() * 0.6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(2, 2);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    };
+
+    const metalDarkTex = makeMetalTexture("#1e2022", 0.4);
+    const metalLightTex = makeMetalTexture("#3a3d42", 0.5);
+    const polymerTex = makePolymerTexture();
+
+    return {
       steelMat: new THREE.MeshStandardMaterial({
         color: "#1e2022",
-        metalness: 0.98,
-        roughness: 0.12,
+        metalness: 0.95,
+        roughness: 0.32,
+        map: metalDarkTex,
       }),
       steelDarkMat: new THREE.MeshStandardMaterial({
         color: "#111315",
         metalness: 1.0,
-        roughness: 0.1,
+        roughness: 0.28,
+        map: metalDarkTex,
       }),
       steelLightMat: new THREE.MeshStandardMaterial({
         color: "#3a3d42",
         metalness: 0.9,
-        roughness: 0.2,
+        roughness: 0.35,
+        map: metalLightTex,
       }),
       stockMat: new THREE.MeshStandardMaterial({
         color: "#1a1a1a",
         metalness: 0.0,
         roughness: 0.85,
+        map: polymerTex,
       }),
       scopeMat: new THREE.MeshStandardMaterial({
-        color: "#111111",
+        color: "#0e0e10",
         metalness: 0.7,
-        roughness: 0.2,
+        roughness: 0.4,
+        map: metalDarkTex,
       }),
       scopeGlassMat: new THREE.MeshStandardMaterial({
         color: "#0a1a1a",
@@ -1220,6 +1773,9 @@ function SniperRifleModel({
         roughness: 0.05,
         transparent: true,
         opacity: 0.75,
+        // Leichter blau-grüner Glow für Anti-Reflex-Coating
+        emissive: "#0a2a30",
+        emissiveIntensity: 0.4,
       }),
       brassRingMat: new THREE.MeshStandardMaterial({
         color: "#b8902a",
@@ -1231,23 +1787,139 @@ function SniperRifleModel({
         metalness: 0.0,
         roughness: 1.0,
       }),
-    }),
-    [],
-  );
+      // Polymer für Pistolengriff/Wangenauflage
+      polymerMat: new THREE.MeshStandardMaterial({
+        color: "#1a1a1c",
+        metalness: 0.0,
+        roughness: 0.92,
+        map: polymerTex,
+      }),
+      // Helleres Metall für Lauf-Fluting (zeigt sich im Schatten der Riffel)
+      fluteMat: new THREE.MeshStandardMaterial({
+        color: "#2a2c30",
+        metalness: 0.92,
+        roughness: 0.4,
+      }),
+    };
+  }, []);
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
+
+    // Sniper-Reload-Phasen (Bolt-Action, einzelne Patrone laden):
+    //  0.0–0.15 Hochkippen
+    //  0.15–0.35 Bolt hochheben + zurückziehen (Kombi-Bewegung)
+    //  0.35–0.55 Bolt zurück (Hülse fliegt raus, neue Patrone wird sichtbar)
+    //  0.55–0.75 Bolt wieder vor + runterdrücken
+    //  0.75–1.00 Wieder runter
+    let tiltX = 0;
+    let boltZ = 0;
+    let boltY = 0; // hochheben
+
+    if (isReloading && reloadProgress > 0) {
+      const p = reloadProgress;
+      if (p < 0.15) {
+        tiltX = (p / 0.15) * 0.2;
+      } else if (p < 0.35) {
+        tiltX = 0.2;
+        const localT = (p - 0.15) / 0.2;
+        boltY = 0.012 * localT; // hochheben
+      } else if (p < 0.55) {
+        tiltX = 0.2;
+        const localT = (p - 0.35) / 0.2;
+        boltY = 0.012;
+        boltZ = 0.05 * localT; // nach hinten
+        // Hülse triggern wenn Bolt halb zurück
+        if (!ejectShellDataRef.current.active && localT > 0.3) {
+          ejectShellDataRef.current.active = true;
+          ejectShellDataRef.current.startTime = performance.now();
+        }
+      } else if (p < 0.75) {
+        tiltX = 0.18;
+        const localT = (p - 0.55) / 0.2;
+        boltY = 0.012 * (1 - localT);
+        boltZ = 0.05 * (1 - localT);
+      } else {
+        tiltX = 0.15 * (1 - (p - 0.75) / 0.25);
+      }
+    } else {
+      ejectShellDataRef.current.active = false;
+    }
+
+    // Auto-Bolt-Cycle nach jedem Schuss (eigene Animation, separat von Reload).
+    // Beim ersten Render nur registrieren — verhindert falschen Bolt-Cycle beim Wechsel.
+    if (autoBoltRef.current.lastShot === 0) {
+      autoBoltRef.current.lastShot = lastFireTime;
+    } else if (lastFireTime > 0 && lastFireTime !== autoBoltRef.current.lastShot) {
+      autoBoltRef.current.lastShot = lastFireTime;
+      autoBoltRef.current.startTime = performance.now();
+      autoBoltRef.current.active = true;
+    }
+    if (autoBoltRef.current.active) {
+      const elapsed = (performance.now() - autoBoltRef.current.startTime) / 1000;
+      if (elapsed < 0.6) {
+        // Bolt-Cycle: 0..0.3s zurück+hülse aus, 0.3..0.6s vor
+        if (elapsed < 0.3) {
+          const lt = elapsed / 0.3;
+          boltY = Math.max(boltY, 0.012 * lt);
+          boltZ = Math.max(boltZ, 0.05 * lt);
+        } else {
+          const lt = (elapsed - 0.3) / 0.3;
+          boltY = Math.max(boltY, 0.012 * (1 - lt));
+          boltZ = Math.max(boltZ, 0.05 * (1 - lt));
+        }
+        // Hülse beim Zurückziehen ausgeworfen (einmalig pro Schuss)
+        if (
+          elapsed > 0.1 &&
+          elapsed < 0.15 &&
+          !ejectShellDataRef.current.active
+        ) {
+          ejectShellDataRef.current.active = true;
+          ejectShellDataRef.current.startTime = performance.now();
+        }
+      } else {
+        autoBoltRef.current.active = false;
+      }
+    }
+
+    if (boltRef.current) {
+      boltRef.current.position.y +=
+        (boltY - boltRef.current.position.y) * Math.min(delta * 25, 1);
+      boltRef.current.position.z +=
+        (boltZ - boltRef.current.position.z) * Math.min(delta * 25, 1);
+    }
+
     const targetY = -0.27 - recoilOffset * 0.45;
     const targetZ = -0.72 + recoilOffset * 0.1;
-    const reloadBob = isReloading ? Math.sin(Date.now() * 0.004) * 0.04 : 0;
     groupRef.current.position.y +=
-      (targetY + reloadBob - groupRef.current.position.y) *
-      Math.min(delta * 12, 1);
+      (targetY - groupRef.current.position.y) * Math.min(delta * 12, 1);
     groupRef.current.position.z +=
       (targetZ - groupRef.current.position.z) * Math.min(delta * 12, 1);
     groupRef.current.rotation.x +=
-      (-recoilOffset * 0.4 - groupRef.current.rotation.x) *
+      (-recoilOffset * 0.4 + tiltX - groupRef.current.rotation.x) *
       Math.min(delta * 12, 1);
+
+    // Ausgeworfene Hülse
+    if (ejectedShellRef.current) {
+      if (ejectShellDataRef.current.active) {
+        const elapsed =
+          (performance.now() - ejectShellDataRef.current.startTime) / 1000;
+        if (elapsed < 1.2) {
+          ejectedShellRef.current.visible = true;
+          // Größere Sniper-Patrone, weiter rechts oben raus
+          ejectedShellRef.current.position.x = 0.04 + elapsed * 0.7;
+          ejectedShellRef.current.position.y =
+            0.05 + elapsed * 0.7 - 5 * elapsed * elapsed;
+          ejectedShellRef.current.position.z = 0.05;
+          ejectedShellRef.current.rotation.x = elapsed * 12;
+          ejectedShellRef.current.rotation.z = elapsed * 8;
+        } else {
+          ejectedShellRef.current.visible = false;
+        }
+      } else {
+        ejectedShellRef.current.visible = false;
+      }
+    }
   });
 
   return (
@@ -1321,17 +1993,19 @@ function SniperRifleModel({
         <boxGeometry args={[0.058, 0.01, 0.088]} />
       </mesh>
 
-      {/* BOLT HANDLE */}
-      <mesh
-        material={steelLightMat}
-        position={[0.042, 0.015, 0.095]}
-        rotation={[0, 0, Math.PI / 2]}
-      >
-        <cylinderGeometry args={[0.008, 0.008, 0.035, 8]} />
-      </mesh>
-      <mesh material={steelMat} position={[0.065, -0.005, 0.095]}>
-        <sphereGeometry args={[0.014, 10, 10]} />
-      </mesh>
+      {/* BOLT HANDLE — animierbar */}
+      <group ref={boltRef}>
+        <mesh
+          material={steelLightMat}
+          position={[0.042, 0.015, 0.095]}
+          rotation={[0, 0, Math.PI / 2]}
+        >
+          <cylinderGeometry args={[0.008, 0.008, 0.035, 8]} />
+        </mesh>
+        <mesh material={steelMat} position={[0.065, -0.005, 0.095]}>
+          <sphereGeometry args={[0.014, 10, 10]} />
+        </mesh>
+      </group>
 
       {/* BARREL */}
       <mesh
@@ -1339,45 +2013,135 @@ function SniperRifleModel({
         position={[0, 0.015, -0.38]}
         rotation={[Math.PI / 2, 0, 0]}
       >
-        <cylinderGeometry args={[0.022, 0.018, 0.78, 12]} />
+        <cylinderGeometry args={[0.022, 0.018, 0.78, 16]} />
       </mesh>
       <GlowOverlay
         tier={upgradeTier}
         position={[0, 0.015, -0.38]}
         args={[0.044, 0.044, 0.78]}
       />
+
+      {/* LAUF-FLUTING — 6 Längsrillen typisch für Präzisionsgewehre */}
+      {[0, 60, 120, 180, 240, 300].map((deg) => {
+        const angle = (deg / 180) * Math.PI;
+        const r = 0.0205;
+        return (
+          <mesh
+            key={`flute-${deg}`}
+            material={fluteMat}
+            position={[
+              Math.cos(angle) * r,
+              0.015 + Math.sin(angle) * r,
+              -0.38,
+            ]}
+            rotation={[Math.PI / 2, 0, 0]}
+          >
+            <boxGeometry args={[0.005, 0.6, 0.003]} />
+          </mesh>
+        );
+      })}
+
+      {/* MÜNDUNGSBREMSE — detailliert mit Schlitzen */}
+      {/* Hauptkörper (länger und etwas breiter als alte) */}
       <mesh
         material={steelLightMat}
-        position={[0, 0.015, -0.79]}
+        position={[0, 0.015, -0.81]}
         rotation={[Math.PI / 2, 0, 0]}
       >
-        <cylinderGeometry args={[0.028, 0.025, 0.06, 10]} />
+        <cylinderGeometry args={[0.03, 0.028, 0.085, 14]} />
       </mesh>
+      {/* Vorderer Ring */}
       <mesh
         material={steelMat}
-        position={[0, 0.015, -0.822]}
+        position={[0, 0.015, -0.852]}
         rotation={[Math.PI / 2, 0, 0]}
       >
-        <cylinderGeometry args={[0.024, 0.024, 0.008, 10]} />
+        <cylinderGeometry args={[0.032, 0.032, 0.012, 14]} />
+      </mesh>
+      {/* Schlitze in der Mündungsbremse (4 horizontale Schlitze pro Seite) */}
+      {[
+        { y: 0.022, side: 1, id: "tr" },
+        { y: 0.008, side: 1, id: "br" },
+        { y: 0.022, side: -1, id: "tl" },
+        { y: 0.008, side: -1, id: "bl" },
+      ].map((s) => (
+        <mesh
+          key={`brake-slot-${s.id}`}
+          position={[s.side * 0.028, 0.015 + s.y - 0.015, -0.81]}
+        >
+          <boxGeometry args={[0.012, 0.004, 0.06]} />
+          <meshBasicMaterial color="#000000" />
+        </mesh>
+      ))}
+      {/* Vordere Mündungs-Öffnung (Loch) */}
+      <mesh
+        position={[0, 0.015, -0.86]}
+        rotation={[Math.PI / 2, 0, 0]}
+      >
+        <cylinderGeometry args={[0.013, 0.013, 0.012, 14]} />
+        <meshBasicMaterial color="#000000" />
       </mesh>
 
-      {/* BIPOD (folded) */}
-      <mesh material={steelMat} position={[0, 0.004, -0.22]}>
-        <boxGeometry args={[0.032, 0.018, 0.03]} />
+      {/* BIPOD — entfaltet, mit Schwenkpunkt + Beinen + Gummifüßen */}
+      {/* Schwenk-Mount unter dem Lauf */}
+      <mesh material={steelMat} position={[0, -0.005, -0.22]}>
+        <boxGeometry args={[0.04, 0.022, 0.05]} />
       </mesh>
+      {/* Mount-Verstärkung */}
+      <mesh material={steelDarkMat} position={[0, -0.018, -0.22]}>
+        <boxGeometry args={[0.046, 0.012, 0.04]} />
+      </mesh>
+      {/* Linkes Bein — schräg nach unten + außen */}
       <mesh
         material={steelDarkMat}
-        position={[-0.018, -0.02, -0.22]}
-        rotation={[0.2, 0, 0.4]}
+        position={[-0.045, -0.085, -0.218]}
+        rotation={[0, 0, 0.55]}
       >
-        <boxGeometry args={[0.006, 0.055, 0.007]} />
+        <cylinderGeometry args={[0.005, 0.005, 0.16, 8]} />
       </mesh>
+      {/* Linkes Bein — Verlängerungs-Segment (typisch teleskop) */}
+      <mesh
+        material={steelLightMat}
+        position={[-0.078, -0.155, -0.218]}
+        rotation={[0, 0, 0.55]}
+      >
+        <cylinderGeometry args={[0.006, 0.006, 0.06, 8]} />
+      </mesh>
+      {/* Linker Gummifuß */}
+      <mesh
+        material={rubberMat}
+        position={[-0.092, -0.185, -0.218]}
+      >
+        <cylinderGeometry args={[0.011, 0.011, 0.012, 8]} />
+      </mesh>
+      {/* Rechtes Bein */}
       <mesh
         material={steelDarkMat}
-        position={[0.018, -0.02, -0.22]}
-        rotation={[0.2, 0, -0.4]}
+        position={[0.045, -0.085, -0.218]}
+        rotation={[0, 0, -0.55]}
       >
-        <boxGeometry args={[0.006, 0.055, 0.007]} />
+        <cylinderGeometry args={[0.005, 0.005, 0.16, 8]} />
+      </mesh>
+      <mesh
+        material={steelLightMat}
+        position={[0.078, -0.155, -0.218]}
+        rotation={[0, 0, -0.55]}
+      >
+        <cylinderGeometry args={[0.006, 0.006, 0.06, 8]} />
+      </mesh>
+      <mesh
+        material={rubberMat}
+        position={[0.092, -0.185, -0.218]}
+      >
+        <cylinderGeometry args={[0.011, 0.011, 0.012, 8]} />
+      </mesh>
+      {/* Schwenk-Bolzen (sichtbar mittig) */}
+      <mesh
+        material={steelLightMat}
+        position={[0, -0.005, -0.22]}
+        rotation={[0, 0, Math.PI / 2]}
+      >
+        <cylinderGeometry args={[0.004, 0.004, 0.05, 8]} />
       </mesh>
 
       {/* SCOPE TUBE */}
@@ -1473,6 +2237,143 @@ function SniperRifleModel({
         </mesh>
       ))}
 
+      {/* ── PICATINNY RAIL auf dem Receiver (zwischen den Scope-Ringen) ── */}
+      <mesh material={steelDarkMat} position={[0, 0.052, 0.03]}>
+        <boxGeometry args={[0.026, 0.005, 0.18]} />
+      </mesh>
+      {/* Rail-Slots — typisches Zickzack-Pattern */}
+      {[-0.06, -0.03, 0.0, 0.03, 0.06, 0.09].map((zOff) => (
+        <mesh
+          key={`rail-slot-${zOff}`}
+          material={steelLightMat}
+          position={[0, 0.054, zOff]}
+        >
+          <boxGeometry args={[0.028, 0.002, 0.008]} />
+        </mesh>
+      ))}
+
+      {/* ── DBM MAGAZIN (Detachable Box Magazine vor Abzugsbügel) ── */}
+      <mesh material={steelDarkMat} position={[0, -0.13, 0.025]}>
+        <boxGeometry args={[0.05, 0.075, 0.07]} />
+      </mesh>
+      {/* Magazin-Bodenplatte */}
+      <mesh material={steelLightMat} position={[0, -0.172, 0.025]}>
+        <boxGeometry args={[0.054, 0.01, 0.075]} />
+      </mesh>
+      {/* Magazin-Greifrille */}
+      <mesh material={steelMat} position={[0, -0.13, 0.063]}>
+        <boxGeometry args={[0.052, 0.005, 0.005]} />
+      </mesh>
+      {/* Magazin-Release-Hebel (Knopf vor Magazin) */}
+      <mesh material={steelLightMat} position={[0.028, -0.105, -0.02]}>
+        <boxGeometry args={[0.008, 0.012, 0.018]} />
+      </mesh>
+
+      {/* ── WANGENAUFLAGE (verstellbar, oben am Schaft) ── */}
+      <mesh material={polymerMat} position={[0, 0.08, 0.32]}>
+        <boxGeometry args={[0.062, 0.04, 0.18]} />
+      </mesh>
+      {/* Wangenauflage-Verstellrad rechts */}
+      <mesh
+        material={steelLightMat}
+        position={[0.034, 0.07, 0.4]}
+        rotation={[0, 0, Math.PI / 2]}
+      >
+        <cylinderGeometry args={[0.011, 0.011, 0.008, 12]} />
+      </mesh>
+
+      {/* ── PISTOLENGRIFF (separater Polymer-Griff statt Stockstumpf-Vorderteil) ── */}
+      <mesh
+        material={polymerMat}
+        position={[0, -0.06, 0.21]}
+        rotation={[0.3, 0, 0]}
+      >
+        <boxGeometry args={[0.04, 0.11, 0.05]} />
+      </mesh>
+      {/* Griff-Fingerkerben (3 horizontale Riffeln vorne) */}
+      {[-0.02, 0.0, 0.02].map((yOff) => (
+        <mesh
+          key={`grip-line-${yOff}`}
+          material={steelDarkMat}
+          position={[0, -0.06 + yOff, 0.235]}
+          rotation={[0.3, 0, 0]}
+        >
+          <boxGeometry args={[0.041, 0.004, 0.005]} />
+        </mesh>
+      ))}
+
+      {/* ── SLING SWIVELS (Trageriemen-Ösen) ── */}
+      {/* Vordere Sling-Swivel an der Bipod-Mount */}
+      <mesh
+        material={steelLightMat}
+        position={[0, -0.025, -0.16]}
+        rotation={[0, 0, Math.PI / 2]}
+      >
+        <torusGeometry args={[0.011, 0.0025, 6, 12]} />
+      </mesh>
+      {/* Hintere Sling-Swivel am Schaft */}
+      <mesh
+        material={steelLightMat}
+        position={[0, -0.04, 0.45]}
+        rotation={[0, 0, Math.PI / 2]}
+      >
+        <torusGeometry args={[0.011, 0.0025, 6, 12]} />
+      </mesh>
+
+      {/* ── ZOOM-RING am Scope (Rändelung) ── */}
+      <mesh
+        material={steelLightMat}
+        position={[0, 0.095, 0.16]}
+        rotation={[Math.PI / 2, 0, 0]}
+      >
+        <cylinderGeometry args={[0.031, 0.031, 0.022, 18]} />
+      </mesh>
+      {/* Zoom-Ring Rändel-Riefen */}
+      {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => {
+        const angle = (deg / 180) * Math.PI;
+        return (
+          <mesh
+            key={`zoom-knurl-${deg}`}
+            material={steelDarkMat}
+            position={[
+              Math.cos(angle) * 0.0315,
+              0.095 + Math.sin(angle) * 0.0315,
+              0.16,
+            ]}
+            rotation={[Math.PI / 2, angle, 0]}
+          >
+            <boxGeometry args={[0.001, 0.018, 0.003]} />
+          </mesh>
+        );
+      })}
+
+      {/* ── ABZUG (sichtbar in einem Bügel) ── */}
+      <mesh
+        material={steelLightMat}
+        position={[0, -0.08, -0.02]}
+        rotation={[0.2, 0, 0]}
+      >
+        <boxGeometry args={[0.005, 0.025, 0.012]} />
+      </mesh>
+      {/* Abzugsbügel (Trigger Guard) */}
+      <mesh material={steelDarkMat} position={[0, -0.092, -0.005]}>
+        <torusGeometry args={[0.022, 0.0035, 4, 12, Math.PI]} />
+      </mesh>
+
+      {/* ══ AUSGEWORFENE Sniper-Patrone (groß, fliegt weiter) ══ */}
+      <group ref={ejectedShellRef} visible={false}>
+        <mesh material={brassRingMat} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.008, 0.008, 0.05, 8]} />
+        </mesh>
+      </group>
+
+      {/* ══ MÜNDUNGSFEUER am Lauf-Ende ══ */}
+      <MuzzleFlash
+        fireTimestamp={lastFireTime}
+        position={[0, 0.015, -0.83]}
+        scale={1.4}
+      />
+
       <GoldSparkles active={upgradeTier === 3} />
     </group>
   );
@@ -1483,6 +2384,9 @@ export function WeaponViewModel({
   recoilOffset,
   isReloading,
   upgradeTier,
+  lastFireTime,
+  reloadProgress,
+  isAiming = false,
 }: WeaponViewModelProps) {
   const { camera } = useThree();
   const groupRef = useRef<THREE.Group>(null);
@@ -1500,6 +2404,9 @@ export function WeaponViewModel({
           recoilOffset={recoilOffset}
           isReloading={isReloading}
           upgradeTier={upgradeTier}
+          lastFireTime={lastFireTime}
+          reloadProgress={reloadProgress}
+          isAiming={isAiming}
         />
       )}
       {weapon === "shotgun" && (
@@ -1507,6 +2414,9 @@ export function WeaponViewModel({
           recoilOffset={recoilOffset}
           isReloading={isReloading}
           upgradeTier={upgradeTier}
+          lastFireTime={lastFireTime}
+          reloadProgress={reloadProgress}
+          isAiming={isAiming}
         />
       )}
       {weapon === "assault_rifle" && (
@@ -1514,6 +2424,9 @@ export function WeaponViewModel({
           recoilOffset={recoilOffset}
           isReloading={isReloading}
           upgradeTier={upgradeTier}
+          lastFireTime={lastFireTime}
+          reloadProgress={reloadProgress}
+          isAiming={isAiming}
         />
       )}
       {weapon === "sniper_rifle" && (
@@ -1521,6 +2434,8 @@ export function WeaponViewModel({
           recoilOffset={recoilOffset}
           isReloading={isReloading}
           upgradeTier={upgradeTier}
+          lastFireTime={lastFireTime}
+          reloadProgress={reloadProgress}
         />
       )}
     </group>
