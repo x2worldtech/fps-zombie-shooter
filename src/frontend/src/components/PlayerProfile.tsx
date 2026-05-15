@@ -450,7 +450,9 @@ export function PlayerProfile({ onBack }: PlayerProfileProps) {
                       letterSpacing: "0.05em",
                     }}
                   >
-                    {isMaxLevel ? "MAXIMUM RANK" : `${Math.round(progress)}% COMPLETE`}
+                    {isMaxLevel
+                      ? "MAXIMUM RANK"
+                      : `${Math.round(progress)}% COMPLETE`}
                   </span>
                 </div>
                 <XPBar
@@ -574,8 +576,7 @@ const panelStyle: React.CSSProperties = {
   background:
     "linear-gradient(180deg, rgba(20,12,8,0.85) 0%, rgba(8,5,3,0.95) 100%)",
   border: "1px solid rgba(255,122,0,0.18)",
-  boxShadow:
-    "0 8px 32px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04)",
+  boxShadow: "0 8px 32px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04)",
   position: "relative",
 };
 
@@ -897,7 +898,10 @@ function MetricTile({
 }
 
 /** XP-Bar with shimmer animation */
-function XPBar({ progress, isMaxLevel }: { progress: number; isMaxLevel: boolean }) {
+function XPBar({
+  progress,
+  isMaxLevel,
+}: { progress: number; isMaxLevel: boolean }) {
   return (
     <div
       className="relative w-full mt-3 overflow-hidden"
@@ -1021,7 +1025,7 @@ function HexBackground() {
       style={{
         opacity: 0.08,
         backgroundImage:
-          'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'60\' height=\'52\' viewBox=\'0 0 60 52\'%3E%3Cpath fill=\'none\' stroke=\'%23ff7a00\' stroke-width=\'1\' d=\'M30 0 L60 17 L60 35 L30 52 L0 35 L0 17 Z\'/%3E%3C/svg%3E")',
+          "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='52' viewBox='0 0 60 52'%3E%3Cpath fill='none' stroke='%23ff7a00' stroke-width='1' d='M30 0 L60 17 L60 35 L30 52 L0 35 L0 17 Z'/%3E%3C/svg%3E\")",
         backgroundSize: "60px 52px",
         zIndex: 0,
       }}

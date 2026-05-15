@@ -1,6 +1,7 @@
 import { useInternetIdentity } from "@caffeineai/core-infrastructure";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
+import { GlobalChatWidget } from "./GlobalChatWidget";
 import { MenuAsteroidField } from "./MenuAsteroidField";
 
 function useFullscreen() {
@@ -27,7 +28,7 @@ function FullscreenButton() {
       type="button"
       data-ocid="fullscreen-toggle"
       onClick={toggle}
-      title={isFullscreen ? "Vollbild beenden" : "Vollbild"}
+      title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
       style={{
         position: "absolute",
         top: "16px",
@@ -60,7 +61,7 @@ function FullscreenButton() {
       <span style={{ fontSize: "1.1rem", lineHeight: 1 }}>
         {isFullscreen ? "⊠" : "⛶"}
       </span>
-      <span>{isFullscreen ? "VOLLBILD BEENDEN" : "VOLLBILD"}</span>
+      <span>{isFullscreen ? "Exit Fullscreen" : "Fullscreen"}</span>
     </button>
   );
 }
@@ -70,6 +71,7 @@ interface MainMenuProps {
   onShowLeaderboard: () => void;
   onShowControls: () => void;
   onShowProfile: () => void;
+  onSocials: () => void;
 }
 
 // ── SEEDED PSEUDO-RANDOM ──
@@ -126,6 +128,7 @@ export function MainMenu({
   onShowLeaderboard,
   onShowControls,
   onShowProfile,
+  onSocials,
 }: MainMenuProps) {
   const { login, clear, loginStatus, identity } = useInternetIdentity();
   const queryClient = useQueryClient();
@@ -190,6 +193,7 @@ export function MainMenu({
       ? [{ label: "MY PROFILE", action: onShowProfile }]
       : []),
     { label: "CONTROLS", action: onShowControls },
+    { label: "SOCIALS", action: onSocials },
     {
       label: isLoggingIn
         ? "SIGNING IN..."
@@ -430,6 +434,9 @@ export function MainMenu({
           ))}
         </nav>
       </div>
+
+      {/* ── GLOBAL CHAT WIDGET ── */}
+      <GlobalChatWidget onOpenFullscreen={onSocials} />
 
       {/* ── BOTTOM HINT BAR ── */}
       <div

@@ -17,6 +17,15 @@ interface FirstPersonCameraProps {
   extraAABBs?: CollisionAABB[];
   /** Welt bestimmt welches Kollisions-Set aktiv ist */
   world: "desert" | "warzone";
+  /** Right-mouse aim aktiv — verhindert Sprinten + Bob beim Zielen */
+  isAiming?: boolean;
+  /** Callback wenn sich der Movement-State ändert (für WeaponViewModel-Animation) */
+  onMovementStateChange?: (state: {
+    isMoving: boolean;
+    isSprinting: boolean;
+    /** Schritt-Phase: 0..2π Sinus-Welle entlang Schritte (für Waffen-Mit-Wackeln) */
+    stepPhase: number;
+  }) => void;
 }
 
 const MOVE_SPEED = 8;
@@ -41,6 +50,8 @@ export function FirstPersonCamera({
   isPaused,
   extraAABBs = [],
   world,
+  isAiming = false,
+  onMovementStateChange,
 }: FirstPersonCameraProps) {
   const { camera } = useThree();
 
@@ -87,6 +98,50 @@ export function FirstPersonCamera({
   const velocityYRef = useRef(0);
   const isGroundedRef = useRef(true);
   const posRef = useRef(new THREE.Vector3(0, PLAYER_HEIGHT, 0));
+
+  // ── PERF: stabile Vector3/Euler-Refs ─────────────────────────────────────
+  // Vorher wurden in useFrame in jedem Tick 5× new Vector3 + 3× new Euler
+  // erzeugt → 480+ GC-Allokationen/Sek nur durch die Kamera. Jetzt:
+  // einmalige Allokation, in useFrame nur noch .set()/.applyEuler() darauf.
+  const tmpEulerRef = useRef(new THREE.Euler(0, 0, 0, "YXZ"));
+  const yawEulerRef = useRef(new THREE.Euler(0, 0, 0, "YXZ"));
+  const rollEulerRef = useRef(new THREE.Euler(0, 0, 0, "YXZ"));
+  const forwardRef = useRef(new THREE.Vector3());
+  const rightVecRef = useRef(new THREE.Vector3());
+  const moveDirRef = useRef(new THREE.Vector3());
+  const bobOffsetRef = useRef(new THREE.Vector3());
+  // PERF: stabiles Player-Position-Output-Tupel. Wird per-Frame in-place mutiert
+  // und an onPlayerPositionUpdate gereicht. Vorher: neues Array pro Frame.
+  // Da GameScene's playerPosRef.current = pos zuweist, hat playerPosRef.current
+  // damit ab dem ersten Frame eine STABILE Referenz — was wiederum erlaubt,
+  // dass memo'te Children wie PickupMesh die Position aus diesem Ref lesen
+  // ohne dass Re-Renders durch Tupel-Wechsel ausgelöst werden.
+  const playerPosOutRef = useRef<[number, number, number]>([
+    0,
+    PLAYER_HEIGHT,
+    0,
+  ]);
+  // PERF: stabiles Payload-Object für onMovementStateChange — verhindert,
+  // dass jeder Frame ein neues Objekt allokiert wird. Da der Parent dieses
+  // Objekt nur einem Ref zuweist, ist Mutation der Felder unproblematisch.
+  const movementStatePayloadRef = useRef({
+    isMoving: false,
+    isSprinting: false,
+    stepPhase: 0,
+  });
+
+  // ── Movement-Animation-State ──
+  // stepPhase: akkumulierte Schritt-Phase (rad). Erhöht sich proportional zur
+  //   Geschwindigkeit. Bei sin(stepPhase) = full step rhythm (links/rechts).
+  const stepPhaseRef = useRef(0);
+  // Aktuelle Bob-Werte für smoothes Fade-In/Out wenn Bewegung startet/stoppt
+  const bobYRef = useRef(0);
+  const bobXRef = useRef(0);
+  const bobRollRef = useRef(0);
+  // Sprint-Intensität (0..1) für smooth Übergänge
+  const sprintAmountRef = useRef(0);
+  // Movement-State-Cache für Callbacks (vermeidet Re-Renders bei jedem Frame)
+  const lastMovementStateRef = useRef({ isMoving: false, isSprinting: false });
   const mouseDownRef = useRef(false);
 
   useEffect(() => {
@@ -191,21 +246,23 @@ export function FirstPersonCamera({
     }
 
     const keys = keysRef.current;
-    const speed = keys.shift ? SPRINT_SPEED : MOVE_SPEED;
+    // Sprint nur wenn nicht zielen UND nur bei Vorwärts-Bewegung (W gedrückt,
+    // S nicht). Rückwärts-Sprint ist unrealistisch.
+    const wantsSprint = keys.shift && !isAiming && keys.w && !keys.s;
+    const speed = wantsSprint ? SPRINT_SPEED : MOVE_SPEED;
 
-    // Apply rotation
-    const euler = new THREE.Euler(pitchRef.current, yawRef.current, 0, "YXZ");
-    camera.quaternion.setFromEuler(euler);
+    // Apply rotation — wiederverwendeter Euler (PERF)
+    const tmpEuler = tmpEulerRef.current;
+    tmpEuler.set(pitchRef.current, yawRef.current, 0);
+    camera.quaternion.setFromEuler(tmpEuler);
 
-    // Movement direction
-    const forward = new THREE.Vector3(0, 0, -1).applyEuler(
-      new THREE.Euler(0, yawRef.current, 0),
-    );
-    const right = new THREE.Vector3(1, 0, 0).applyEuler(
-      new THREE.Euler(0, yawRef.current, 0),
-    );
+    // Movement direction — wiederverwendete Vector3/Euler statt new (PERF)
+    const yawEuler = yawEulerRef.current;
+    yawEuler.set(0, yawRef.current, 0);
+    const forward = forwardRef.current.set(0, 0, -1).applyEuler(yawEuler);
+    const right = rightVecRef.current.set(1, 0, 0).applyEuler(yawEuler);
 
-    const moveDir = new THREE.Vector3();
+    const moveDir = moveDirRef.current.set(0, 0, 0);
     if (keys.w) moveDir.add(forward);
     if (keys.s) moveDir.sub(forward);
     if (keys.a) moveDir.sub(right);
@@ -285,7 +342,87 @@ export function FirstPersonCamera({
       posRef.current.z *= maxDist / dist;
     }
 
+    // ─── HEAD-BOB-ANIMATION (Lauf- und Sprint-Wackeln) ─────────────────────
+    // Bestimmen wir, ob/wie schnell sich der Spieler bewegt
+    const isMoving =
+      isGroundedRef.current && (keys.w || keys.a || keys.s || keys.d);
+    const isSprinting = isMoving && wantsSprint;
+
+    // Sprint-Intensität smooth fading (Übergang von Walk ↔ Sprint)
+    const targetSprintAmount = isSprinting ? 1 : 0;
+    sprintAmountRef.current +=
+      (targetSprintAmount - sprintAmountRef.current) * Math.min(delta * 8, 1);
+
+    // Schritt-Phase akkumulieren — Frequenz abhängig von Movement-Speed.
+    // Walk: ~2.5 Hz Step-Cycle, Sprint: ~3.8 Hz
+    if (isMoving) {
+      const stepHz = isSprinting ? 3.8 : 2.5;
+      stepPhaseRef.current += delta * stepHz * Math.PI * 2;
+    } else {
+      // Kein Movement → Phase langsam zurück auf 0 dämpfen (kein hartes Stop)
+      stepPhaseRef.current *= 0.92;
+    }
+
+    // ── Bob-Zielwerte berechnen ──
+    let targetBobY = 0;
+    let targetBobX = 0;
+    let targetBobRoll = 0;
+
+    if (isMoving) {
+      // Walk-Bob-Stärke. Beim Aimen reduziert (steady aim).
+      const aimFactor = isAiming ? 0.25 : 1.0;
+      const sprintBoost = 1 + sprintAmountRef.current * 1.6; // Sprint = 2.6x stärker
+      const bobStrength = aimFactor * sprintBoost;
+
+      // Vertikal: zwei Bumps pro Step-Zyklus (links/rechts Fuß) → |sin|
+      // Walk: ±2.5cm Y-Bewegung. Sprint: bis 6.5cm.
+      targetBobY =
+        Math.abs(Math.sin(stepPhaseRef.current)) * 0.025 * bobStrength;
+
+      // Horizontal: ein Sway pro Step-Zyklus → sin direkt
+      // Walk: ±1.5cm X-Bewegung. Sprint: bis 3.9cm.
+      targetBobX = Math.sin(stepPhaseRef.current) * 0.015 * bobStrength;
+
+      // Roll (Z-Rotation der Kamera): leichter Roll mit dem Sway
+      // Walk: ±0.6°. Sprint: bis 1.6°.
+      targetBobRoll = Math.sin(stepPhaseRef.current) * 0.011 * bobStrength;
+    }
+
+    // Smooth lerp zu den Zielwerten — verhindert hartes Snap beim Start/Stop
+    bobYRef.current += (targetBobY - bobYRef.current) * Math.min(delta * 12, 1);
+    bobXRef.current += (targetBobX - bobXRef.current) * Math.min(delta * 12, 1);
+    bobRollRef.current +=
+      (targetBobRoll - bobRollRef.current) * Math.min(delta * 12, 1);
+
+    // Endposition der Kamera = pos + bob
     camera.position.copy(posRef.current);
+    camera.position.y += bobYRef.current;
+    // X-Bob in lokaler "right"-Richtung anwenden (nicht World-X)
+    // PERF: bobOffsetRef statt right.clone() — keine Allokation pro Frame
+    bobOffsetRef.current.copy(right).multiplyScalar(bobXRef.current);
+    camera.position.add(bobOffsetRef.current);
+
+    // Roll auf das bestehende Quaternion aufmodulieren — wiederverwendeter Euler
+    if (Math.abs(bobRollRef.current) > 0.0001) {
+      const rollEuler = rollEulerRef.current;
+      rollEuler.set(pitchRef.current, yawRef.current, bobRollRef.current);
+      camera.quaternion.setFromEuler(rollEuler);
+    }
+
+    // ── Movement-State an WeaponViewModel kommunizieren ──
+    // PERF: wiederverwendetes Payload-Objekt — keine Allokation pro Frame
+    if (onMovementStateChange) {
+      const cached = lastMovementStateRef.current;
+      if (cached.isMoving !== isMoving || cached.isSprinting !== isSprinting) {
+        cached.isMoving = isMoving;
+        cached.isSprinting = isSprinting;
+      }
+      const payload = movementStatePayloadRef.current;
+      payload.isMoving = isMoving;
+      payload.isSprinting = isSprinting;
+      payload.stepPhase = stepPhaseRef.current;
+      onMovementStateChange(payload);
+    }
 
     // Auto-fire when mouse held – fire every frame and let tryFire's
     // time-based cooldown (useWeaponSystem) handle the actual rate limit.
@@ -294,11 +431,13 @@ export function FirstPersonCamera({
       onFire();
     }
 
-    onPlayerPositionUpdate([
-      posRef.current.x,
-      posRef.current.y,
-      posRef.current.z,
-    ]);
+    // PERF: stabiles Output-Tupel — in-place mutieren, keine neue Array-
+    // Allokation pro Frame.
+    const out = playerPosOutRef.current;
+    out[0] = posRef.current.x;
+    out[1] = posRef.current.y;
+    out[2] = posRef.current.z;
+    onPlayerPositionUpdate(out);
   });
 
   return null;

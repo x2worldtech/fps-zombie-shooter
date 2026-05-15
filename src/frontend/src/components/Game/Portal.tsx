@@ -463,8 +463,8 @@ export function Portal({
         const r = 0.6 + Math.random() * 1.6;
         const dark = 0.3 + Math.random() * 0.4;
         aCtx.fillStyle = isWarzone
-          ? `rgba(${50 * dark | 0},${45 * dark | 0},${65 * dark | 0},${0.5 + Math.random() * 0.4})`
-          : `rgba(${55 * dark | 0},${45 * dark | 0},${35 * dark | 0},${0.5 + Math.random() * 0.4})`;
+          ? `rgba(${(50 * dark) | 0},${(45 * dark) | 0},${(65 * dark) | 0},${0.5 + Math.random() * 0.4})`
+          : `rgba(${(55 * dark) | 0},${(45 * dark) | 0},${(35 * dark) | 0},${0.5 + Math.random() * 0.4})`;
         aCtx.beginPath();
         aCtx.arc(x, y, r, 0, Math.PI * 2);
         aCtx.fill();
@@ -821,13 +821,21 @@ export function Portal({
         </group>
 
         {/* ── Outer energy ring — direkt am Innenrand des Rahmens ── */}
-        <mesh ref={ringRef} position={[0, 1.97, 0.02]} scale={[1.05, 1.275, 1.0]}>
+        <mesh
+          ref={ringRef}
+          position={[0, 1.97, 0.02]}
+          scale={[1.05, 1.275, 1.0]}
+        >
           <torusGeometry args={[1.2, 0.055, 16, 72]} />
           <primitive object={ringMat} attach="material" />
         </mesh>
 
         {/* ── Secondary spinning ring — leicht innerhalb ── */}
-        <mesh ref={ring2Ref} position={[0, 1.97, 0.04]} scale={[1.0, 1.215, 1.0]}>
+        <mesh
+          ref={ring2Ref}
+          position={[0, 1.97, 0.04]}
+          scale={[1.0, 1.215, 1.0]}
+        >
           <torusGeometry args={[1.18, 0.03, 12, 60]} />
           <primitive object={ring2Mat} attach="material" />
         </mesh>

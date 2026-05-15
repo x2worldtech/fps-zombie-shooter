@@ -55,9 +55,7 @@ function createTrunkGeometry(
 
     // ── Wurzelbasis-Verbreiterung in den untersten 15% ──
     // Exponentieller Anstieg zur Basis (1.0 → 1.4 als Multiplier)
-    const baseFlare = t < 0.15
-      ? 1 + ((0.15 - t) / 0.15) ** 2 * 0.4
-      : 1;
+    const baseFlare = t < 0.15 ? 1 + ((0.15 - t) / 0.15) ** 2 * 0.4 : 1;
 
     // ── Ring-Wachstumsringe als sichtbare Vertikalstruktur ──
     // Charakteristische Palmenringe — markant, gleichmäßig
@@ -76,12 +74,7 @@ function createTrunkGeometry(
       const nx = x / len;
       const nz = z / len;
       const newR = len * baseFlare + ringBump + fiberBump;
-      positions.setXYZ(
-        i,
-        nx * newR + offsetX,
-        y,
-        nz * newR + offsetZ,
-      );
+      positions.setXYZ(i, nx * newR + offsetX, y, nz * newR + offsetZ);
     } else {
       // Top/Bottom-Vertices (Mittelpunkte): nur Sway anwenden
       positions.setXYZ(i, x + offsetX, y, z + offsetZ);
@@ -350,7 +343,7 @@ export function PalmTree({ position, seed = 0 }: PalmTreeProps) {
         const x = Math.random() * size;
         const len = 40 + Math.random() * 180;
         const startY = Math.random() * size;
-        aCtx.strokeStyle = `rgba(${50 + Math.random() * 40 | 0},${35 + Math.random() * 30 | 0},${15 + Math.random() * 15 | 0},${0.3 + Math.random() * 0.25})`;
+        aCtx.strokeStyle = `rgba(${(50 + Math.random() * 40) | 0},${(35 + Math.random() * 30) | 0},${(15 + Math.random() * 15) | 0},${0.3 + Math.random() * 0.25})`;
         aCtx.lineWidth = 0.6 + Math.random() * 1.2;
         aCtx.beginPath();
         aCtx.moveTo(x, startY);

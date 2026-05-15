@@ -138,8 +138,15 @@ const warSkyVertexShader = `
 `;
 
 // ─── Ground ───────────────────────────────────────────────────────────────────
+// PERF: Module-Level-Cache für die teure (1024×1024 Albedo + Bump + Rough Map)
+// prozedural generierte Boden-Textur. Bei Portal-Wechsel Desert↔Warzone
+// wurde sie sonst jedesmal neu gebaut. Visuell identisch da seedlos / die
+// Random-Variation wäre sowieso ähnlich aussehend.
+let __warzoneGroundMatCache: THREE.MeshStandardMaterial | null = null;
+
 function WarzoneGround() {
   const groundMat = useMemo(() => {
+    if (__warzoneGroundMatCache) return __warzoneGroundMatCache;
     const size = 1024;
 
     // ── Albedo: zerschossener Asphalt/Beton mit Rissen, Brand, Schutt ──
@@ -241,7 +248,7 @@ function WarzoneGround() {
         const y = Math.random() * size;
         const r = 1.5 + Math.random() * 4;
         const dark = 0.3 + Math.random() * 0.5;
-        aCtx.fillStyle = `rgba(${100 * dark | 0},${95 * dark | 0},${85 * dark | 0},${0.6 + Math.random() * 0.3})`;
+        aCtx.fillStyle = `rgba(${(100 * dark) | 0},${(95 * dark) | 0},${(85 * dark) | 0},${0.6 + Math.random() * 0.3})`;
         aCtx.beginPath();
         aCtx.arc(x, y, r, 0, Math.PI * 2);
         aCtx.fill();
@@ -258,7 +265,10 @@ function WarzoneGround() {
         const n = (Math.random() - 0.5) * 30;
         img.data[i] = Math.max(0, Math.min(255, img.data[i] + n));
         img.data[i + 1] = Math.max(0, Math.min(255, img.data[i + 1] + n));
-        img.data[i + 2] = Math.max(0, Math.min(255, img.data[i + 2] + n * 0.85));
+        img.data[i + 2] = Math.max(
+          0,
+          Math.min(255, img.data[i + 2] + n * 0.85),
+        );
       }
       aCtx.putImageData(img, 0, 0);
     }
@@ -367,7 +377,7 @@ function WarzoneGround() {
     roughTex.wrapT = THREE.RepeatWrapping;
     roughTex.repeat.set(15, 15);
 
-    return new THREE.MeshStandardMaterial({
+    const mat = new THREE.MeshStandardMaterial({
       color: "#5a5550",
       map: albedoTex,
       bumpMap: bumpTex,
@@ -376,6 +386,8 @@ function WarzoneGround() {
       roughness: 0.92,
       metalness: 0,
     });
+    __warzoneGroundMatCache = mat;
+    return mat;
   }, []);
 
   return (
@@ -1736,7 +1748,7 @@ const WATCHTOWERS: { pos: [number, number, number]; rot: number }[] = [
 ];
 
 // ─── Main Environment ─────────────────────────────────────────────────────────
-export function WarzoneEnvironment({
+function WarzoneEnvironmentInner({
   onActivateNuclear,
   playerPosRef,
   nuclearEventActive = false,
@@ -1932,3 +1944,9 @@ export function WarzoneEnvironment({
     </group>
   );
 }
+
+// PERF: memo verhindert, dass WarzoneEnvironment seinen kompletten Sub-Tree
+// (DestroyedBuildings, Birds, Power-Poles, Watchtowers etc.) bei jedem
+// GameScene-Re-Render neu reconciliert. Re-Render nur noch wenn onActivateNuclear,
+// playerPosRef oder nuclearEventActive sich ändern.
+export const WarzoneEnvironment = React.memo(WarzoneEnvironmentInner);

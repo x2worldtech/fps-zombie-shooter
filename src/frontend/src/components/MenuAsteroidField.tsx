@@ -213,7 +213,10 @@ function createRockRoughnessTexture(): THREE.CanvasTexture {
  * mit hoher Subdivision und smooth normals — die Form wird durch
  * mehrschichtiges Noise + zufällig platzierte Krater verformt.
  */
-function createAsteroidGeometry(seed: number, sizeClass: 0 | 1 | 2): THREE.BufferGeometry {
+function createAsteroidGeometry(
+  seed: number,
+  sizeClass: 0 | 1 | 2,
+): THREE.BufferGeometry {
   // Subdivision pro Größenklasse — kleine Asteroiden brauchen weniger Polygone
   // 0 = far/small (24x12 = ~290 verts), 1 = mid (40x20 = ~840), 2 = near/large (56x28 = ~1640)
   const widthSeg = sizeClass === 0 ? 24 : sizeClass === 1 ? 40 : 56;
@@ -225,7 +228,13 @@ function createAsteroidGeometry(seed: number, sizeClass: 0 | 1 | 2): THREE.Buffe
 
   // ── Krater-Definitionen: 3-7 zufällig platzierte Einschlagstellen ──
   const craterCount = 3 + Math.floor(rng() * 5);
-  const craters: { x: number; y: number; z: number; radius: number; depth: number }[] = [];
+  const craters: {
+    x: number;
+    y: number;
+    z: number;
+    radius: number;
+    depth: number;
+  }[] = [];
   for (let c = 0; c < craterCount; c++) {
     // Zufällige Position auf der Einheitskugel
     const theta = rng() * Math.PI * 2;
@@ -271,7 +280,7 @@ function createAsteroidGeometry(seed: number, sizeClass: 0 | 1 | 2): THREE.Buffe
     // Sehr hohe Frequenz für feine Stein-Körnung (vertices nah beieinander → kleine Buckel)
     const microFreq =
       Math.sin(x * 28.0 + y * 23.0) * 0.012 +
-      Math.cos(y * 31.0 + z * 26.0) * 0.010 +
+      Math.cos(y * 31.0 + z * 26.0) * 0.01 +
       Math.sin(z * 35.0 + x * 29.0) * 0.008;
 
     // Krater-Beitrag: für jeden Krater, wenn dieser Vertex nahe genug ist, Vertiefung erzeugen
@@ -297,8 +306,14 @@ function createAsteroidGeometry(seed: number, sizeClass: 0 | 1 | 2): THREE.Buffe
     }
 
     // Globaler Squash + Noise + Krater anwenden
-    const displacement = 1 + lowFreq + midFreq + highFreq + microFreq + craterDisplacement;
-    pos.setXYZ(i, x * ax * displacement, y * ay * displacement, z * az * displacement);
+    const displacement =
+      1 + lowFreq + midFreq + highFreq + microFreq + craterDisplacement;
+    pos.setXYZ(
+      i,
+      x * ax * displacement,
+      y * ay * displacement,
+      z * az * displacement,
+    );
   }
 
   // WICHTIG: Smooth normals (kein flatShading!) — sphereGeometry hat ohnehin shared
@@ -428,7 +443,11 @@ function AsteroidScene() {
         size,
         initialPos: new THREE.Vector3(x, y, z),
         velocity: new THREE.Vector3(vx, vy, 0),
-        rotationAxis: new THREE.Vector3(rng() - 0.5, rng() - 0.5, rng() - 0.5).normalize(),
+        rotationAxis: new THREE.Vector3(
+          rng() - 0.5,
+          rng() - 0.5,
+          rng() - 0.5,
+        ).normalize(),
         rotationSpeed: 0.05 + rng() * 0.15,
         shapeSeed: i,
         detail: 0,
@@ -449,7 +468,11 @@ function AsteroidScene() {
         size,
         initialPos: new THREE.Vector3(x, y, z),
         velocity: new THREE.Vector3(vx, vy, 0),
-        rotationAxis: new THREE.Vector3(rng() - 0.5, rng() - 0.5, rng() - 0.5).normalize(),
+        rotationAxis: new THREE.Vector3(
+          rng() - 0.5,
+          rng() - 0.5,
+          rng() - 0.5,
+        ).normalize(),
         rotationSpeed: 0.1 + rng() * 0.3,
         shapeSeed: i + 100,
         detail: 1,
@@ -470,7 +493,11 @@ function AsteroidScene() {
         size,
         initialPos: new THREE.Vector3(x, y, z),
         velocity: new THREE.Vector3(vx, vy, 0),
-        rotationAxis: new THREE.Vector3(rng() - 0.5, rng() - 0.5, rng() - 0.5).normalize(),
+        rotationAxis: new THREE.Vector3(
+          rng() - 0.5,
+          rng() - 0.5,
+          rng() - 0.5,
+        ).normalize(),
         rotationSpeed: 0.15 + rng() * 0.4,
         shapeSeed: i + 200,
         detail: 2,
@@ -529,10 +556,7 @@ function AsteroidScene() {
  */
 export function MenuAsteroidField() {
   return (
-    <div
-      className="absolute inset-0 pointer-events-none"
-      style={{ zIndex: 3 }}
-    >
+    <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 3 }}>
       <Canvas
         gl={{
           antialias: true,

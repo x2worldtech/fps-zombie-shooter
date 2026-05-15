@@ -8,6 +8,8 @@ import Runtime "mo:core/Runtime";
 import Principal "mo:core/Principal";
 import Map "mo:core/Map";
 import Nat "mo:core/Nat";
+import Time "mo:core/Time";
+import Int "mo:core/Int";
 
 
 
@@ -48,6 +50,266 @@ persistent actor {
 
   transient let highScoresList = List.empty<ScoreEntry>();
   transient let profiles = Map.empty<Principal, PlayerProfile>();
+
+  // ── Clan & Chat types ──────────────────────────────────────────────────
+
+  type Clan = {
+    id : Text;
+    name : Text;
+    tag : Text;
+    description : Text;
+    ownerPrincipal : Principal;
+    members : [Principal];
+    createdAt : Int;
+    inviteCode : Text;
+  };
+
+  type ChatType = { #global; #clan : Text };
+
+  type ChatMessage = {
+    id : Text;
+    authorPrincipal : Principal;
+    authorUsername : Text;
+    content : Text;
+    timestamp : Int;
+    chatType : ChatType;
+  };
+
+  // ── Clan & Chat state ────────────────────────────────────────────────────
+
+  transient let clans = Map.empty<Text, Clan>();          // clanId → Clan
+  transient let memberToClan = Map.empty<Principal, Text>(); // principal → clanId
+  transient let globalMessages = List.empty<ChatMessage>();
+  transient let clanMessages = Map.empty<Text, List.List<ChatMessage>>(); // clanId → messages
+  transient let counters = { var nextId : Nat = 0 };
+
+  func nextId() : Text {
+    counters.nextId += 1;
+    counters.nextId.toText();
+  };
+
+  func isValidTag(tag : Text) : Bool {
+    let sz = tag.size();
+    if (sz < 2 or sz > 5) { return false };
+    var valid = true;
+    for (c in tag.chars()) {
+      if (not ((c >= 'A' and c <= 'Z') or (c >= '0' and c <= '9'))) {
+        valid := false;
+      };
+    };
+    valid;
+  };
+
+  // ── Clan methods ─────────────────────────────────────────────────────────
+
+  public shared ({ caller }) func createClan(name : Text, tag : Text, description : Text) : async { #ok : Clan; #err : Text } {
+    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
+      return #err("Unauthorized");
+    };
+    if (memberToClan.containsKey(caller)) {
+      return #err("You are already in a clan");
+    };
+    if (clans.size() >= 50) {
+      return #err("Maximum number of clans reached");
+    };
+    let nameSize = name.size();
+    if (nameSize < 3 or nameSize > 30) {
+      return #err("Clan name must be between 3 and 30 characters");
+    };
+    let upperTag = tag.toUpper();
+    if (not isValidTag(upperTag)) {
+      return #err("Tag must be 2–5 uppercase letters or digits");
+    };
+    let clanId = "clan-" # nextId();
+    let inviteCode = "inv-" # nextId() # "-" # nextId();
+    let newClan : Clan = {
+      id = clanId;
+      name;
+      tag = upperTag;
+      description;
+      ownerPrincipal = caller;
+      members = [caller];
+      createdAt = Time.now();
+      inviteCode;
+    };
+    clans.add(clanId, newClan);
+    memberToClan.add(caller, clanId);
+    #ok(newClan);
+  };
+
+  public shared ({ caller }) func joinClanByCode(inviteCode : Text) : async { #ok : Clan; #err : Text } {
+    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
+      return #err("Unauthorized");
+    };
+    if (memberToClan.containsKey(caller)) {
+      return #err("You are already in a clan");
+    };
+    var found : ?(Text, Clan) = null;
+    for ((cid, c) in clans.entries()) {
+      if (c.inviteCode == inviteCode) { found := ?(cid, c) };
+    };
+    switch (found) {
+      case (null) { #err("Invalid invite code") };
+      case (?(clanId, clan)) {
+        if (clan.members.size() >= 30) {
+          return #err("Clan is full");
+        };
+        let updated : Clan = { clan with members = clan.members.concat([caller]) };
+        clans.add(clanId, updated);
+        memberToClan.add(caller, clanId);
+        #ok(updated);
+      };
+    };
+  };
+
+  public shared ({ caller }) func leaveClan() : async { #ok; #err : Text } {
+    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
+      return #err("Unauthorized");
+    };
+    switch (memberToClan.get(caller)) {
+      case (null) { #err("You are not in a clan") };
+      case (?clanId) {
+        switch (clans.get(clanId)) {
+          case (null) {
+            memberToClan.remove(caller);
+            #ok;
+          };
+          case (?clan) {
+            let remaining = clan.members.filter<Principal>(func(p : Principal) { not Principal.equal(p, caller) });
+            if (remaining.size() == 0) {
+              clans.remove(clanId);
+              clanMessages.remove(clanId);
+            } else {
+              let newOwner = if (Principal.equal(clan.ownerPrincipal, caller)) { remaining[0] } else { clan.ownerPrincipal };
+              clans.add(clanId, { clan with members = remaining; ownerPrincipal = newOwner });
+            };
+            memberToClan.remove(caller);
+            #ok;
+          };
+        };
+      };
+    };
+  };
+
+  public query ({ caller }) func getMyClan() : async ?Clan {
+    switch (memberToClan.get(caller)) {
+      case (null) { null };
+      case (?clanId) { clans.get(clanId) };
+    };
+  };
+
+  public query func getClan(clanId : Text) : async ?Clan {
+    clans.get(clanId);
+  };
+
+  public query func getAllClans() : async [Clan] {
+    var result : [Clan] = [];
+    for ((_, c) in clans.entries()) {
+      result := result.concat<Clan>([c]);
+    };
+    result;
+  };
+
+  // ── Chat methods ──────────────────────────────────────────────────────────
+
+  public shared ({ caller }) func sendGlobalMessage(content : Text) : async { #ok : ChatMessage; #err : Text } {
+    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
+      return #err("Unauthorized");
+    };
+    let contentSize = content.size();
+    if (contentSize < 1 or contentSize > 200) {
+      return #err("Message must be between 1 and 200 characters");
+    };
+    let authorUsername = switch (profiles.get(caller)) {
+      case (?p) { switch (p.username) { case (?u) u; case (null) { return #err("Set a username first") } } };
+      case (null) { return #err("Set a username first") };
+    };
+    let msg : ChatMessage = {
+      id = "gm-" # nextId();
+      authorPrincipal = caller;
+      authorUsername;
+      content;
+      timestamp = Time.now();
+      chatType = #global;
+    };
+    globalMessages.add(msg);
+    if (globalMessages.size() > 100) {
+      let keep = globalMessages.sliceToArray(globalMessages.size() - 100 : Int, globalMessages.size());
+      globalMessages.clear();
+      for (m in keep.values()) { globalMessages.add(m) };
+    };
+    #ok(msg);
+  };
+
+  public shared ({ caller }) func sendClanMessage(content : Text) : async { #ok : ChatMessage; #err : Text } {
+    if (not AccessControl.hasPermission(accessControlState, caller, #user)) {
+      return #err("Unauthorized");
+    };
+    let contentSize = content.size();
+    if (contentSize < 1 or contentSize > 200) {
+      return #err("Message must be between 1 and 200 characters");
+    };
+    let clanId = switch (memberToClan.get(caller)) {
+      case (null) { return #err("You are not in a clan") };
+      case (?id) { id };
+    };
+    let authorUsername = switch (profiles.get(caller)) {
+      case (?p) { switch (p.username) { case (?u) u; case (null) { return #err("Set a username first") } } };
+      case (null) { return #err("Set a username first") };
+    };
+    let msg : ChatMessage = {
+      id = "cm-" # nextId();
+      authorPrincipal = caller;
+      authorUsername;
+      content;
+      timestamp = Time.now();
+      chatType = #clan(clanId);
+    };
+    let msgs = switch (clanMessages.get(clanId)) {
+      case (?existing) { existing };
+      case (null) {
+        let fresh = List.empty<ChatMessage>();
+        clanMessages.add(clanId, fresh);
+        fresh;
+      };
+    };
+    msgs.add(msg);
+    if (msgs.size() > 100) {
+      let keep = msgs.sliceToArray(msgs.size() - 100 : Int, msgs.size());
+      msgs.clear();
+      for (m in keep.values()) { msgs.add(m) };
+    };
+    #ok(msg);
+  };
+
+  public query func getGlobalMessages() : async [ChatMessage] {
+    let sz = globalMessages.size();
+    if (sz <= 50) {
+      globalMessages.toArray();
+    } else {
+      globalMessages.sliceToArray(sz - 50 : Int, sz);
+    };
+  };
+
+  public query ({ caller }) func getClanMessages() : async { #ok : [ChatMessage]; #err : Text } {
+    let clanId = switch (memberToClan.get(caller)) {
+      case (null) { return #err("You are not in a clan") };
+      case (?id) { id };
+    };
+    switch (clanMessages.get(clanId)) {
+      case (null) { #ok([]) };
+      case (?msgs) {
+        let sz = msgs.size();
+        if (sz <= 50) {
+          #ok(msgs.toArray());
+        } else {
+          #ok(msgs.sliceToArray(sz - 50 : Int, sz));
+        };
+      };
+    };
+  };
+
+  // ── XP thresholds ─────────────────────────────────────────────────────────
 
   transient let hardXPThresholds : [Nat] = [
     // 55 entries, extremely steep progression

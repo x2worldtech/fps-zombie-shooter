@@ -39,7 +39,7 @@ const ROCK_PALETTE = [
 
 // ─── Hash-Funktionen für Multi-Frequency-Noise ──────────────────────────────
 function hash1(n: number): number {
-  return ((Math.sin(n * 12.9898) * 43758.5453) % 1 + 1) % 1;
+  return (((Math.sin(n * 12.9898) * 43758.5453) % 1) + 1) % 1;
 }
 
 function smooth1D(x: number): number {
@@ -84,7 +84,8 @@ function getHeight(angle: number, radialT: number, seedOffset = 0): number {
 
   // Kombiniert: Gipfel reichen von 0.15 (Talsohle) bis 1.0 (höchster Gipfel)
   // Wichtig: starke Variation zwischen f1 (Hauptpeaks) damit Täler tief sind
-  let heightProfile = peak1 * peak1 * 0.65 + peak2 * 0.25 + peak3 * 0.07 + peak4 * 0.03;
+  let heightProfile =
+    peak1 * peak1 * 0.65 + peak2 * 0.25 + peak3 * 0.07 + peak4 * 0.03;
   // Schärfen — Gipfel höher, Täler tiefer
   heightProfile = heightProfile ** 1.4;
 
@@ -109,7 +110,10 @@ function getHeight(angle: number, radialT: number, seedOffset = 0): number {
  *  - radialT: 0 (innen) bis 1 (außen)
  * und mappen auf X/Z basierend auf Radius + Winkel.
  */
-function buildMountainHeightmap(seedOffset: number, radiusOffset = 0): THREE.BufferGeometry {
+function buildMountainHeightmap(
+  seedOffset: number,
+  radiusOffset = 0,
+): THREE.BufferGeometry {
   const geo = new THREE.BufferGeometry();
 
   const verts: number[] = [];
@@ -131,7 +135,8 @@ function buildMountainHeightmap(seedOffset: number, radiusOffset = 0): THREE.Buf
       // Höhe bestimmen
       const height = getHeight(angle, radialT, seedOffset);
       // Feiner Rauheits-Noise (für Felsen-Variation auf großen Flächen)
-      const roughness = (smooth2D(angle * 30 + seedOffset, radialT * 50) - 0.5) * 1.5;
+      const roughness =
+        (smooth2D(angle * 30 + seedOffset, radialT * 50) - 0.5) * 1.5;
 
       const x = Math.cos(angle) * radius;
       const y = height + roughness;

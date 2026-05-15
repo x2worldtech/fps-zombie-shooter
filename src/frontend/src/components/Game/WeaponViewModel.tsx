@@ -15,6 +15,12 @@ interface WeaponViewModelProps {
   reloadProgress: number;
   /** Right-mouse aim-down-sights aktiv */
   isAiming?: boolean;
+  /** Ref zum Movement-State (wird im useFrame ausgelesen — kein Re-Render) */
+  movementStateRef?: React.MutableRefObject<{
+    isMoving: boolean;
+    isSprinting: boolean;
+    stepPhase: number;
+  }>;
 }
 
 // Animated glow material for upgraded weapons
@@ -261,9 +267,13 @@ function PistolModel({
     // ADS (Aim-Down-Sights): wenn aktiv, Pistole zur Mitte hoch, näher zur Kamera
     // Standard (hip): x=0.22, y=-0.25, z=-0.5
     // ADS:            x=0,    y=-0.13, z=-0.32
+    //
+    // Recoil ist HORIZONTAL: Waffe wird zum Schützen zurückgestoßen (Z positiver),
+    // Lauf kippt nach OBEN (positive rotation.x) — echter Schuss-Rückstoß.
     const targetX = isAiming ? 0 : 0.22;
-    const targetY = (isAiming ? -0.13 : -0.25) - recoilOffset * 0.35;
-    const targetZ = (isAiming ? -0.32 : -0.5) + recoilOffset * 0.08;
+    const targetY = isAiming ? -0.13 : -0.25;
+    const baseZ = isAiming ? -0.32 : -0.5;
+    const targetZ = baseZ + recoilOffset * 0.12; // Waffe wandert zur Kamera
     groupRef.current.position.x +=
       (targetX - groupRef.current.position.x) * Math.min(delta * 15, 1);
     groupRef.current.position.y +=
@@ -271,7 +281,7 @@ function PistolModel({
     groupRef.current.position.z +=
       (targetZ - groupRef.current.position.z) * Math.min(delta * 15, 1);
     groupRef.current.rotation.x +=
-      (-recoilOffset * 0.3 + tiltX - groupRef.current.rotation.x) *
+      (recoilOffset * 0.35 + tiltX - groupRef.current.rotation.x) *
       Math.min(delta * 12, 1);
 
     // Fallendes Magazin
@@ -780,9 +790,14 @@ function ShotgunModel({
       // ADS: Shotgun zur Mitte hoch, näher zur Kamera
       // Standard (hip): x=0.3, y=-0.3, z=-0.65
       // ADS:            x=0.04, y=-0.18, z=-0.42
+      //
+      // Recoil ist HORIZONTAL: Waffe wird zum Schützen zurückgestoßen.
+      // pumpZ + pumpRecoilRef bringt die Pump-Z-Bewegung, plus recoilOffset
+      // dazu für den horizontalen Schuss-Rückstoß zum Schützen hin.
       const baseZ = isAiming ? -0.42 : -0.65;
       const pumpTotalZ = pumpZ + pumpRecoilRef.current;
-      const targetZ = baseZ + pumpTotalZ * 0.6;
+      // Shotgun: starker horizontaler Rückstoß (× 0.25)
+      const targetZ = baseZ + pumpTotalZ * 0.6 + recoilOffset * 0.25;
       groupRef.current.position.z +=
         (targetZ - groupRef.current.position.z) * Math.min(delta * 25, 1);
     }
@@ -798,13 +813,14 @@ function ShotgunModel({
     }
 
     const targetX = isAiming ? 0.04 : 0.3;
-    const targetY = (isAiming ? -0.18 : -0.3) - recoilOffset * 0.6;
+    const targetY = isAiming ? -0.18 : -0.3;
     groupRef.current.position.x +=
       (targetX - groupRef.current.position.x) * Math.min(delta * 12, 1);
     groupRef.current.position.y +=
       (targetY - groupRef.current.position.y) * Math.min(delta * 12, 1);
+    // Lauf kippt nach OBEN beim Rückstoß (positive rotation.x)
     groupRef.current.rotation.x +=
-      (-recoilOffset * 0.55 + tiltX - groupRef.current.rotation.x) *
+      (recoilOffset * 0.6 + tiltX - groupRef.current.rotation.x) *
       Math.min(delta * 12, 1);
 
     // Ausgeworfene Hülse
@@ -1171,44 +1187,44 @@ function AssaultRifleModel({
     chromeMat,
     brassShellMat,
   } = useMemo(() => {
-      return {
-        steelMat: new THREE.MeshStandardMaterial({
-          color: "#2e2e2e",
-          metalness: 0.95,
-          roughness: 0.15,
-        }),
-        steelLtMat: new THREE.MeshStandardMaterial({
-          color: "#484848",
-          metalness: 0.9,
-          roughness: 0.2,
-        }),
-        woodMat: new THREE.MeshStandardMaterial({
-          color: "#5c3317",
-          metalness: 0,
-          roughness: 0.85,
-        }),
-        woodDarkMat: new THREE.MeshStandardMaterial({
-          color: "#3d2010",
-          metalness: 0,
-          roughness: 0.9,
-        }),
-        detailMat: new THREE.MeshStandardMaterial({
-          color: "#1a1a1a",
-          metalness: 0.8,
-          roughness: 0.3,
-        }),
-        chromeMat: new THREE.MeshStandardMaterial({
-          color: "#707070",
-          metalness: 1.0,
-          roughness: 0.1,
-        }),
-        brassShellMat: new THREE.MeshStandardMaterial({
-          color: "#c8a035",
-          metalness: 0.9,
-          roughness: 0.2,
-        }),
-      };
-    }, []);
+    return {
+      steelMat: new THREE.MeshStandardMaterial({
+        color: "#2e2e2e",
+        metalness: 0.95,
+        roughness: 0.15,
+      }),
+      steelLtMat: new THREE.MeshStandardMaterial({
+        color: "#484848",
+        metalness: 0.9,
+        roughness: 0.2,
+      }),
+      woodMat: new THREE.MeshStandardMaterial({
+        color: "#5c3317",
+        metalness: 0,
+        roughness: 0.85,
+      }),
+      woodDarkMat: new THREE.MeshStandardMaterial({
+        color: "#3d2010",
+        metalness: 0,
+        roughness: 0.9,
+      }),
+      detailMat: new THREE.MeshStandardMaterial({
+        color: "#1a1a1a",
+        metalness: 0.8,
+        roughness: 0.3,
+      }),
+      chromeMat: new THREE.MeshStandardMaterial({
+        color: "#707070",
+        metalness: 1.0,
+        roughness: 0.1,
+      }),
+      brassShellMat: new THREE.MeshStandardMaterial({
+        color: "#c8a035",
+        metalness: 0.9,
+        roughness: 0.2,
+      }),
+    };
+  }, []);
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
@@ -1273,9 +1289,13 @@ function AssaultRifleModel({
     // ADS (Aim-Down-Sights): AR zur Mitte hoch, näher zur Kamera
     // Standard (hip): x=0.26, y=-0.26, z=-0.55
     // ADS:            x=0.02, y=-0.14, z=-0.36
+    //
+    // Recoil ist HORIZONTAL: AR wird zum Schützen zurückgestoßen,
+    // Lauf kippt nach OBEN. Sturmgewehr hat mittleren Rückstoß.
     const targetX = isAiming ? 0.02 : 0.26;
-    const targetY = (isAiming ? -0.14 : -0.26) - recoilOffset * 0.22;
-    const targetZ = isAiming ? -0.36 : -0.55;
+    const targetY = isAiming ? -0.14 : -0.26;
+    const baseZ = isAiming ? -0.36 : -0.55;
+    const targetZ = baseZ + recoilOffset * 0.15;
     groupRef.current.position.x +=
       (targetX - groupRef.current.position.x) * Math.min(delta * 18, 1);
     groupRef.current.position.y +=
@@ -1283,7 +1303,7 @@ function AssaultRifleModel({
     groupRef.current.position.z +=
       (targetZ - groupRef.current.position.z) * Math.min(delta * 18, 1);
     groupRef.current.rotation.x +=
-      (-recoilOffset * 0.2 + tiltX - groupRef.current.rotation.x) *
+      (recoilOffset * 0.22 + tiltX - groupRef.current.rotation.x) *
       Math.min(delta * 18, 1);
 
     // Fallendes Magazin
@@ -1850,13 +1870,17 @@ function SniperRifleModel({
     // Beim ersten Render nur registrieren — verhindert falschen Bolt-Cycle beim Wechsel.
     if (autoBoltRef.current.lastShot === 0) {
       autoBoltRef.current.lastShot = lastFireTime;
-    } else if (lastFireTime > 0 && lastFireTime !== autoBoltRef.current.lastShot) {
+    } else if (
+      lastFireTime > 0 &&
+      lastFireTime !== autoBoltRef.current.lastShot
+    ) {
       autoBoltRef.current.lastShot = lastFireTime;
       autoBoltRef.current.startTime = performance.now();
       autoBoltRef.current.active = true;
     }
     if (autoBoltRef.current.active) {
-      const elapsed = (performance.now() - autoBoltRef.current.startTime) / 1000;
+      const elapsed =
+        (performance.now() - autoBoltRef.current.startTime) / 1000;
       if (elapsed < 0.6) {
         // Bolt-Cycle: 0..0.3s zurück+hülse aus, 0.3..0.6s vor
         if (elapsed < 0.3) {
@@ -1889,14 +1913,17 @@ function SniperRifleModel({
         (boltZ - boltRef.current.position.z) * Math.min(delta * 25, 1);
     }
 
-    const targetY = -0.27 - recoilOffset * 0.45;
-    const targetZ = -0.72 + recoilOffset * 0.1;
+    // Sniper-Rückstoß: HORIZONTAL — kräftiger Stoß zum Schützen
+    // (Sniper-Rounds haben den heftigsten Rückstoß aller Waffen).
+    // Lauf kippt deutlich nach OBEN.
+    const targetY = -0.27;
+    const targetZ = -0.72 + recoilOffset * 0.3;
     groupRef.current.position.y +=
       (targetY - groupRef.current.position.y) * Math.min(delta * 12, 1);
     groupRef.current.position.z +=
       (targetZ - groupRef.current.position.z) * Math.min(delta * 12, 1);
     groupRef.current.rotation.x +=
-      (-recoilOffset * 0.4 + tiltX - groupRef.current.rotation.x) *
+      (recoilOffset * 0.45 + tiltX - groupRef.current.rotation.x) *
       Math.min(delta * 12, 1);
 
     // Ausgeworfene Hülse
@@ -2029,11 +2056,7 @@ function SniperRifleModel({
           <mesh
             key={`flute-${deg}`}
             material={fluteMat}
-            position={[
-              Math.cos(angle) * r,
-              0.015 + Math.sin(angle) * r,
-              -0.38,
-            ]}
+            position={[Math.cos(angle) * r, 0.015 + Math.sin(angle) * r, -0.38]}
             rotation={[Math.PI / 2, 0, 0]}
           >
             <boxGeometry args={[0.005, 0.6, 0.003]} />
@@ -2074,10 +2097,7 @@ function SniperRifleModel({
         </mesh>
       ))}
       {/* Vordere Mündungs-Öffnung (Loch) */}
-      <mesh
-        position={[0, 0.015, -0.86]}
-        rotation={[Math.PI / 2, 0, 0]}
-      >
+      <mesh position={[0, 0.015, -0.86]} rotation={[Math.PI / 2, 0, 0]}>
         <cylinderGeometry args={[0.013, 0.013, 0.012, 14]} />
         <meshBasicMaterial color="#000000" />
       </mesh>
@@ -2108,10 +2128,7 @@ function SniperRifleModel({
         <cylinderGeometry args={[0.006, 0.006, 0.06, 8]} />
       </mesh>
       {/* Linker Gummifuß */}
-      <mesh
-        material={rubberMat}
-        position={[-0.092, -0.185, -0.218]}
-      >
+      <mesh material={rubberMat} position={[-0.092, -0.185, -0.218]}>
         <cylinderGeometry args={[0.011, 0.011, 0.012, 8]} />
       </mesh>
       {/* Rechtes Bein */}
@@ -2129,10 +2146,7 @@ function SniperRifleModel({
       >
         <cylinderGeometry args={[0.006, 0.006, 0.06, 8]} />
       </mesh>
-      <mesh
-        material={rubberMat}
-        position={[0.092, -0.185, -0.218]}
-      >
+      <mesh material={rubberMat} position={[0.092, -0.185, -0.218]}>
         <cylinderGeometry args={[0.011, 0.011, 0.012, 8]} />
       </mesh>
       {/* Schwenk-Bolzen (sichtbar mittig) */}
@@ -2387,57 +2401,103 @@ export function WeaponViewModel({
   lastFireTime,
   reloadProgress,
   isAiming = false,
+  movementStateRef,
 }: WeaponViewModelProps) {
   const { camera } = useThree();
   const groupRef = useRef<THREE.Group>(null);
+  // Innere Group: hält Sprint-Pose und Walk-Bob-Wackeln der Waffe.
+  // Wird zwischen Camera-Group und einzelne Weapon-Models geschoben so dass
+  // sich alle Waffen automatisch im selben Bewegungs-Rhythmus mitbewegen.
+  const swayGroupRef = useRef<THREE.Group>(null);
+  // Smooth Animations-Werte
+  const sprintBlendRef = useRef(0);
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     if (!groupRef.current) return;
     groupRef.current.position.copy(camera.position);
     groupRef.current.quaternion.copy(camera.quaternion);
+
+    if (!swayGroupRef.current) return;
+    const sway = swayGroupRef.current;
+
+    // Movement-State aus Ref lesen (kein Re-Render pro Frame)
+    const ms = movementStateRef?.current;
+    const isMoving = ms?.isMoving ?? false;
+    const isSprinting = ms?.isSprinting ?? false;
+    const stepPhase = ms?.stepPhase ?? 0;
+
+    // ── Sprint-Pose smooth Übergang (0=normal, 1=full sprint) ──
+    const wantsSprint = isSprinting && !isReloading && !isAiming;
+    const target = wantsSprint ? 1 : 0;
+    sprintBlendRef.current +=
+      (target - sprintBlendRef.current) * Math.min(delta * 8, 1);
+    const sb = sprintBlendRef.current;
+
+    // ── Walk-Sway: Waffe wackelt im Schritt-Rhythmus ──
+    const aimReduce = isAiming ? 0.15 : 1.0;
+    const walkAmp = isMoving ? 1.0 : 0.0;
+    const sprintBoost = 1 + sb * 1.4;
+    const swayAmount = aimReduce * walkAmp * sprintBoost;
+
+    const walkBobY = Math.abs(Math.sin(stepPhase)) * 0.012 * swayAmount;
+    const walkBobX = Math.sin(stepPhase) * 0.014 * swayAmount;
+    const walkRoll = Math.sin(stepPhase) * 0.025 * swayAmount;
+
+    // ── Sprint-Pose: Waffe schräg zur Seite gehalten ──
+    const sprintPosX = sb * 0.08;
+    const sprintPosY = sb * -0.06;
+    const sprintPosZ = sb * 0.04;
+    const sprintRotY = sb * -0.4;
+    const sprintRotZ = sb * -0.45;
+    const sprintRotX = sb * 0.15;
+
+    sway.position.set(sprintPosX + walkBobX, sprintPosY + walkBobY, sprintPosZ);
+    sway.rotation.set(sprintRotX, sprintRotY, sprintRotZ + walkRoll);
   });
 
   return (
     <group ref={groupRef}>
-      {weapon === "pistol" && (
-        <PistolModel
-          recoilOffset={recoilOffset}
-          isReloading={isReloading}
-          upgradeTier={upgradeTier}
-          lastFireTime={lastFireTime}
-          reloadProgress={reloadProgress}
-          isAiming={isAiming}
-        />
-      )}
-      {weapon === "shotgun" && (
-        <ShotgunModel
-          recoilOffset={recoilOffset}
-          isReloading={isReloading}
-          upgradeTier={upgradeTier}
-          lastFireTime={lastFireTime}
-          reloadProgress={reloadProgress}
-          isAiming={isAiming}
-        />
-      )}
-      {weapon === "assault_rifle" && (
-        <AssaultRifleModel
-          recoilOffset={recoilOffset}
-          isReloading={isReloading}
-          upgradeTier={upgradeTier}
-          lastFireTime={lastFireTime}
-          reloadProgress={reloadProgress}
-          isAiming={isAiming}
-        />
-      )}
-      {weapon === "sniper_rifle" && (
-        <SniperRifleModel
-          recoilOffset={recoilOffset}
-          isReloading={isReloading}
-          upgradeTier={upgradeTier}
-          lastFireTime={lastFireTime}
-          reloadProgress={reloadProgress}
-        />
-      )}
+      <group ref={swayGroupRef}>
+        {weapon === "pistol" && (
+          <PistolModel
+            recoilOffset={recoilOffset}
+            isReloading={isReloading}
+            upgradeTier={upgradeTier}
+            lastFireTime={lastFireTime}
+            reloadProgress={reloadProgress}
+            isAiming={isAiming}
+          />
+        )}
+        {weapon === "shotgun" && (
+          <ShotgunModel
+            recoilOffset={recoilOffset}
+            isReloading={isReloading}
+            upgradeTier={upgradeTier}
+            lastFireTime={lastFireTime}
+            reloadProgress={reloadProgress}
+            isAiming={isAiming}
+          />
+        )}
+        {weapon === "assault_rifle" && (
+          <AssaultRifleModel
+            recoilOffset={recoilOffset}
+            isReloading={isReloading}
+            upgradeTier={upgradeTier}
+            lastFireTime={lastFireTime}
+            reloadProgress={reloadProgress}
+            isAiming={isAiming}
+          />
+        )}
+        {weapon === "sniper_rifle" && (
+          <SniperRifleModel
+            recoilOffset={recoilOffset}
+            isReloading={isReloading}
+            upgradeTier={upgradeTier}
+            lastFireTime={lastFireTime}
+            reloadProgress={reloadProgress}
+          />
+        )}
+      </group>
     </group>
   );
 }

@@ -79357,6 +79357,8 @@ function useEnemySystem() {
   const [pointsNotifications, setPointsNotifications] = reactExports.useState([]);
   const enemiesRef = reactExports.useRef([]);
   enemiesRef.current = enemies;
+  const positionsRef = reactExports.useRef(/* @__PURE__ */ new Map());
+  const lastAttackTimesRef = reactExports.useRef(/* @__PURE__ */ new Map());
   const addPointsNotification = reactExports.useCallback(
     (amount, isHeadshot) => {
       const notif = {
@@ -79380,10 +79382,14 @@ function useEnemySystem() {
         const radius = 35 + Math.random() * 20;
         const x3 = Math.cos(angle) * radius;
         const z2 = Math.sin(angle) * radius;
+        const id = generateId();
+        const initialPos = [x3, 1.2, z2];
+        positionsRef.current.set(id, [...initialPos]);
+        lastAttackTimesRef.current.set(id, 0);
         newEnemies.push({
-          id: generateId(),
+          id,
           type: "standard",
-          position: [x3, 1.2, z2],
+          position: initialPos,
           health: 60,
           maxHealth: 60,
           speed: 3.5 * speedMultiplier,
@@ -79400,10 +79406,18 @@ function useEnemySystem() {
       if (includeBoss) {
         const angle = Math.random() * Math.PI * 2;
         const radius = 40;
+        const id = generateId();
+        const initialPos = [
+          Math.cos(angle) * radius,
+          1.5,
+          Math.sin(angle) * radius
+        ];
+        positionsRef.current.set(id, [...initialPos]);
+        lastAttackTimesRef.current.set(id, 0);
         newEnemies.push({
-          id: generateId(),
+          id,
           type: "boss",
-          position: [Math.cos(angle) * radius, 1.5, Math.sin(angle) * radius],
+          position: initialPos,
           health: 400,
           maxHealth: 400,
           speed: 1.8 * speedMultiplier,
@@ -79417,10 +79431,7 @@ function useEnemySystem() {
           velocity: [0, 0]
         });
       }
-      setEnemies((prev) => [
-        ...prev.filter((e) => !e.isDead || Date.now() - e.deathTime < 800),
-        ...newEnemies
-      ]);
+      setEnemies((prev) => [...prev, ...newEnemies]);
     },
     []
   );
@@ -79441,12 +79452,14 @@ function useEnemySystem() {
       const enemy = enemiesRef.current.find((e) => e.id === id);
       if (!enemy || enemy.isDead)
         return { killed: false, isDismemberment: false, zone: "torso" };
+      const refPos = positionsRef.current.get(id);
+      const currentPos = refPos ? [refPos[0], refPos[1], refPos[2]] : [...enemy.position];
       const newHealth = Math.max(0, enemy.health - damage);
       const killed = newHealth <= 0;
       let zone = isHeadshot ? "head" : "torso";
       if (hitPoint) {
-        const relY = hitPoint.y - enemy.position[1];
-        const relX = hitPoint.x - enemy.position[0];
+        const relY = hitPoint.y - currentPos[1];
+        const relX = hitPoint.x - currentPos[0];
         const scale = enemy.type === "boss" ? 1.5 : 1;
         if (relY > 1.55 * scale) {
           zone = "head";
@@ -79481,18 +79494,44 @@ function useEnemySystem() {
       const legJustLost = dismemberUpdate.leftLegDetached || dismemberUpdate.rightLegDetached;
       const legAlreadyLost = enemy.leftLegDetached || enemy.rightLegDetached;
       const newSpeed = legJustLost && !legAlreadyLost ? enemy.speed * 0.5 : enemy.speed;
+      let hitDirX = 0;
+      let hitDirZ = 1;
+      if (killed && hitPoint) {
+        const dxh = currentPos[0] - hitPoint.x;
+        const dzh = currentPos[2] - hitPoint.z;
+        const lenh = Math.sqrt(dxh * dxh + dzh * dzh);
+        if (lenh > 1e-3) {
+          hitDirX = dxh / lenh;
+          hitDirZ = dzh / lenh;
+        }
+      }
       setEnemies(
         (prev) => prev.map((e) => {
           if (e.id !== id || e.isDead) return e;
+          const willDie = e.health - damage <= 0;
           return {
             ...e,
             ...dismemberUpdate,
+            // PERF: Position aus dem Ref in den State syncen, damit
+            // useEffect-Dependencies (z.B. Dismemberment-Limb-Spawn) die
+            // korrekte Position sehen.
+            position: currentPos,
             health: Math.max(0, e.health - damage),
             speed: newSpeed,
-            isDead: e.health - damage <= 0,
-            deathTime: e.health - damage <= 0 ? Date.now() : e.deathTime,
+            isDead: willDie,
+            deathTime: willDie ? Date.now() : e.deathTime,
             isHit: true,
-            hitTime: Date.now()
+            hitTime: Date.now(),
+            // ── Ragdoll-Felder nur beim Übergang lebendig→tot setzen ──
+            corpseState: willDie ? "ragdoll" : e.corpseState,
+            deathHitDirX: willDie ? hitDirX : e.deathHitDirX,
+            deathHitDirZ: willDie ? hitDirZ : e.deathHitDirZ,
+            // Yaw bewahren: der EnemyMesh hat im Lebend-Modus
+            // rotation.y = atan2(dx, dz) zum Spieler gesetzt. Wir wissen den
+            // Yaw nicht exakt hier, aber EnemyMesh rekonstruiert ihn beim
+            // Ragdoll-Start aus deathHitDirX/Z (= weg-vom-Spieler-Richtung):
+            // facingYaw ≈ atan2(-hitDirX, -hitDirZ).
+            ragdollSeed: willDie ? Math.random() * 1e3 : e.ragdollSeed
           };
         })
       );
@@ -79506,7 +79545,7 @@ function useEnemySystem() {
           const pickup = {
             id: generatePickupId(),
             type: Math.random() < 0.5 ? "health" : "ammo",
-            position: [enemy.position[0], 0.5, enemy.position[2]],
+            position: [currentPos[0], 0.5, currentPos[2]],
             collected: false
           };
           setPickups((prev) => [...prev, pickup]);
@@ -79535,46 +79574,52 @@ function useEnemySystem() {
   const updateEnemyPositions = reactExports.useCallback(
     (playerPos, delta, onPlayerHit) => {
       const now2 = Date.now();
-      setEnemies(
-        (prev) => prev.map((e) => {
-          if (e.isDead) return e;
-          const dx = playerPos[0] - e.position[0];
-          const dz = playerPos[2] - e.position[2];
-          const dist = Math.sqrt(dx * dx + dz * dz);
-          if (dist < 0.1) return e;
-          const nx = dx / dist;
-          const nz = dz / dist;
-          let sepX = 0;
-          let sepZ = 0;
-          prev.forEach((other) => {
-            if (other.id === e.id || other.isDead) return;
-            const ox = e.position[0] - other.position[0];
-            const oz = e.position[2] - other.position[2];
-            const od = Math.sqrt(ox * ox + oz * oz);
-            if (od < 2.5 && od > 0.01) {
-              sepX += ox / od;
-              sepZ += oz / od;
-            }
-          });
-          const moveX = nx * 0.8 + sepX * 0.2;
-          const moveZ = nz * 0.8 + sepZ * 0.2;
-          const moveLen = Math.sqrt(moveX * moveX + moveZ * moveZ) || 1;
-          const attackRange = e.type === "boss" ? 2.5 : 1.8;
-          if (dist > attackRange) {
-            const newX = e.position[0] + moveX / moveLen * e.speed * delta;
-            const newZ = e.position[2] + moveZ / moveLen * e.speed * delta;
-            return {
-              ...e,
-              position: [newX, e.position[1], newZ]
-            };
+      const list = enemiesRef.current;
+      const positions = positionsRef.current;
+      const attackTimes = lastAttackTimesRef.current;
+      for (let i2 = 0; i2 < list.length; i2++) {
+        const e = list[i2];
+        if (e.isDead) continue;
+        let pos = positions.get(e.id);
+        if (!pos) {
+          pos = [e.position[0], e.position[1], e.position[2]];
+          positions.set(e.id, pos);
+        }
+        const dx = playerPos[0] - pos[0];
+        const dz = playerPos[2] - pos[2];
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist < 0.1) continue;
+        const nx = dx / dist;
+        const nz = dz / dist;
+        let sepX = 0;
+        let sepZ = 0;
+        for (let j2 = 0; j2 < list.length; j2++) {
+          const other = list[j2];
+          if (other.id === e.id || other.isDead) continue;
+          const otherPos = positions.get(other.id) ?? other.position;
+          const ox = pos[0] - otherPos[0];
+          const oz = pos[2] - otherPos[2];
+          const od = Math.sqrt(ox * ox + oz * oz);
+          if (od < 2.5 && od > 0.01) {
+            sepX += ox / od;
+            sepZ += oz / od;
           }
-          if (now2 - e.lastAttackTime > e.attackCooldown) {
+        }
+        const moveX = nx * 0.8 + sepX * 0.2;
+        const moveZ = nz * 0.8 + sepZ * 0.2;
+        const moveLen = Math.sqrt(moveX * moveX + moveZ * moveZ) || 1;
+        const attackRange = e.type === "boss" ? 2.5 : 1.8;
+        if (dist > attackRange) {
+          pos[0] += moveX / moveLen * e.speed * delta;
+          pos[2] += moveZ / moveLen * e.speed * delta;
+        } else {
+          const lastAttack = attackTimes.get(e.id) ?? 0;
+          if (now2 - lastAttack > e.attackCooldown) {
             onPlayerHit(e.attackDamage);
-            return { ...e, lastAttackTime: now2 };
+            attackTimes.set(e.id, now2);
           }
-          return e;
-        })
-      );
+        }
+      }
     },
     []
   );
@@ -79583,17 +79628,102 @@ function useEnemySystem() {
       (prev) => prev.map((p2) => p2.id === id ? { ...p2, collected: true } : p2)
     );
   }, []);
-  const clearDeadEnemies = reactExports.useCallback(() => {
+  const CORPSE_CAP = 15;
+  const RAGDOLL_DURATION_MS = 900;
+  const FADE_DURATION_MS = 600;
+  const MIN_REST_BEFORE_DESPAWN_MS = 4e3;
+  const VISIBLE_DESPAWN_STAGGER_MS = 800;
+  const lastVisibleDespawnRef = reactExports.useRef(0);
+  const cullCorpses = reactExports.useCallback((visibleIds) => {
     const now2 = Date.now();
-    setEnemies(
-      (prev) => prev.filter((e) => !e.isDead || now2 - e.deathTime < 1200)
-    );
+    let mutated = false;
+    setEnemies((prev) => {
+      const transitioned = prev.map((e) => {
+        if (!e.isDead) return e;
+        if (e.corpseState === "ragdoll" && now2 - e.deathTime >= RAGDOLL_DURATION_MS) {
+          mutated = true;
+          return { ...e, corpseState: "resting" };
+        }
+        return e;
+      }).filter((e) => {
+        if (e.corpseState === "fadingOut" && e.fadeStartTime !== void 0 && now2 - e.fadeStartTime >= FADE_DURATION_MS) {
+          mutated = true;
+          return false;
+        }
+        return true;
+      });
+      const restingCorpses = transitioned.filter(
+        (e) => e.corpseState === "resting" && now2 - e.deathTime >= MIN_REST_BEFORE_DESPAWN_MS
+      );
+      if (restingCorpses.length <= CORPSE_CAP) {
+        if (!mutated) return prev;
+        const keepIds2 = new Set(transitioned.map((e) => e.id));
+        for (const id of Array.from(positionsRef.current.keys())) {
+          if (!keepIds2.has(id)) positionsRef.current.delete(id);
+        }
+        for (const id of Array.from(lastAttackTimesRef.current.keys())) {
+          if (!keepIds2.has(id)) lastAttackTimesRef.current.delete(id);
+        }
+        return transitioned;
+      }
+      const overage = restingCorpses.length - CORPSE_CAP;
+      const sorted = [...restingCorpses].sort((a2, b2) => {
+        const aVis = visibleIds.has(a2.id) ? 1 : 0;
+        const bVis = visibleIds.has(b2.id) ? 1 : 0;
+        if (aVis !== bVis) return aVis - bVis;
+        return a2.deathTime - b2.deathTime;
+      });
+      const idsToFade = /* @__PURE__ */ new Set();
+      let invisibleSlots = overage;
+      for (const c2 of sorted) {
+        if (invisibleSlots <= 0) break;
+        if (!visibleIds.has(c2.id)) {
+          idsToFade.add(c2.id);
+          invisibleSlots--;
+        }
+      }
+      const stillOver = overage - idsToFade.size;
+      if (stillOver > 0 && now2 - lastVisibleDespawnRef.current >= VISIBLE_DESPAWN_STAGGER_MS) {
+        const visibleCandidate = sorted.find(
+          (c2) => visibleIds.has(c2.id) && !idsToFade.has(c2.id)
+        );
+        if (visibleCandidate) {
+          idsToFade.add(visibleCandidate.id);
+          lastVisibleDespawnRef.current = now2;
+        }
+      }
+      if (idsToFade.size === 0) {
+        if (!mutated) return prev;
+        return transitioned;
+      }
+      const next = transitioned.map((e) => {
+        if (!idsToFade.has(e.id)) return e;
+        return {
+          ...e,
+          corpseState: "fadingOut",
+          fadeStartTime: now2
+        };
+      });
+      const keepIds = new Set(next.map((e) => e.id));
+      for (const id of Array.from(positionsRef.current.keys())) {
+        if (!keepIds.has(id)) positionsRef.current.delete(id);
+      }
+      for (const id of Array.from(lastAttackTimesRef.current.keys())) {
+        if (!keepIds.has(id)) lastAttackTimesRef.current.delete(id);
+      }
+      return next;
+    });
     setPickups((prev) => prev.filter((p2) => !p2.collected));
   }, []);
+  const clearDeadEnemies = reactExports.useCallback(() => {
+    cullCorpses(/* @__PURE__ */ new Set());
+  }, [cullCorpses]);
   const activeEnemyCount = enemies.filter((e) => !e.isDead).length;
   return {
     enemies,
     enemiesRef,
+    /** PERF: Map<enemyId, [x,y,z]> — von EnemyMesh in useFrame gelesen */
+    enemyPositionsRef: positionsRef,
     pickups,
     score,
     points,
@@ -79605,7 +79735,9 @@ function useEnemySystem() {
     clearHitFlash,
     updateEnemyPositions,
     collectPickup,
-    clearDeadEnemies
+    clearDeadEnemies,
+    /** Despawn-Logik mit Frustum-Info — von GameScene pro ~250ms gerufen. */
+    cullCorpses
   };
 }
 let audioCtx = null;
@@ -80957,9 +81089,132 @@ function getValidJuggernogPosition() {
 }
 const JUGGERNOG_POSITION = getValidJuggernogPosition();
 const MAX_DECALS = 220;
+const MAX_LOBES_PER_DECAL = 5;
+const MAX_SAT_PER_DECAL = 7;
+const COLOR_POOL_CORE = "#3a0202";
+const COLOR_POOL_MID = "#5e0606";
+const COLOR_POOL_RIM = "#8a1010";
+const COLOR_SPLAT_MID = "#990000";
+const Y_BASE = 0.012;
+const Y_MID = 0.014;
+const Y_TOP = 0.016;
+const Y_SAT = 0.013;
 let decalIdCounter = 0;
+function composeDecalMatrix(target, decalX, decalZ, decalRotY, localX, localY, localZ, localRotZ, scale, parent, child) {
+  parent.position.set(decalX, 0, decalZ);
+  parent.rotation.set(0, decalRotY, 0);
+  child.position.set(localX, localY, localZ);
+  child.rotation.set(-Math.PI / 2, 0, localRotZ);
+  child.scale.setScalar(scale);
+  parent.updateMatrixWorld(true);
+  target.copy(child.matrixWorld);
+}
 const BloodDecals = reactExports.forwardRef((_2, ref) => {
   const [decals, setDecals] = reactExports.useState([]);
+  const poolRimRef = reactExports.useRef(null);
+  const poolMidRef = reactExports.useRef(null);
+  const splatMidRef = reactExports.useRef(null);
+  const poolCoreRef = reactExports.useRef(null);
+  const poolSatRef = reactExports.useRef(null);
+  const splatSatRef = reactExports.useRef(null);
+  const composeParentRef = reactExports.useRef(new Object3D());
+  const composeChildRef = reactExports.useRef(new Object3D());
+  const tmpMatrixRef = reactExports.useRef(new Matrix4());
+  reactExports.useEffect(() => {
+    const parent = composeParentRef.current;
+    const child = composeChildRef.current;
+    parent.add(child);
+    return () => {
+      parent.remove(child);
+    };
+  }, []);
+  const geoRim16 = reactExports.useMemo(() => new CircleGeometry(1, 16), []);
+  const geoPoolMid14 = reactExports.useMemo(() => new CircleGeometry(1, 14), []);
+  const geoSplatMid10 = reactExports.useMemo(() => new CircleGeometry(1, 10), []);
+  const geoPoolCore12 = reactExports.useMemo(() => new CircleGeometry(1, 12), []);
+  const geoSat6 = reactExports.useMemo(() => new CircleGeometry(1, 6), []);
+  const matPoolRim = reactExports.useMemo(
+    () => new MeshBasicMaterial({
+      color: new Color(COLOR_POOL_RIM),
+      transparent: true,
+      opacity: 0.32,
+      depthWrite: false
+    }),
+    []
+  );
+  const matPoolMid = reactExports.useMemo(
+    () => new MeshBasicMaterial({
+      color: new Color(COLOR_POOL_MID),
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false
+    }),
+    []
+  );
+  const matSplatMid = reactExports.useMemo(
+    () => new MeshBasicMaterial({
+      color: new Color(COLOR_SPLAT_MID),
+      transparent: true,
+      opacity: 0.78,
+      depthWrite: false
+    }),
+    []
+  );
+  const matPoolCore = reactExports.useMemo(
+    () => new MeshBasicMaterial({
+      color: new Color(COLOR_POOL_CORE),
+      transparent: true,
+      opacity: 0.92,
+      depthWrite: false
+    }),
+    []
+  );
+  const matPoolSat = reactExports.useMemo(
+    () => new MeshBasicMaterial({
+      color: new Color(COLOR_POOL_MID),
+      // satellites nutzen midColor
+      transparent: true,
+      opacity: 0.78,
+      depthWrite: false
+    }),
+    []
+  );
+  const matSplatSat = reactExports.useMemo(
+    () => new MeshBasicMaterial({
+      color: new Color(COLOR_SPLAT_MID),
+      transparent: true,
+      opacity: 0.78,
+      depthWrite: false
+    }),
+    []
+  );
+  reactExports.useEffect(() => {
+    return () => {
+      geoRim16.dispose();
+      geoPoolMid14.dispose();
+      geoSplatMid10.dispose();
+      geoPoolCore12.dispose();
+      geoSat6.dispose();
+      matPoolRim.dispose();
+      matPoolMid.dispose();
+      matSplatMid.dispose();
+      matPoolCore.dispose();
+      matPoolSat.dispose();
+      matSplatSat.dispose();
+    };
+  }, [
+    geoRim16,
+    geoPoolMid14,
+    geoSplatMid10,
+    geoPoolCore12,
+    geoSat6,
+    matPoolRim,
+    matPoolMid,
+    matSplatMid,
+    matPoolCore,
+    matPoolSat,
+    matSplatSat
+  ]);
   const addDecal = reactExports.useCallback(
     (x3, z2, size, type) => {
       const lobeCount = type === "pool" ? 3 + Math.floor(Math.random() * 3) : 1 + Math.floor(Math.random() * 2);
@@ -81022,101 +81277,184 @@ const BloodDecals = reactExports.forwardRef((_2, ref) => {
     }),
     [addDecal]
   );
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("group", { children: decals.map((decal) => /* @__PURE__ */ jsxRuntimeExports.jsx(BloodDecalMesh, { decal }, decal.id)) });
+  reactExports.useEffect(() => {
+    const parent = composeParentRef.current;
+    const child = composeChildRef.current;
+    const m2 = tmpMatrixRef.current;
+    let poolRimIdx = 0;
+    let poolMidIdx = 0;
+    let splatMidIdx = 0;
+    let poolCoreIdx = 0;
+    let poolSatIdx = 0;
+    let splatSatIdx = 0;
+    for (const decal of decals) {
+      const isPool = decal.type === "pool";
+      if (isPool && poolRimRef.current) {
+        for (const lobe of decal.lobes) {
+          composeDecalMatrix(
+            m2,
+            decal.x,
+            decal.z,
+            decal.rotation,
+            lobe.dx,
+            Y_BASE,
+            lobe.dz,
+            lobe.rot,
+            lobe.r * 1.18,
+            parent,
+            child
+          );
+          poolRimRef.current.setMatrixAt(poolRimIdx++, m2);
+        }
+      }
+      const midRef = isPool ? poolMidRef.current : splatMidRef.current;
+      if (midRef) {
+        for (const lobe of decal.lobes) {
+          composeDecalMatrix(
+            m2,
+            decal.x,
+            decal.z,
+            decal.rotation,
+            lobe.dx,
+            Y_MID,
+            lobe.dz,
+            lobe.rot,
+            lobe.r * 0.95,
+            parent,
+            child
+          );
+          if (isPool) {
+            midRef.setMatrixAt(poolMidIdx++, m2);
+          } else {
+            midRef.setMatrixAt(splatMidIdx++, m2);
+          }
+        }
+      }
+      if (isPool && poolCoreRef.current) {
+        const coreCount = Math.min(2, decal.lobes.length);
+        for (let i2 = 0; i2 < coreCount; i2++) {
+          const lobe = decal.lobes[i2];
+          composeDecalMatrix(
+            m2,
+            decal.x,
+            decal.z,
+            decal.rotation,
+            lobe.dx * 0.6,
+            Y_TOP,
+            lobe.dz * 0.6,
+            lobe.rot,
+            lobe.r * 0.55,
+            parent,
+            child
+          );
+          poolCoreRef.current.setMatrixAt(poolCoreIdx++, m2);
+        }
+      }
+      const satRef = isPool ? poolSatRef.current : splatSatRef.current;
+      if (satRef) {
+        for (const sat of decal.satellites) {
+          composeDecalMatrix(
+            m2,
+            decal.x,
+            decal.z,
+            decal.rotation,
+            sat.dx,
+            Y_SAT,
+            sat.dz,
+            0,
+            // satellites haben keinen lokalen Z-Rotation-Twist im Original
+            sat.size,
+            parent,
+            child
+          );
+          if (isPool) {
+            satRef.setMatrixAt(poolSatIdx++, m2);
+          } else {
+            satRef.setMatrixAt(splatSatIdx++, m2);
+          }
+        }
+      }
+    }
+    if (poolRimRef.current) {
+      poolRimRef.current.count = poolRimIdx;
+      poolRimRef.current.instanceMatrix.needsUpdate = true;
+    }
+    if (poolMidRef.current) {
+      poolMidRef.current.count = poolMidIdx;
+      poolMidRef.current.instanceMatrix.needsUpdate = true;
+    }
+    if (splatMidRef.current) {
+      splatMidRef.current.count = splatMidIdx;
+      splatMidRef.current.instanceMatrix.needsUpdate = true;
+    }
+    if (poolCoreRef.current) {
+      poolCoreRef.current.count = poolCoreIdx;
+      poolCoreRef.current.instanceMatrix.needsUpdate = true;
+    }
+    if (poolSatRef.current) {
+      poolSatRef.current.count = poolSatIdx;
+      poolSatRef.current.instanceMatrix.needsUpdate = true;
+    }
+    if (splatSatRef.current) {
+      splatSatRef.current.count = splatSatIdx;
+      splatSatRef.current.instanceMatrix.needsUpdate = true;
+    }
+  }, [decals]);
+  const MAX_LOBE_INSTANCES = MAX_DECALS * MAX_LOBES_PER_DECAL;
+  const MAX_CORE_INSTANCES = MAX_DECALS * 2;
+  const MAX_SAT_INSTANCES = MAX_DECALS * MAX_SAT_PER_DECAL;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "instancedMesh",
+      {
+        ref: poolRimRef,
+        args: [geoRim16, matPoolRim, MAX_LOBE_INSTANCES],
+        frustumCulled: false
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "instancedMesh",
+      {
+        ref: poolMidRef,
+        args: [geoPoolMid14, matPoolMid, MAX_LOBE_INSTANCES],
+        frustumCulled: false
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "instancedMesh",
+      {
+        ref: splatMidRef,
+        args: [geoSplatMid10, matSplatMid, MAX_LOBE_INSTANCES],
+        frustumCulled: false
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "instancedMesh",
+      {
+        ref: poolCoreRef,
+        args: [geoPoolCore12, matPoolCore, MAX_CORE_INSTANCES],
+        frustumCulled: false
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "instancedMesh",
+      {
+        ref: poolSatRef,
+        args: [geoSat6, matPoolSat, MAX_SAT_INSTANCES],
+        frustumCulled: false
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "instancedMesh",
+      {
+        ref: splatSatRef,
+        args: [geoSat6, matSplatSat, MAX_SAT_INSTANCES],
+        frustumCulled: false
+      }
+    )
+  ] });
 });
 BloodDecals.displayName = "BloodDecals";
-const BloodDecalMesh = ({ decal }) => {
-  const yBase = 0.012;
-  const yMid = 0.014;
-  const yTop = 0.016;
-  const ySat = 0.013;
-  const isPool = decal.type === "pool";
-  const coreColor = isPool ? "#3a0202" : "#7a0000";
-  const midColor = isPool ? "#5e0606" : "#990000";
-  const rimColor = isPool ? "#8a1010" : "#aa1818";
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { position: [decal.x, 0, decal.z], rotation: [0, decal.rotation, 0], children: [
-    isPool && decal.lobes.map((lobe, i2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "mesh",
-      {
-        position: [lobe.dx, yBase, lobe.dz],
-        rotation: [-Math.PI / 2, 0, lobe.rot],
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("circleGeometry", { args: [lobe.r * 1.18, 16] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "meshBasicMaterial",
-            {
-              color: rimColor,
-              transparent: true,
-              opacity: 0.32,
-              depthWrite: false
-            }
-          )
-        ]
-      },
-      `rim-${i2}`
-    )),
-    decal.lobes.map((lobe, i2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "mesh",
-      {
-        position: [lobe.dx, yMid, lobe.dz],
-        rotation: [-Math.PI / 2, 0, lobe.rot],
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("circleGeometry", { args: [lobe.r * 0.95, isPool ? 14 : 10] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "meshBasicMaterial",
-            {
-              color: midColor,
-              transparent: true,
-              opacity: isPool ? 0.85 : 0.78,
-              depthWrite: false
-            }
-          )
-        ]
-      },
-      `mid-${i2}`
-    )),
-    isPool && decal.lobes.slice(0, 2).map((lobe, i2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "mesh",
-      {
-        position: [lobe.dx * 0.6, yTop, lobe.dz * 0.6],
-        rotation: [-Math.PI / 2, 0, lobe.rot],
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("circleGeometry", { args: [lobe.r * 0.55, 12] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "meshBasicMaterial",
-            {
-              color: coreColor,
-              transparent: true,
-              opacity: 0.92,
-              depthWrite: false
-            }
-          )
-        ]
-      },
-      `core-${i2}`
-    )),
-    decal.satellites.map((sat, i2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "mesh",
-      {
-        position: [sat.dx, ySat, sat.dz],
-        rotation: [-Math.PI / 2, 0, 0],
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("circleGeometry", { args: [sat.size, 6] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "meshBasicMaterial",
-            {
-              color: midColor,
-              transparent: true,
-              opacity: 0.78,
-              depthWrite: false
-            }
-          )
-        ]
-      },
-      `sat-${i2}`
-    ))
-  ] });
-};
 const BloodParticles = ({
   position,
   direction,
@@ -81414,6 +81752,39 @@ const FreshWoundFlash = ({ position, active }) => {
     }
   );
 };
+let bloodEffectIdCounter = 0;
+const BloodEffectsManager = reactExports.forwardRef((_2, ref) => {
+  const [effects, setEffects] = reactExports.useState([]);
+  const add2 = reactExports.useCallback(
+    (position, direction, intensity) => {
+      setEffects((prev) => [
+        ...prev,
+        {
+          id: bloodEffectIdCounter++,
+          position,
+          direction,
+          intensity
+        }
+      ]);
+    },
+    []
+  );
+  const remove = reactExports.useCallback((id) => {
+    setEffects((prev) => prev.filter((e) => e.id !== id));
+  }, []);
+  reactExports.useImperativeHandle(ref, () => ({ add: add2 }), [add2]);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(jsxRuntimeExports.Fragment, { children: effects.map((effect) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+    BloodParticles,
+    {
+      position: effect.position,
+      direction: effect.direction,
+      intensity: effect.intensity,
+      onComplete: () => remove(effect.id)
+    },
+    effect.id
+  )) });
+});
+BloodEffectsManager.displayName = "BloodEffectsManager";
 const skyVertexShader = `
   varying vec3 vWorldPosition;
 
@@ -81461,72 +81832,206 @@ const skyFragmentShader = `
     gl_FragColor = vec4(color, 1.0);
   }
 `;
-function JuggernogMachine({
+let __juggernogBodyMatCache = null;
+function buildWeatheredRedMaterial() {
+  if (__juggernogBodyMatCache) return __juggernogBodyMatCache;
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    const fallback = new MeshStandardMaterial({
+      color: "#a8211d",
+      roughness: 0.85,
+      metalness: 0.15
+    });
+    __juggernogBodyMatCache = fallback;
+    return fallback;
+  }
+  ctx.fillStyle = "#a8211d";
+  ctx.fillRect(0, 0, size, size);
+  for (let i2 = 0; i2 < 60; i2++) {
+    const x3 = Math.random() * size;
+    const y2 = Math.random() * size;
+    const r2 = 6 + Math.random() * 18;
+    const grd = ctx.createRadialGradient(x3, y2, 0, x3, y2, r2);
+    grd.addColorStop(0, "rgba(220, 70, 60, 0.4)");
+    grd.addColorStop(1, "rgba(220, 70, 60, 0)");
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(x3, y2, r2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  for (let i2 = 0; i2 < 35; i2++) {
+    const x3 = Math.random() * size;
+    const y2 = Math.random() * size;
+    const len = 10 + Math.random() * 30;
+    ctx.strokeStyle = `rgba(${60 + Math.random() * 30}, ${20 + Math.random() * 15}, ${15 + Math.random() * 15}, 0.55)`;
+    ctx.lineWidth = 0.8 + Math.random() * 0.6;
+    ctx.beginPath();
+    ctx.moveTo(x3, y2);
+    ctx.lineTo(x3 + (Math.random() - 0.5) * 4, y2 + len);
+    ctx.stroke();
+  }
+  for (let i2 = 0; i2 < 24; i2++) {
+    const x3 = Math.random() * size;
+    const y2 = Math.random() * size;
+    const r2 = 4 + Math.random() * 14;
+    const grd = ctx.createRadialGradient(x3, y2, 0, x3, y2, r2);
+    grd.addColorStop(0, "rgba(90, 50, 20, 0.85)");
+    grd.addColorStop(0.6, "rgba(120, 70, 30, 0.5)");
+    grd.addColorStop(1, "rgba(120, 70, 30, 0)");
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(x3, y2, r2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  for (let i2 = 0; i2 < 18; i2++) {
+    const x3 = Math.random() * size;
+    const y2 = Math.random() * size;
+    const w2 = 6 + Math.random() * 16;
+    const h2 = 4 + Math.random() * 12;
+    ctx.fillStyle = `rgba(${40 + Math.random() * 20}, ${30 + Math.random() * 15}, ${25 + Math.random() * 10}, 0.7)`;
+    ctx.beginPath();
+    ctx.ellipse(x3, y2, w2, h2, Math.random() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const imageData = ctx.getImageData(0, 0, size, size);
+  const data = imageData.data;
+  for (let i2 = 0; i2 < data.length; i2 += 4) {
+    const n = (Math.random() - 0.5) * 16;
+    data[i2] = Math.max(0, Math.min(255, data[i2] + n));
+    data[i2 + 1] = Math.max(0, Math.min(255, data[i2 + 1] + n));
+    data[i2 + 2] = Math.max(0, Math.min(255, data[i2 + 2] + n));
+  }
+  ctx.putImageData(imageData, 0, 0);
+  const tex = new CanvasTexture(canvas);
+  tex.wrapS = RepeatWrapping;
+  tex.wrapT = RepeatWrapping;
+  tex.anisotropy = 4;
+  const mat2 = new MeshStandardMaterial({
+    map: tex,
+    color: "#ffffff",
+    roughness: 0.78,
+    metalness: 0.2
+  });
+  __juggernogBodyMatCache = mat2;
+  return mat2;
+}
+function JuggernogMachineInner({
   position,
   purchaseCount
 }) {
   const glowRef = reactExports.useRef(null);
   const screenRef = reactExports.useRef(null);
-  const particleRef = reactExports.useRef(null);
   const timeRef = reactExports.useRef(0);
-  const bodyMaterial = reactExports.useMemo(
-    () => new MeshToonMaterial({ color: "#cc1111" }),
-    []
-  );
+  const bodyMaterial = reactExports.useMemo(() => buildWeatheredRedMaterial(), []);
   const darkRedMaterial = reactExports.useMemo(
-    () => new MeshToonMaterial({ color: "#880000" }),
+    () => new MeshStandardMaterial({
+      color: "#6a0d0a",
+      roughness: 0.85,
+      metalness: 0.25
+    }),
     []
   );
   const chromeMaterial = reactExports.useMemo(
-    () => new MeshToonMaterial({ color: "#aaaaaa" }),
+    () => new MeshStandardMaterial({
+      color: "#a8a8a0",
+      roughness: 0.55,
+      metalness: 0.7
+    }),
     []
   );
   const blackMaterial = reactExports.useMemo(
-    () => new MeshToonMaterial({ color: "#111111" }),
+    () => new MeshStandardMaterial({
+      color: "#1a1612",
+      roughness: 0.9,
+      metalness: 0.1
+    }),
     []
   );
-  const screenMaterial = reactExports.useMemo(
-    () => new MeshToonMaterial({
-      color: purchaseCount >= 2 ? "#444444" : "#ff4444",
-      emissive: purchaseCount >= 2 ? "#000000" : "#cc0000",
-      emissiveIntensity: 0.8
+  const labelBgMaterial = reactExports.useMemo(
+    () => new MeshStandardMaterial({
+      color: purchaseCount >= 2 ? "#5a5045" : "#e8d8b0",
+      emissive: purchaseCount >= 2 ? "#000000" : "#3a2a10",
+      emissiveIntensity: purchaseCount >= 2 ? 0 : 0.15,
+      roughness: 0.85,
+      metalness: 0.05
     }),
     [purchaseCount]
   );
-  const labelMaterial = reactExports.useMemo(
-    () => new MeshToonMaterial({
-      color: purchaseCount >= 2 ? "#555555" : "#ffdd00",
-      emissive: purchaseCount >= 2 ? "#000000" : "#aa8800",
-      emissiveIntensity: 0.5
+  const labelTextMaterial = reactExports.useMemo(
+    () => new MeshStandardMaterial({
+      color: purchaseCount >= 2 ? "#444444" : "#7a0e0a",
+      emissive: purchaseCount >= 2 ? "#000000" : "#4a0606",
+      emissiveIntensity: purchaseCount >= 2 ? 0 : 0.3,
+      roughness: 0.7,
+      metalness: 0.1
     }),
     [purchaseCount]
   );
   const glassMaterial = reactExports.useMemo(
-    () => new MeshToonMaterial({
-      color: "#88ccff",
+    () => new MeshStandardMaterial({
+      color: "#6a8a90",
       transparent: true,
-      opacity: 0.5
+      opacity: 0.45,
+      roughness: 0.4,
+      metalness: 0.1
     }),
     []
   );
-  const particleGeometry = reactExports.useMemo(() => {
-    const geo = new BufferGeometry();
-    const count = 30;
-    const positions = new Float32Array(count * 3);
-    for (let i2 = 0; i2 < count; i2++) {
-      positions[i2 * 3] = (Math.random() - 0.5) * 1.5;
-      positions[i2 * 3 + 1] = Math.random() * 3;
-      positions[i2 * 3 + 2] = (Math.random() - 0.5) * 1.5;
-    }
-    geo.setAttribute("position", new BufferAttribute(positions, 3));
-    return geo;
-  }, []);
-  const particleMaterial = reactExports.useMemo(
-    () => new PointsMaterial({
-      color: "#ff2200",
-      size: 0.08,
+  const buttonMaterial = reactExports.useMemo(
+    () => new MeshStandardMaterial({
+      color: purchaseCount >= 2 ? "#3a1010" : "#c8221d",
+      emissive: purchaseCount >= 2 ? "#000000" : "#7a0a0a",
+      emissiveIntensity: purchaseCount >= 2 ? 0 : 0.4,
+      roughness: 0.6,
+      metalness: 0.2
+    }),
+    [purchaseCount]
+  );
+  const bottleMaterial = reactExports.useMemo(
+    () => new MeshStandardMaterial({
+      color: "#3a1a0a",
+      roughness: 0.4,
+      metalness: 0.2,
       transparent: true,
-      opacity: 0.8
+      opacity: 0.85
+    }),
+    []
+  );
+  const bottleCapMaterial = reactExports.useMemo(
+    () => new MeshStandardMaterial({
+      color: "#c8221d",
+      roughness: 0.7,
+      metalness: 0.3
+    }),
+    []
+  );
+  const screenMaterial = reactExports.useMemo(
+    () => new MeshStandardMaterial({
+      color: purchaseCount >= 2 ? "#2a2a2a" : "#1a0a0a",
+      emissive: purchaseCount >= 2 ? "#000000" : "#c8181a",
+      emissiveIntensity: purchaseCount >= 2 ? 0 : 0.9,
+      roughness: 0.6,
+      metalness: 0.1
+    }),
+    [purchaseCount]
+  );
+  const rustDarkMat = reactExports.useMemo(
+    () => new MeshStandardMaterial({
+      color: "#5a3010",
+      roughness: 0.95,
+      metalness: 0.3
+    }),
+    []
+  );
+  const rustLightMat = reactExports.useMemo(
+    () => new MeshStandardMaterial({
+      color: "#704020",
+      roughness: 0.95,
+      metalness: 0.25
     }),
     []
   );
@@ -81534,23 +82039,12 @@ function JuggernogMachine({
     timeRef.current += delta;
     const t = timeRef.current;
     if (glowRef.current && purchaseCount < 2) {
-      glowRef.current.intensity = 1.2 + Math.sin(t * 2.5) * 0.4;
+      const flicker = 1 + Math.sin(t * 2.5) * 0.3 + Math.sin(t * 9.7) * 0.1;
+      glowRef.current.intensity = flicker;
     }
-    if (screenRef.current) {
+    if (screenRef.current && purchaseCount < 2) {
       const mat2 = screenRef.current.material;
-      if (purchaseCount < 2) {
-        mat2.emissiveIntensity = 0.6 + Math.sin(t * 3) * 0.3;
-      }
-    }
-    if (particleRef.current && purchaseCount < 2) {
-      const positions = particleRef.current.geometry.attributes.position.array;
-      for (let i2 = 0; i2 < positions.length / 3; i2++) {
-        positions[i2 * 3 + 1] += delta * 0.5;
-        if (positions[i2 * 3 + 1] > 3.5) {
-          positions[i2 * 3 + 1] = 0;
-        }
-      }
-      particleRef.current.geometry.attributes.position.needsUpdate = true;
+      mat2.emissiveIntensity = 0.7 + Math.sin(t * 3.5) * 0.25;
     }
   });
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { position, children: [
@@ -81558,62 +82052,79 @@ function JuggernogMachine({
       "pointLight",
       {
         ref: glowRef,
-        color: "#ff2200",
-        intensity: 1.5,
-        distance: 6,
-        position: [0, 1.5, 0.6]
+        color: "#ff3a20",
+        intensity: 1,
+        distance: 5.5,
+        decay: 2,
+        position: [0, 1.5, 0.5]
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bodyMaterial, position: [0, 1.2, 0], castShadow: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1, 2.4, 0.7] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: darkRedMaterial, position: [0, 2.5, 0], castShadow: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1.05, 0.2, 0.75] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: darkRedMaterial, position: [0, 0.05, 0], castShadow: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1.1, 0.1, 0.8] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: darkRedMaterial, position: [-0.52, 1.2, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.06, 2.4, 0.72] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: darkRedMaterial, position: [0.52, 1.2, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.06, 2.4, 0.72] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: glassMaterial, position: [0, 1.4, 0.36], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.75, 1.2, 0.02] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: chromeMaterial, position: [0, 0.06, 0], castShadow: true, receiveShadow: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1.04, 0.12, 0.68] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: darkRedMaterial, position: [-0.5, 0.06, 0.33], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.06, 0.13, 0.04] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: darkRedMaterial, position: [0.5, 0.06, 0.33], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.06, 0.13, 0.04] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bodyMaterial, position: [0, 1.33, 0], castShadow: true, receiveShadow: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1, 2.42, 0.65] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: darkRedMaterial, position: [-0.51, 1.33, 0], castShadow: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.03, 2.42, 0.7] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: darkRedMaterial, position: [0.51, 1.33, 0], castShadow: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.03, 2.42, 0.7] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: darkRedMaterial, position: [0, 2.5, 0.32], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1, 0.06, 0.02] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: darkRedMaterial, position: [0, 0.18, 0.32], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1, 0.06, 0.02] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: glassMaterial, position: [0, 1.65, 0.331], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.82, 1.4, 5e-3] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: chromeMaterial, position: [0, 2.36, 0.333], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.86, 0.04, 0.012] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: chromeMaterial, position: [0, 0.94, 0.333], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.86, 0.04, 0.012] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: chromeMaterial, position: [-0.42, 1.65, 0.333], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.04, 1.44, 0.012] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: chromeMaterial, position: [0.42, 1.65, 0.333], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.04, 1.44, 0.012] }) }),
+    [-0.27, -0.09, 0.09, 0.27].map((bx) => /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { position: [bx, 1.55, 0.21], children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bottleMaterial, position: [0, 0, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.05, 0.06, 0.4, 12] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bottleMaterial, position: [0, 0.27, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.025, 0.04, 0.12, 10] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bottleCapMaterial, position: [0, 0.35, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.028, 0.028, 0.025, 10] }) })
+    ] }, `bottle-${bx}`)),
+    [-0.27, -0.09, 0.09, 0.27].map((bx) => /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { position: [bx, 1.12, 0.21], children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bottleMaterial, position: [0, 0, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.05, 0.06, 0.4, 12] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bottleMaterial, position: [0, 0.27, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.025, 0.04, 0.12, 10] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bottleCapMaterial, position: [0, 0.35, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.028, 0.028, 0.025, 10] }) })
+    ] }, `bottle2-${bx}`)),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: labelBgMaterial, position: [0, 2.65, 0.33], castShadow: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.94, 0.22, 0.022] }) }),
+    [-0.28, -0.21, -0.14, -0.07].map((lx, i2) => (
+      // biome-ignore lint/suspicious/noArrayIndexKey: static label
+      /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: labelTextMaterial, position: [lx, 2.65, 0.342], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.048, 0.13, 8e-3] }) }, `l1-${i2}`)
+    )),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: labelTextMaterial, position: [0, 2.65, 0.342], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.018, 0.022, 8e-3] }) }),
+    [0.08, 0.16, 0.24].map((lx, i2) => (
+      // biome-ignore lint/suspicious/noArrayIndexKey: static label
+      /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: labelTextMaterial, position: [lx, 2.65, 0.342], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.06, 0.13, 8e-3] }) }, `l2-${i2}`)
+    )),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: chromeMaterial, position: [0, 2.82, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1.06, 0.08, 0.7] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: darkRedMaterial, position: [0, 2.88, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1, 0.06, 0.66] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: chromeMaterial, position: [0, 0.62, 0.332], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.62, 0.16, 0.018] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: buttonMaterial, position: [-0.16, 0.62, 0.342], castShadow: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.05, 0.05, 0.025, 16] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: chromeMaterial, position: [-0.16, 0.62, 0.34], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.058, 0.058, 0.018, 16] }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       "mesh",
       {
         ref: screenRef,
         material: screenMaterial,
-        position: [0, 0.45, 0.36],
-        children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.7, 0.35, 0.02] })
+        position: [0.13, 0.62, 0.343],
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.24, 0.09, 0.01] })
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: labelMaterial, position: [0, 2.1, 0.36], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.85, 0.25, 0.02] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: chromeMaterial, position: [0.3, 0.7, 0.36], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.12, 0.04, 0.02] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: chromeMaterial, position: [0, 0.7, 0.36], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.5, 0.18, 0.02] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "mesh",
-      {
-        material: new MeshToonMaterial({
-          color: "#ff0000",
-          emissive: "#880000",
-          emissiveIntensity: 0.5
-        }),
-        position: [-0.15, 0.7, 0.375],
-        children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.04, 0.04, 0.02, 8] })
-      }
-    ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: blackMaterial, position: [0, 0.18, 0.36], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.5, 0.1, 0.02] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: chromeMaterial, position: [-0.35, -0.05, 0.2], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.08, 0.1, 0.08] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: chromeMaterial, position: [0.35, -0.05, 0.2], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.08, 0.1, 0.08] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: chromeMaterial, position: [-0.35, -0.05, -0.2], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.08, 0.1, 0.08] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: chromeMaterial, position: [0.35, -0.05, -0.2], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.08, 0.1, 0.08] }) }),
-    purchaseCount < 2 && /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "points",
-      {
-        ref: particleRef,
-        geometry: particleGeometry,
-        material: particleMaterial,
-        position: [0, 0, 0]
-      }
-    ),
-    purchaseCount >= 2 && /* @__PURE__ */ jsxRuntimeExports.jsxs("mesh", { position: [0, 1.2, 0.37], children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1, 2.4, 0.01] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("meshToonMaterial", { color: "#333333", transparent: true, opacity: 0.5 })
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: blackMaterial, position: [0.13, 0.62, 0.341], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.27, 0.12, 0.012] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: chromeMaterial, position: [0.36, 0.62, 0.342], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.06, 0.1, 0.022] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: blackMaterial, position: [0.36, 0.62, 0.354], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.028, 5e-3, 5e-3] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: blackMaterial, position: [0, 0.42, 0.34], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.42, 0.13, 0.015] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: darkRedMaterial, position: [0, 0.51, 0.348], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.44, 0.04, 0.012] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: rustDarkMat, position: [-0.42, 2.25, 0.327], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.18, 0.22, 5e-3] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: rustLightMat, position: [0.4, 0.32, 0.327], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.12, 0.14, 5e-3] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: darkRedMaterial, position: [0.46, 1.4, 0.31], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.08, 0.18, 8e-3] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: blackMaterial, position: [-0.45, 0.03, 0.28], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.04, 0.05, 0.06, 8] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: blackMaterial, position: [0.45, 0.03, 0.28], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.04, 0.05, 0.06, 8] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: blackMaterial, position: [-0.45, 0.03, -0.28], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.04, 0.05, 0.06, 8] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: blackMaterial, position: [0.45, 0.03, -0.28], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.04, 0.05, 0.06, 8] }) }),
+    purchaseCount >= 2 && /* @__PURE__ */ jsxRuntimeExports.jsxs("mesh", { position: [0, 1.5, 0.355], children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1.02, 2.5, 5e-3] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("meshStandardMaterial", { color: "#1a1a1a", transparent: true, opacity: 0.55 })
     ] })
   ] });
 }
+const JuggernogMachine = reactExports.memo(JuggernogMachineInner);
 const RING_INNER_RADIUS = 78;
 const RING_DEPTH = 28;
 const BASE_HEIGHT = 8;
@@ -81839,84 +82350,230 @@ function MountainBarrier() {
 }
 const PACK_A_PUNCH_POSITION = [15, 0, -12];
 const PACK_A_PUNCH_INTERACT_RANGE = 3.5;
-function PackAPunchMachine({ upgradeTier }) {
+let __papBodyMatCache = null;
+function buildGrimyMetalMaterial() {
+  if (__papBodyMatCache) return __papBodyMatCache;
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    const fallback = new MeshStandardMaterial({
+      color: "#2a2a2e",
+      roughness: 0.6,
+      metalness: 0.7
+    });
+    __papBodyMatCache = fallback;
+    return fallback;
+  }
+  ctx.fillStyle = "#26262b";
+  ctx.fillRect(0, 0, size, size);
+  for (let i2 = 0; i2 < 40; i2++) {
+    const x3 = Math.random() * size;
+    const y2 = Math.random() * size;
+    const r2 = 12 + Math.random() * 28;
+    const grd = ctx.createRadialGradient(x3, y2, 0, x3, y2, r2);
+    grd.addColorStop(0, "rgba(80, 80, 88, 0.35)");
+    grd.addColorStop(1, "rgba(80, 80, 88, 0)");
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(x3, y2, r2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  for (let i2 = 0; i2 < 22; i2++) {
+    const x3 = Math.random() * size;
+    const y2 = Math.random() * size;
+    const r2 = 3 + Math.random() * 12;
+    const grd = ctx.createRadialGradient(x3, y2, 0, x3, y2, r2);
+    grd.addColorStop(0, "rgba(8, 6, 10, 0.95)");
+    grd.addColorStop(1, "rgba(8, 6, 10, 0)");
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(x3, y2, r2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  for (let i2 = 0; i2 < 50; i2++) {
+    const x3 = Math.random() * size;
+    const y2 = Math.random() * size;
+    const len = 8 + Math.random() * 28;
+    ctx.strokeStyle = `rgba(${130 + Math.random() * 40}, ${130 + Math.random() * 40}, ${140 + Math.random() * 40}, 0.6)`;
+    ctx.lineWidth = 0.7 + Math.random() * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x3, y2);
+    ctx.lineTo(x3 + (Math.random() - 0.5) * 3, y2 + len);
+    ctx.stroke();
+  }
+  for (let i2 = 0; i2 < 12; i2++) {
+    const x3 = Math.random() * size;
+    const y2 = Math.random() * size;
+    const r2 = 5 + Math.random() * 10;
+    const grd = ctx.createRadialGradient(x3, y2, 0, x3, y2, r2);
+    grd.addColorStop(0, "rgba(100, 50, 20, 0.7)");
+    grd.addColorStop(1, "rgba(100, 50, 20, 0)");
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(x3, y2, r2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const imageData = ctx.getImageData(0, 0, size, size);
+  const data = imageData.data;
+  for (let i2 = 0; i2 < data.length; i2 += 4) {
+    const n = (Math.random() - 0.5) * 20;
+    data[i2] = Math.max(0, Math.min(255, data[i2] + n));
+    data[i2 + 1] = Math.max(0, Math.min(255, data[i2 + 1] + n));
+    data[i2 + 2] = Math.max(0, Math.min(255, data[i2 + 2] + n));
+  }
+  ctx.putImageData(imageData, 0, 0);
+  const tex = new CanvasTexture(canvas);
+  tex.wrapS = RepeatWrapping;
+  tex.wrapT = RepeatWrapping;
+  tex.anisotropy = 4;
+  const mat2 = new MeshStandardMaterial({
+    map: tex,
+    color: "#ffffff",
+    roughness: 0.7,
+    metalness: 0.55
+  });
+  __papBodyMatCache = mat2;
+  return mat2;
+}
+function PackAPunchMachineInner({ upgradeTier }) {
   const glowRef = reactExports.useRef(null);
   const topLightRef = reactExports.useRef(null);
   const screenRef = reactExports.useRef(null);
-  const particleGroupRef = reactExports.useRef(null);
+  const sparkRef = reactExports.useRef(null);
   const tierColor = reactExports.useMemo(() => {
-    if (upgradeTier === 0) return new Color(0.4, 0, 0.8);
-    if (upgradeTier === 1) return new Color(0, 0.4, 1);
-    if (upgradeTier === 2) return new Color(0.6, 0, 1);
-    return new Color(1, 0.75, 0);
+    if (upgradeTier === 0) return new Color(0.5, 0.1, 0.85);
+    if (upgradeTier === 1) return new Color(0, 0.5, 1);
+    if (upgradeTier === 2) return new Color(0.7, 0, 1);
+    return new Color(1, 0.78, 0.05);
   }, [upgradeTier]);
-  const glowMat = reactExports.useMemo(
+  const bodyMat = reactExports.useMemo(() => buildGrimyMetalMaterial(), []);
+  const frameMat = reactExports.useMemo(
     () => new MeshStandardMaterial({
-      color: tierColor,
-      emissive: tierColor,
-      emissiveIntensity: 1.5,
-      transparent: true,
-      opacity: 0.6
+      color: "#16161a",
+      roughness: 0.55,
+      metalness: 0.7
     }),
-    [tierColor]
+    []
+  );
+  const steelMat = reactExports.useMemo(
+    () => new MeshStandardMaterial({
+      color: "#9a9a9e",
+      roughness: 0.5,
+      metalness: 0.85
+    }),
+    []
+  );
+  const rustMat = reactExports.useMemo(
+    () => new MeshStandardMaterial({
+      color: "#7a4020",
+      roughness: 0.95,
+      metalness: 0.2
+    }),
+    []
   );
   const screenMat = reactExports.useMemo(
     () => new MeshStandardMaterial({
       color: tierColor,
       emissive: tierColor,
-      emissiveIntensity: 2
+      emissiveIntensity: 2,
+      roughness: 0.4,
+      metalness: 0
     }),
     [tierColor]
   );
-  const bodyMat = reactExports.useMemo(
+  const coreMat = reactExports.useMemo(
     () => new MeshStandardMaterial({
-      color: new Color(0.08, 0.06, 0.12),
-      roughness: 0.3,
-      metalness: 0.8
+      color: tierColor,
+      emissive: tierColor,
+      emissiveIntensity: 1.8,
+      transparent: true,
+      opacity: 0.85
+    }),
+    [tierColor]
+  );
+  const cableMat = reactExports.useMemo(
+    () => new MeshStandardMaterial({
+      color: "#0c0c10",
+      roughness: 0.9,
+      metalness: 0.1
     }),
     []
   );
-  const accentMat = reactExports.useMemo(
+  const sparkMat = reactExports.useMemo(
     () => new MeshStandardMaterial({
-      color: new Color(0.15, 0.12, 0.2),
-      roughness: 0.2,
-      metalness: 0.9
+      color: tierColor,
+      emissive: tierColor,
+      emissiveIntensity: 2.5,
+      transparent: true,
+      opacity: 0.9
+    }),
+    [tierColor]
+  );
+  const slotInteriorMat = reactExports.useMemo(
+    () => new MeshStandardMaterial({
+      color: "#050508",
+      roughness: 1,
+      metalness: 0
     }),
     []
   );
-  const particleOffsets = reactExports.useMemo(() => {
-    const offsets = [];
+  const gaugeNeedleMat = reactExports.useMemo(
+    () => new MeshStandardMaterial({
+      color: "#c81010",
+      emissive: "#5a0808",
+      emissiveIntensity: 0.4
+    }),
+    []
+  );
+  const warningMat = reactExports.useMemo(
+    () => new MeshStandardMaterial({
+      color: "#9a8020",
+      emissive: "#3a2810",
+      emissiveIntensity: 0.2,
+      roughness: 0.9
+    }),
+    []
+  );
+  const ventGrillMat = reactExports.useMemo(
+    () => new MeshStandardMaterial({
+      color: "#0a0a0e",
+      roughness: 0.95,
+      metalness: 0.4
+    }),
+    []
+  );
+  const sparkOffsets = reactExports.useMemo(() => {
+    const o2 = [];
     for (let i2 = 0; i2 < 8; i2++) {
-      const angle = i2 / 8 * Math.PI * 2;
-      offsets.push([
-        Math.cos(angle) * 0.6,
-        0.5 + Math.random() * 1.5,
-        Math.sin(angle) * 0.6
-      ]);
+      const a2 = i2 / 8 * Math.PI * 2;
+      o2.push([Math.cos(a2) * 0.5, 0, Math.sin(a2) * 0.5]);
     }
-    return offsets;
+    return o2;
   }, []);
   useFrame(() => {
     const t = Date.now() * 1e-3;
     if (glowRef.current) {
       const pulse = 0.5 + 0.5 * Math.sin(t * 2.5);
-      glowRef.current.material.emissiveIntensity = 1 + pulse * 1.5;
-      glowRef.current.material.opacity = 0.3 + pulse * 0.4;
+      glowRef.current.material.emissiveIntensity = 1.2 + pulse * 1.6;
+      glowRef.current.material.opacity = 0.5 + pulse * 0.35;
     }
     if (screenRef.current) {
-      const flicker = 1.5 + Math.sin(t * 7.3) * 0.3 + Math.sin(t * 13.1) * 0.2;
+      const flicker = 1.6 + Math.sin(t * 7.3) * 0.35 + Math.sin(t * 14.1) * 0.2;
       screenRef.current.material.emissiveIntensity = flicker;
     }
     if (topLightRef.current) {
-      topLightRef.current.intensity = 1.5 + Math.sin(t * 2.5) * 0.8;
+      topLightRef.current.intensity = 1.4 + Math.sin(t * 2.5) * 0.7;
       topLightRef.current.color.copy(tierColor);
     }
-    if (particleGroupRef.current) {
-      particleGroupRef.current.children.forEach((child, i2) => {
+    if (sparkRef.current) {
+      sparkRef.current.rotation.y = t * 0.6;
+      sparkRef.current.children.forEach((child, i2) => {
         const offset = i2 / 8 * Math.PI * 2;
-        child.position.y = particleOffsets[i2][1] + Math.sin(t * 1.5 + offset) * 0.3;
-        child.rotation.y = t + offset;
-        const scale = 0.5 + 0.5 * Math.sin(t * 3 + offset);
+        child.position.y = Math.sin(t * 1.8 + offset) * 0.18;
+        const scale = 0.6 + 0.4 * Math.sin(t * 3 + offset);
         child.scale.setScalar(scale * 0.08);
       });
     }
@@ -81927,24 +82584,123 @@ function PackAPunchMachine({ upgradeTier }) {
       "pointLight",
       {
         ref: topLightRef,
-        position: [0, 2.5, 0],
+        position: [0, 2.4, 0],
         intensity: 1.5,
-        distance: 8,
+        distance: 9,
         color: tierColor
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bodyMat, position: [0, 1, 0], castShadow: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1.2, 2, 0.9] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: accentMat, position: [0, 2.1, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1.3, 0.2, 1] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: accentMat, position: [0, 0.05, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1.4, 0.1, 1.1] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { ref: screenRef, material: screenMat, position: [0, 1.3, 0.46], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.8, 0.5, 0.02] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: accentMat, position: [0, 1.3, 0.45], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.9, 0.6, 0.03] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: accentMat, position: [-0.62, 1, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.04, 1.8, 0.85] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: accentMat, position: [0.62, 1, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.04, 1.8, 0.85] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: accentMat, position: [0, 0.5, 0.46], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1.1, 0.06, 0.02] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: accentMat, position: [0, 1.8, 0.46], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1.1, 0.06, 0.02] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { ref: glowRef, material: glowMat, position: [0, 2.5, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.25, 16, 16] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("mesh", { position: [0, 2.5, 0], children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.4, 16, 16] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: frameMat, position: [0, 0.06, 0], castShadow: true, receiveShadow: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1.4, 0.12, 1.1] }) }),
+    [
+      [-0.62, -0.46],
+      [0.62, -0.46],
+      [-0.62, 0.46],
+      [0.62, 0.46]
+    ].map(([cx, cz]) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "mesh",
+      {
+        material: steelMat,
+        position: [cx, 0.06, cz],
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.1, 0.13, 0.1] })
+      },
+      `corner-${cx}-${cz}`
+    )),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bodyMat, position: [0, 1.05, 0], castShadow: true, receiveShadow: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1.2, 1.78, 0.9] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: steelMat, position: [-0.62, 1.05, 0], castShadow: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.04, 1.7, 0.86] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: steelMat, position: [0.62, 1.05, 0], castShadow: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.04, 1.7, 0.86] }) }),
+    [0.2, 0.6, 1, 1.4, 1.8].map((sy) => /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: steelMat, position: [-0.642, sy, 0.36], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.022, 0.022, 0.018, 6] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: steelMat, position: [-0.642, sy, -0.36], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.022, 0.022, 0.018, 6] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: steelMat, position: [0.642, sy, 0.36], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.022, 0.022, 0.018, 6] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: steelMat, position: [0.642, sy, -0.36], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.022, 0.022, 0.018, 6] }) })
+    ] }, `bolts-${sy}`)),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: frameMat, position: [0, 0.4, 0.452], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1.1, 0.04, 0.012] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: frameMat, position: [0, 1.7, 0.452], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1.1, 0.04, 0.012] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: frameMat, position: [0, 1.3, 0.45], castShadow: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.92, 0.62, 0.04] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: frameMat, position: [0, 1.3, 0.471], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.86, 0.56, 0.012] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { ref: screenRef, material: screenMat, position: [0, 1.3, 0.478], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.78, 0.48, 8e-3] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: frameMat, position: [0, 1.35, 0.483], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.76, 4e-3, 5e-3] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: frameMat, position: [0, 1.25, 0.483], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.76, 4e-3, 5e-3] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: frameMat, position: [0, 0.78, 0.45], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.5, 0.06, 0.02] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: slotInteriorMat, position: [0, 0.78, 0.453], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.46, 0.04, 8e-3] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: steelMat, position: [-0.36, 0.78, 0.46], castShadow: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.08, 0.08, 0.04, 12] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: frameMat, position: [-0.36, 0.78, 0.483], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.052, 0.052, 0.012, 10] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "mesh",
+      {
+        material: steelMat,
+        position: [0.36, 0.78, 0.47],
+        rotation: [0, 0, -0.4],
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.05, 0.16, 0.04] })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: frameMat, position: [0.36, 0.7, 0.47], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.038, 0.038, 0.022, 10] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: steelMat, position: [0.46, 1.65, 0.46], castShadow: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.08, 0.08, 0.04, 14] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: frameMat, position: [0.46, 1.65, 0.482], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.058, 0.058, 0.012, 12] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "mesh",
+      {
+        material: gaugeNeedleMat,
+        position: [0.46, 1.665, 0.49],
+        rotation: [0, 0, 0.4],
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.04, 5e-3, 5e-3] })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "mesh",
+      {
+        material: cableMat,
+        position: [-0.5, 1.9, -0.3],
+        rotation: [0.5, 0, 0.2],
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.035, 0.035, 0.6, 8] })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "mesh",
+      {
+        material: cableMat,
+        position: [0.48, 1.95, -0.32],
+        rotation: [0.6, 0, -0.1],
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.028, 0.028, 0.5, 8] })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "mesh",
+      {
+        material: cableMat,
+        position: [-0.3, 0.5, 0.46],
+        rotation: [0, 0, 0.15],
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.018, 0.018, 0.7, 6] })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: frameMat, position: [-0.32, 0.18, 0.46], castShadow: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.06, 0.06, 0.06] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "mesh",
+      {
+        material: warningMat,
+        position: [0.4, 0.5, 0.46],
+        rotation: [0, 0, Math.PI],
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx("coneGeometry", { args: [0.06, 0.012, 3] })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: rustMat, position: [-0.4, 1.6, 0.453], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.14, 0.16, 0.015] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: steelMat, position: [-0.4, 1.68, 0.46], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.16, 0.012, 8e-3] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: steelMat, position: [-0.4, 1.52, 0.46], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.16, 0.012, 8e-3] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: frameMat, position: [0, 1.98, 0], castShadow: true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1.32, 0.08, 1] }) }),
+    [-0.28, -0.14, 0, 0.14, 0.28].map((sx) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "mesh",
+      {
+        material: ventGrillMat,
+        position: [sx, 2.022, 0],
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.04, 0.012, 0.5] })
+      },
+      `vent-${sx}`
+    )),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: steelMat, position: [0, 2.1, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.18, 0.22, 0.06, 14] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: frameMat, position: [0, 2.16, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.14, 0.14, 0.04, 14] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { ref: glowRef, material: coreMat, position: [0, 2.3, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.2, 18, 14] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("mesh", { position: [0, 2.3, 0], children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.32, 16, 12] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         "meshStandardMaterial",
         {
@@ -81952,33 +82708,38 @@ function PackAPunchMachine({ upgradeTier }) {
           emissive: tierColor,
           emissiveIntensity: 0.5,
           transparent: true,
-          opacity: 0.15,
+          opacity: 0.18,
           side: BackSide
         }
       )
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("group", { ref: particleGroupRef, children: particleOffsets.map((offset, i2) => (
-      // biome-ignore lint: pre-existing issue
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("mesh", { position: offset, children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("octahedronGeometry", { args: [1, 0] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "meshStandardMaterial",
-          {
-            color: tierColor,
-            emissive: tierColor,
-            emissiveIntensity: 2,
-            transparent: true,
-            opacity: 0.8
-          }
-        )
-      ] }, i2)
+    /* @__PURE__ */ jsxRuntimeExports.jsx("group", { ref: sparkRef, position: [0, 2.3, 0], children: sparkOffsets.map((o2, i2) => (
+      // biome-ignore lint/suspicious/noArrayIndexKey: static sparks
+      /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: sparkMat, position: o2, children: /* @__PURE__ */ jsxRuntimeExports.jsx("octahedronGeometry", { args: [1, 0] }) }, i2)
     )) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("mesh", { position: [0, 1, 0], children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [1.25, 2.05, 0.95] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("meshBasicMaterial", { color: "#000000", side: BackSide })
-    ] })
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: rustMat, position: [0.42, 0.3, 0.456], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.18, 0.1, 5e-3] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: rustMat, position: [-0.5, 0.22, 0.456], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.1, 0.14, 5e-3] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "mesh",
+      {
+        position: [0.55, 5e-3, 0.62],
+        rotation: [-Math.PI / 2, 0, 0.4],
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("circleGeometry", { args: [0.18, 16] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "meshStandardMaterial",
+            {
+              color: "#08080a",
+              roughness: 0.2,
+              metalness: 0.4
+            }
+          )
+        ]
+      }
+    )
   ] });
 }
+const PackAPunchMachine = reactExports.memo(PackAPunchMachineInner);
 function seededRng(seed) {
   let s2 = seed;
   return () => {
@@ -82019,12 +82780,7 @@ function createTrunkGeometry(trunkHeight, baseRadius, topRadius, seed) {
       const nx = x3 / len;
       const nz = z2 / len;
       const newR = len * baseFlare + ringBump + fiberBump;
-      positions.setXYZ(
-        i2,
-        nx * newR + offsetX,
-        y2,
-        nz * newR + offsetZ
-      );
+      positions.setXYZ(i2, nx * newR + offsetX, y2, nz * newR + offsetZ);
     } else {
       positions.setXYZ(i2, x3 + offsetX, y2, z2 + offsetZ);
     }
@@ -82408,21 +83164,29 @@ function Sun() {
     /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: sunHalo2Mat, children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [16, 20, 14] }) })
   ] });
 }
+const __pbrMatCache = /* @__PURE__ */ new Map();
 function usePBRMat(color, roughness = 0.82, metalness = 0, emissive, emissiveIntensity = 0) {
-  return reactExports.useMemo(
-    () => new MeshStandardMaterial({
+  return reactExports.useMemo(() => {
+    const key = `${color}|${roughness}|${metalness}|${""}|${emissiveIntensity}`;
+    const cached = __pbrMatCache.get(key);
+    if (cached) return cached;
+    const mat2 = new MeshStandardMaterial({
       color: new Color(color),
       roughness,
       metalness,
       emissive: void 0,
       emissiveIntensity
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [color, roughness, metalness, emissive, emissiveIntensity]
-  );
+    });
+    __pbrMatCache.set(key, mat2);
+    return mat2;
+  }, [color, roughness, metalness, emissive, emissiveIntensity]);
 }
+const adobeWallMatCache = /* @__PURE__ */ new Map();
 function useAdobeWallMat(color, seed) {
   return reactExports.useMemo(() => {
+    const cacheKey = `${color}_${seed}`;
+    const cached = adobeWallMatCache.get(cacheKey);
+    if (cached) return cached;
     const size = 512;
     let s2 = seed | 0;
     const rng = () => {
@@ -82502,7 +83266,10 @@ function useAdobeWallMat(color, seed) {
         const n = (rng() - 0.5) * 20;
         img.data[i2] = Math.max(0, Math.min(255, img.data[i2] + n));
         img.data[i2 + 1] = Math.max(0, Math.min(255, img.data[i2 + 1] + n * 0.9));
-        img.data[i2 + 2] = Math.max(0, Math.min(255, img.data[i2 + 2] + n * 0.75));
+        img.data[i2 + 2] = Math.max(
+          0,
+          Math.min(255, img.data[i2 + 2] + n * 0.75)
+        );
       }
       aCtx.putImageData(img, 0, 0);
     }
@@ -82574,7 +83341,7 @@ function useAdobeWallMat(color, seed) {
     bumpTex.wrapT = RepeatWrapping;
     bumpTex.repeat.set(2, 2);
     bumpTex.anisotropy = 8;
-    return new MeshStandardMaterial({
+    const material = new MeshStandardMaterial({
       color: new Color(color),
       map: albedoTex,
       bumpMap: bumpTex,
@@ -82582,7 +83349,39 @@ function useAdobeWallMat(color, seed) {
       roughness: 0.92,
       metalness: 0
     });
+    adobeWallMatCache.set(cacheKey, material);
+    return material;
   }, [color, seed]);
+}
+let __windowGlassMatLit = null;
+let __windowGlassMatDark = null;
+function getSharedWindowGlassMat(hasLight) {
+  if (hasLight) {
+    if (!__windowGlassMatLit) {
+      __windowGlassMatLit = new MeshStandardMaterial({
+        color: new Color(0.9, 0.8, 0.5),
+        roughness: 0.05,
+        metalness: 0.6,
+        emissive: new Color(0.4, 0.3, 0.1),
+        emissiveIntensity: 0.8,
+        transparent: true,
+        opacity: 0.85
+      });
+    }
+    return __windowGlassMatLit;
+  }
+  if (!__windowGlassMatDark) {
+    __windowGlassMatDark = new MeshStandardMaterial({
+      color: new Color(0.04, 0.07, 0.14),
+      roughness: 0.05,
+      metalness: 0.6,
+      emissive: new Color(0.01, 0.02, 0.05),
+      emissiveIntensity: 0.3,
+      transparent: true,
+      opacity: 0.7
+    });
+  }
+  return __windowGlassMatDark;
 }
 function Window({
   position,
@@ -82593,18 +83392,7 @@ function Window({
   hasLight = false
 }) {
   const frameMat = usePBRMat(frameColor, 0.75);
-  const glassMat = reactExports.useMemo(
-    () => new MeshStandardMaterial({
-      color: hasLight ? new Color(0.9, 0.8, 0.5) : new Color(0.04, 0.07, 0.14),
-      roughness: 0.05,
-      metalness: 0.6,
-      emissive: hasLight ? new Color(0.4, 0.3, 0.1) : new Color(0.01, 0.02, 0.05),
-      emissiveIntensity: hasLight ? 0.8 : 0.3,
-      transparent: true,
-      opacity: hasLight ? 0.85 : 0.7
-    }),
-    [hasLight]
-  );
+  const glassMat = getSharedWindowGlassMat(hasLight);
   const sillMat = usePBRMat(frameColor, 0.6);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { position, rotation: [0, rotationY, 0], children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: frameMat, children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [width + 0.14, height + 0.14, 0.12] }) }),
@@ -83145,7 +83933,10 @@ function SandGround() {
       for (let i2 = 0; i2 < img.data.length; i2 += 4) {
         const n = (Math.random() - 0.5) * 38;
         img.data[i2] = Math.max(0, Math.min(255, img.data[i2] + n));
-        img.data[i2 + 1] = Math.max(0, Math.min(255, img.data[i2 + 1] + n * 0.85));
+        img.data[i2 + 1] = Math.max(
+          0,
+          Math.min(255, img.data[i2 + 1] + n * 0.85)
+        );
         img.data[i2 + 2] = Math.max(0, Math.min(255, img.data[i2 + 2] + n * 0.7));
       }
       aCtx.putImageData(img, 0, 0);
@@ -83232,7 +84023,10 @@ function SandGround() {
       const dist = Math.sqrt(x3 * x3 + y2 * y2);
       let influence = 0;
       if (dist > innerRadius) {
-        const t = Math.min(1, (dist - innerRadius) / (outerRadius - innerRadius));
+        const t = Math.min(
+          1,
+          (dist - innerRadius) / (outerRadius - innerRadius)
+        );
         influence = t * t * (3 - 2 * t);
       }
       const noise = Math.sin(x3 * 0.05) * Math.cos(y2 * 0.05) * 0.6 + Math.sin(x3 * 0.12 + y2 * 0.08) * 0.25 + Math.cos(x3 * 0.3 + y2 * 0.2) * 0.08;
@@ -83310,7 +84104,7 @@ function BuildingDispatcher({ b: b2 }) {
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsx(RubblePile, { position: [bx, 0, bz] });
 }
-function DesertEnvironment({
+function DesertEnvironmentInner({
   upgradeTier = 0,
   juggernogPurchaseCount = 0
 }) {
@@ -83381,6 +84175,70 @@ function DesertEnvironment({
     )
   ] });
 }
+const DesertEnvironment = reactExports.memo(DesertEnvironmentInner);
+function easeOutCubic(t) {
+  const c2 = 1 - t;
+  return 1 - c2 * c2 * c2;
+}
+function hash01(seed, ch) {
+  const x3 = Math.sin(seed * 12.9898 + ch * 78.233) * 43758.5453;
+  return x3 - Math.floor(x3);
+}
+function computeRagdollPose(elapsedSec, hitDirX, hitDirZ, initialYaw, startY, groundLyingY, seed, isBoss) {
+  const DURATION = 0.9;
+  const t = Math.min(1, Math.max(0, elapsedSec / DURATION));
+  const e = easeOutCubic(t);
+  const fwdX = Math.sin(initialYaw);
+  const fwdZ = Math.cos(initialYaw);
+  const rgtX = Math.cos(initialYaw);
+  const rgtZ = -Math.sin(initialYaw);
+  const fwdDot = hitDirX * fwdX + hitDirZ * fwdZ;
+  const rgtDot = hitDirX * rgtX + hitDirZ * rgtZ;
+  const totalTilt = Math.PI / 2 * e;
+  const groupPitch = totalTilt * fwdDot;
+  const groupRoll = totalTilt * rgtDot;
+  const groupY = startY + (groundLyingY - startY) * e;
+  const groupYaw = initialYaw;
+  const torsoTargetPitch = 0.15;
+  const torsoTargetRoll = (hash01(seed, 1) - 0.5) * 0.2;
+  const headTargetPitch = 0.4 + hash01(seed, 2) * 0.3;
+  const headTargetRoll = (hash01(seed, 3) - 0.5) * 0.8;
+  const armBase = 0.2 + hash01(seed, 4) * 0.3;
+  const leftArmTargetPitch = armBase + rgtDot * 0.2;
+  const leftArmTargetRoll = 0.4 + (hash01(seed, 5) - 0.5) * 0.4;
+  const rightArmTargetPitch = armBase - rgtDot * 0.2;
+  const rightArmTargetRoll = -0.4 + (hash01(seed, 6) - 0.5) * 0.4;
+  const legSpread = (hash01(seed, 7) - 0.5) * 0.4;
+  const leftLegTargetPitch = 0.3 + hash01(seed, 8) * 0.3 + fwdDot * 0.2;
+  const leftLegTargetRoll = legSpread;
+  const rightLegTargetPitch = 0.3 + hash01(seed, 9) * 0.3 + fwdDot * 0.2;
+  const rightLegTargetRoll = -legSpread;
+  const tHead = Math.min(1, t * 1.3);
+  const tArms = Math.min(1, t * 1.15);
+  const tLegs = Math.min(1, t * 0.95);
+  const eHead = easeOutCubic(tHead);
+  const eArms = easeOutCubic(tArms);
+  const eLegs = easeOutCubic(tLegs);
+  const bossTorsoBoost = isBoss ? 0.1 : 0;
+  return {
+    groupYaw,
+    groupY,
+    groupPitch,
+    groupRoll,
+    torsoPitch: torsoTargetPitch * e + bossTorsoBoost * e,
+    torsoRoll: torsoTargetRoll * e,
+    headPitch: headTargetPitch * eHead,
+    headRoll: headTargetRoll * eHead,
+    leftArmPitch: leftArmTargetPitch * eArms,
+    leftArmRoll: leftArmTargetRoll * eArms,
+    rightArmPitch: rightArmTargetPitch * eArms,
+    rightArmRoll: rightArmTargetRoll * eArms,
+    leftLegPitch: leftLegTargetPitch * eLegs,
+    leftLegRoll: leftLegTargetRoll * eLegs,
+    rightLegPitch: rightLegTargetPitch * eLegs,
+    rightLegRoll: rightLegTargetRoll * eLegs
+  };
+}
 function useStandardMaterial(color, hitFlash = 0) {
   const materialRef = reactExports.useRef(null);
   if (!materialRef.current) {
@@ -83412,7 +84270,12 @@ const Stump = ({
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { position, children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: fleshMat, children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [radius * 1.05, 8, 6] }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bloodMat, position: [0, -radius * 0.2, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [radius * 0.85, 8, 6] }) }),
-    showBoneCore && /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: boneMat, position: [0, radius * 0.05, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [radius * 0.35, radius * 0.35, radius * 0.12, 8] }) }),
+    showBoneCore && /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: boneMat, position: [0, radius * 0.05, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "cylinderGeometry",
+      {
+        args: [radius * 0.35, radius * 0.35, radius * 0.12, 8]
+      }
+    ) }),
     drip && /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bloodMat, position: [0, -radius * 0.85, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("capsuleGeometry", { args: [radius * 0.18, radius * 0.7, 3, 6] }) })
   ] });
 };
@@ -83570,7 +84433,8 @@ function FallingLimb({
 function StandardZombie({
   enemy,
   onHitFlashDone,
-  playerPositionRef
+  playerPositionRef,
+  enemyPositionsRef
 }) {
   const groupRef = reactExports.useRef(null);
   const torsoRef = reactExports.useRef(null);
@@ -83580,18 +84444,20 @@ function StandardZombie({
   const rightLegRef = reactExports.useRef(null);
   const headRef = reactExports.useRef(null);
   const hitFlashRef = reactExports.useRef(0);
-  const skinMat = useStandardMaterial("#7a9470", hitFlashRef.current);
-  const skinPaleMat = useStandardMaterial("#92a888", hitFlashRef.current);
-  const necroMat = useStandardMaterial("#3d5238", hitFlashRef.current);
-  const necroDeepMat = useStandardMaterial("#26321f", hitFlashRef.current);
-  const clothMat = useStandardMaterial("#2e2318", hitFlashRef.current);
-  const clothTornMat = useStandardMaterial("#1e1510", hitFlashRef.current);
-  const bloodMat = useStandardMaterial("#6a0000", hitFlashRef.current);
-  const bloodFreshMat = useStandardMaterial("#8a0a0a", hitFlashRef.current);
-  const fleshMat = useStandardMaterial("#5a1010", hitFlashRef.current);
-  const eyeMat = useStandardMaterial("#0d0d0d", hitFlashRef.current);
-  const boneMat = useStandardMaterial("#d4c89a", hitFlashRef.current);
-  const teethMat = useStandardMaterial("#a89a70", hitFlashRef.current);
+  const lerpTargetRef = reactExports.useRef(new Vector3());
+  const deadMaterialsRef = reactExports.useRef(null);
+  const skinMat = useStandardMaterial("#7a9470");
+  const skinPaleMat = useStandardMaterial("#92a888");
+  const necroMat = useStandardMaterial("#3d5238");
+  const necroDeepMat = useStandardMaterial("#26321f");
+  const clothMat = useStandardMaterial("#2e2318");
+  const clothTornMat = useStandardMaterial("#1e1510");
+  const bloodMat = useStandardMaterial("#6a0000");
+  const bloodFreshMat = useStandardMaterial("#8a0a0a");
+  const fleshMat = useStandardMaterial("#5a1010");
+  const eyeMat = useStandardMaterial("#0d0d0d");
+  const boneMat = useStandardMaterial("#d4c89a");
+  const teethMat = useStandardMaterial("#a89a70");
   const eyeGlowMat = reactExports.useRef(null);
   if (!eyeGlowMat.current) {
     eyeGlowMat.current = new MeshBasicMaterial({
@@ -83604,19 +84470,6 @@ function StandardZombie({
       color: new Color("#ffffff")
     });
   }
-  const allMats = [
-    skinMat,
-    skinPaleMat,
-    necroMat,
-    necroDeepMat,
-    clothMat,
-    clothTornMat,
-    bloodMat,
-    bloodFreshMat,
-    fleshMat,
-    boneMat,
-    teethMat
-  ];
   const [fallingLimbs, setFallingLimbs] = reactExports.useState([]);
   const prevDismember = reactExports.useRef({
     headDetached: false,
@@ -83676,74 +84529,127 @@ function StandardZombie({
   ]);
   useFrame((_2, delta) => {
     if (!groupRef.current) return;
-    const [tx, ty, tz] = enemy.position;
-    groupRef.current.position.lerp(
-      new Vector3(tx, ty, tz),
-      Math.min(delta * 12, 1)
-    );
-    if (!enemy.isDead) {
-      const [px2, , pz2] = playerPositionRef.current;
-      const dx = px2 - tx;
-      const dz = pz2 - tz;
-      if (Math.abs(dx) > 0.01 || Math.abs(dz) > 0.01) {
-        groupRef.current.rotation.y = Math.atan2(dx, dz);
-      }
-      const t = Date.now() * 1e-3;
-      const bob = Math.sin(t * 8) * 0.04;
-      groupRef.current.position.y = ty + bob;
+    if (enemy.isDead) {
+      const refPos2 = enemyPositionsRef.current.get(enemy.id);
+      const baseX = refPos2 ? refPos2[0] : enemy.position[0];
+      const baseZ = refPos2 ? refPos2[2] : enemy.position[2];
+      const elapsed = (Date.now() - enemy.deathTime) / 1e3;
+      const hitDirX = enemy.deathHitDirX ?? 0;
+      const hitDirZ = enemy.deathHitDirZ ?? 1;
+      const yaw = Math.atan2(-hitDirX, -hitDirZ);
+      const seed = enemy.ragdollSeed ?? 0;
+      const pose = computeRagdollPose(
+        elapsed,
+        hitDirX,
+        hitDirZ,
+        yaw,
+        1.2,
+        0.25,
+        seed,
+        false
+      );
+      groupRef.current.position.x = baseX;
+      groupRef.current.position.y = pose.groupY;
+      groupRef.current.position.z = baseZ;
+      groupRef.current.rotation.set(
+        pose.groupPitch,
+        pose.groupYaw,
+        pose.groupRoll
+      );
+      groupRef.current.scale.y = 1;
       if (torsoRef.current) {
-        torsoRef.current.rotation.x = 0.32 + Math.sin(t * 4) * 0.04;
-        torsoRef.current.rotation.z = Math.sin(t * 3.2) * 0.03;
+        torsoRef.current.rotation.set(pose.torsoPitch, 0, pose.torsoRoll);
       }
       if (headRef.current && !enemy.headDetached) {
-        headRef.current.rotation.z = Math.sin(t * 5) * 0.08;
-        headRef.current.rotation.x = Math.sin(t * 3) * 0.04;
+        headRef.current.rotation.set(pose.headPitch, 0, pose.headRoll);
       }
-      if (!enemy.leftArmDetached && leftArmRef.current) {
-        leftArmRef.current.rotation.x = -1.1 + Math.sin(t * 8) * 0.18;
-        leftArmRef.current.rotation.z = 0.15 + Math.sin(t * 4) * 0.06;
+      if (leftArmRef.current && !enemy.leftArmDetached) {
+        leftArmRef.current.rotation.set(pose.leftArmPitch, 0, pose.leftArmRoll);
       }
-      if (!enemy.rightArmDetached && rightArmRef.current) {
-        rightArmRef.current.rotation.x = -1.1 - Math.sin(t * 8) * 0.18;
-        rightArmRef.current.rotation.z = -0.15 - Math.sin(t * 4) * 0.06;
+      if (rightArmRef.current && !enemy.rightArmDetached) {
+        rightArmRef.current.rotation.set(
+          pose.rightArmPitch,
+          0,
+          pose.rightArmRoll
+        );
       }
-      if (!enemy.leftLegDetached && leftLegRef.current) {
-        leftLegRef.current.rotation.x = Math.sin(t * 8) * 0.35;
+      if (leftLegRef.current && !enemy.leftLegDetached) {
+        leftLegRef.current.rotation.set(pose.leftLegPitch, 0, pose.leftLegRoll);
       }
-      if (!enemy.rightLegDetached && rightLegRef.current) {
-        rightLegRef.current.rotation.x = -Math.sin(t * 8) * 0.35;
+      if (rightLegRef.current && !enemy.rightLegDetached) {
+        rightLegRef.current.rotation.set(
+          pose.rightLegPitch,
+          0,
+          pose.rightLegRoll
+        );
       }
+      let mats = deadMaterialsRef.current;
+      if (!mats) {
+        const set = /* @__PURE__ */ new Set();
+        groupRef.current.traverse((child) => {
+          if (child instanceof Mesh) {
+            set.add(child.material);
+          }
+        });
+        mats = Array.from(set);
+        deadMaterialsRef.current = mats;
+        for (const m2 of mats) m2.transparent = true;
+      }
+      if (enemy.corpseState === "fadingOut" && enemy.fadeStartTime !== void 0) {
+        const fadeElapsed = (Date.now() - enemy.fadeStartTime) / 1e3;
+        const opacity = Math.max(0, 1 - fadeElapsed / 0.6);
+        for (const m2 of mats) m2.opacity = opacity;
+      } else {
+        for (const m2 of mats) m2.opacity = 1;
+      }
+      return;
+    }
+    const refPos = enemyPositionsRef.current.get(enemy.id);
+    const tx = refPos ? refPos[0] : enemy.position[0];
+    const ty = refPos ? refPos[1] : enemy.position[1];
+    const tz = refPos ? refPos[2] : enemy.position[2];
+    lerpTargetRef.current.set(tx, ty, tz);
+    groupRef.current.position.lerp(
+      lerpTargetRef.current,
+      Math.min(delta * 12, 1)
+    );
+    const [px2, , pz2] = playerPositionRef.current;
+    const dx = px2 - tx;
+    const dz = pz2 - tz;
+    if (Math.abs(dx) > 0.01 || Math.abs(dz) > 0.01) {
+      groupRef.current.rotation.y = Math.atan2(dx, dz);
+    }
+    const t = Date.now() * 1e-3;
+    const bob = Math.sin(t * 8) * 0.04;
+    groupRef.current.position.y = ty + bob;
+    if (torsoRef.current) {
+      torsoRef.current.rotation.x = 0.32 + Math.sin(t * 4) * 0.04;
+      torsoRef.current.rotation.z = Math.sin(t * 3.2) * 0.03;
+    }
+    if (headRef.current && !enemy.headDetached) {
+      headRef.current.rotation.z = Math.sin(t * 5) * 0.08;
+      headRef.current.rotation.x = Math.sin(t * 3) * 0.04;
+    }
+    if (!enemy.leftArmDetached && leftArmRef.current) {
+      leftArmRef.current.rotation.x = -1.1 + Math.sin(t * 8) * 0.18;
+      leftArmRef.current.rotation.z = 0.15 + Math.sin(t * 4) * 0.06;
+    }
+    if (!enemy.rightArmDetached && rightArmRef.current) {
+      rightArmRef.current.rotation.x = -1.1 - Math.sin(t * 8) * 0.18;
+      rightArmRef.current.rotation.z = -0.15 - Math.sin(t * 4) * 0.06;
+    }
+    if (!enemy.leftLegDetached && leftLegRef.current) {
+      leftLegRef.current.rotation.x = Math.sin(t * 8) * 0.35;
+    }
+    if (!enemy.rightLegDetached && rightLegRef.current) {
+      rightLegRef.current.rotation.x = -Math.sin(t * 8) * 0.35;
     }
     if (enemy.isHit) {
       hitFlashRef.current = Math.min(hitFlashRef.current + delta * 8, 1);
-      for (const mat2 of allMats) {
-        if (mat2)
-          mat2.emissive.setRGB(
-            hitFlashRef.current * 0.7,
-            hitFlashRef.current * 0.05,
-            hitFlashRef.current * 0.05
-          );
-      }
       if (hitFlashRef.current >= 0.9) {
         onHitFlashDone(enemy.id);
         hitFlashRef.current = 0;
       }
-    } else {
-      hitFlashRef.current = Math.max(hitFlashRef.current - delta * 8, 0);
-      for (const mat2 of allMats) {
-        if (mat2) mat2.emissive.setRGB(0, 0, 0);
-      }
-    }
-    if (enemy.isDead) {
-      const elapsed = (Date.now() - enemy.deathTime) / 1e3;
-      const opacity = Math.max(0, 1 - elapsed * 1.5);
-      groupRef.current.scale.y = Math.max(0.01, 1 - elapsed * 1.2);
-      groupRef.current.traverse((child) => {
-        if (child instanceof Mesh) {
-          child.material.opacity = opacity;
-          child.material.transparent = true;
-        }
-      });
     }
   });
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
@@ -83758,120 +84664,290 @@ function StandardZombie({
       limb.id
     )),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { ref: groupRef, position: enemy.position, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { ref: torsoRef, position: [0, 0.1, 0], rotation: [0.32, 0, 0], children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinMat, position: [0, 0, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.62, 0.82, 0.34] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinPaleMat, position: [0, -0.18, 0.13], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.42, 0.32, 0.12] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothMat, position: [0, 0.05, 0.18], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.58, 0.72, 0.02] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothTornMat, position: [-0.32, -0.1, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.02, 0.5, 0.36] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothTornMat, position: [0.32, -0.1, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.02, 0.5, 0.36] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { ref: torsoRef, position: [0, -0.05, 0], rotation: [0.25, 0, 0], children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinMat, position: [0, 0.15, 0], scale: [1, 1, 0.7], children: /* @__PURE__ */ jsxRuntimeExports.jsx("capsuleGeometry", { args: [0.22, 0.3, 10, 20] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "mesh",
+          {
+            material: skinPaleMat,
+            position: [0, -0.13, 0.04],
+            scale: [0.95, 1, 0.62],
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx("capsuleGeometry", { args: [0.2, 0.16, 8, 16] })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "mesh",
+          {
+            material: clothMat,
+            position: [0, 0.05, 0],
+            scale: [1.05, 1.05, 0.72],
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx("capsuleGeometry", { args: [0.23, 0.42, 10, 20] })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinMat, position: [0, 0.05, 0.175], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.06, 0.5, 5e-3] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroDeepMat, position: [0, 0.05, 0.182], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.01, 0.5, 5e-3] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "mesh",
+          {
+            material: clothMat,
+            position: [-0.06, 0.28, 0.165],
+            rotation: [0, 0, 0.35],
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.035, 0.14, 0.018] })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "mesh",
+          {
+            material: clothMat,
+            position: [0.06, 0.28, 0.165],
+            rotation: [0, 0, -0.35],
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.035, 0.14, 0.018] })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothTornMat, position: [-0.12, 0.12, 0.18], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.09, 0.11, 6e-3] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothTornMat, position: [0.12, 0.12, 0.18], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.09, 0.11, 6e-3] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroDeepMat, position: [-0.12, 0.17, 0.184], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.09, 0.022, 5e-3] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroDeepMat, position: [0.12, 0.17, 0.184], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.09, 0.022, 5e-3] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: boneMat, position: [-0.12, 0.17, 0.188], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [9e-3, 9e-3, 3e-3, 8] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: boneMat, position: [0.12, 0.17, 0.188], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [9e-3, 9e-3, 3e-3, 8] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinPaleMat, position: [0.13, -0.02, 0.185], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.09, 0.032, 4e-3] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "mesh",
           {
             material: clothTornMat,
-            position: [-0.12, -0.4, 0.18],
-            rotation: [0.2, 0, 0.1],
-            children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.08, 0.18, 0.02] })
+            position: [-0.14, -0.24, 0.13],
+            rotation: [0.25, 0, 0.18],
+            scale: [1, 1.5, 1],
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.05, 0.13, 0.012] })
           }
         ),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "mesh",
           {
             material: clothTornMat,
-            position: [0.16, -0.42, 0.18],
-            rotation: [0.15, 0, -0.15],
-            children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.06, 0.22, 0.02] })
+            position: [0.16, -0.22, 0.11],
+            rotation: [0.2, 0, -0.22],
+            scale: [1, 1.7, 1],
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.045, 0.14, 0.012] })
           }
         ),
-        [-0.18, -0.05, 0.08, 0.21].map((yOff, i2) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: static geometry array
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "mesh",
-              {
-                material: boneMat,
-                position: [-0.18, yOff, 0.185],
-                rotation: [0, 0, 0.28],
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.22, 0.045, 0.025] })
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "mesh",
-              {
-                material: boneMat,
-                position: [0.18, yOff, 0.185],
-                rotation: [0, 0, -0.28],
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.22, 0.045, 0.025] })
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "mesh",
-              {
-                material: fleshMat,
-                position: [0, yOff + 0.022, 0.183],
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.32, 0.012, 0.02] })
-              }
-            )
-          ] }, i2)
-        )),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: boneMat, position: [0, 0.04, 0.19], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.045, 0.42, 0.025] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroDeepMat, position: [-0.22, 0.18, 0.18], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.14, 0.22, 0.012] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroMat, position: [-0.22, 0.18, 0.185], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.1, 0.18, 8e-3] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bloodMat, position: [0.1, 0.1, 0.19], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.18, 0.22, 0.01] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bloodFreshMat, position: [0.13, 0.16, 0.193], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.08, 0.1, 8e-3] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bloodMat, position: [-0.08, -0.15, 0.19], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.12, 0.14, 0.01] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bloodFreshMat, position: [0.15, -0.05, 0.193], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.025, 0.28, 8e-3] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: eyeMat, position: [0.05, 0, 0.192], children: /* @__PURE__ */ jsxRuntimeExports.jsx("circleGeometry", { args: [0.05, 10] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: fleshMat, position: [0.05, 0, 0.191], children: /* @__PURE__ */ jsxRuntimeExports.jsx("ringGeometry", { args: [0.05, 0.07, 12] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinMat, position: [0, 0.5, -0.04], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.2, 0.18, 0.2] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroDeepMat, position: [-0.06, 0.5, 0.07], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.015, 0.16, 5e-3] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroDeepMat, position: [0.06, 0.5, 0.07], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.015, 0.16, 5e-3] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "mesh",
+          {
+            material: clothTornMat,
+            position: [0.04, -0.26, 0.14],
+            rotation: [0.3, 0, 0.04],
+            scale: [1, 1.4, 1],
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.05, 0.11, 0.012] })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bloodMat, position: [-0.06, 0.18, 0.184], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.038, 8, 6] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bloodFreshMat, position: [0.04, -0.05, 0.184], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.03, 8, 6] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "mesh",
+          {
+            material: bloodMat,
+            position: [-0.11, -0.12, 0.178],
+            scale: [0.6, 2.4, 1],
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.018, 6, 5] })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "mesh",
+          {
+            material: bloodFreshMat,
+            position: [0.14, 0.02, 0.184],
+            scale: [0.5, 1.8, 1],
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.016, 6, 5] })
+          }
+        ),
+        !enemy.headDetached && /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinMat, position: [0, 0.36, -0.01], children: /* @__PURE__ */ jsxRuntimeExports.jsx("capsuleGeometry", { args: [0.062, 0.1, 6, 12] }) }),
         enemy.headDetached && /* @__PURE__ */ jsxRuntimeExports.jsx(
           Stump,
           {
-            position: [0, 0.62, -0.04],
-            radius: 0.13,
+            position: [0, 0.4, -0.01],
+            radius: 0.08,
             bloodMat,
             boneMat,
             fleshMat
           }
         ),
+        !enemy.headDetached && /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinMat, position: [0, 0.36, 0.05], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.025, 8, 6] }) }),
         !enemy.headDetached && /* @__PURE__ */ jsxRuntimeExports.jsxs(
           "group",
           {
             ref: headRef,
-            position: [0, 0.72, -0.06],
+            position: [0, 0.52, -0.02],
             userData: { isHead: true },
             children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "mesh",
                 {
                   material: skinMat,
-                  position: [0, 0, 0],
+                  position: [0, 0.02, 0],
+                  scale: [1, 1.1, 1.05],
                   userData: { isHead: true },
-                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.46, 0.52, 0.44] })
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.16, 24, 20] })
                 }
               ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroMat, position: [0, 0.18, 0.22], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.38, 0.1, 0.02] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroDeepMat, position: [-0.21, 0.08, 0.1], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.04, 0.14, 0.16] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bloodFreshMat, position: [-0.225, 0.06, 0.1], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.015, 0.1, 0.12] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinMat, position: [0, -0.2, 0.04], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.38, 0.16, 0.38] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: eyeMat, position: [0, -0.16, 0.22], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.22, 0.1, 0.02] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: fleshMat, position: [0, -0.16, 0.215], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.18, 0.07, 5e-3] }) }),
-              [-0.085, -0.04, 0, 0.04, 0.085].map((tx) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: skinMat,
+                  position: [0, -0.11, 0.025],
+                  scale: [0.88, 0.55, 0.95],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.15, 18, 14] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: necroMat,
+                  position: [0, 0.1, 0.135],
+                  scale: [1.8, 0.5, 0.1],
+                  rotation: [0.15, 0, 0],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.085, 12, 8] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: necroDeepMat,
+                  position: [-0.145, 0.04, 0.05],
+                  scale: [0.35, 1.3, 1.5],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.045, 8, 6] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: bloodFreshMat,
+                  position: [-0.15, 0.025, 0.05],
+                  scale: [0.3, 1, 1.5],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.038, 8, 6] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: necroMat,
+                  position: [-0.13, -0.04, 0.105],
+                  scale: [0.5, 1.1, 0.5],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.04, 10, 8] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: necroMat,
+                  position: [0.13, -0.04, 0.105],
+                  scale: [0.5, 1.1, 0.5],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.04, 10, 8] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: eyeMat,
+                  position: [-0.075, 0.03, 0.13],
+                  scale: [1, 0.8, 0.4],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.042, 10, 8] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: eyeMat,
+                  position: [0.075, 0.03, 0.13],
+                  scale: [1, 0.8, 0.4],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.042, 10, 8] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: teethMat, position: [-0.075, 0.03, 0.142], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.027, 12, 10] }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: teethMat, position: [0.075, 0.03, 0.142], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.027, 12, 10] }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("mesh", { position: [-0.075, 0.03, 0.16], children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.016, 10, 8] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("primitive", { object: eyeGlowMat.current, attach: "material" })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("mesh", { position: [0.075, 0.03, 0.16], children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.016, 10, 8] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("primitive", { object: eyeGlowMat.current, attach: "material" })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: necroMat,
+                  position: [-0.075, 0.085, 0.145],
+                  rotation: [0, 0, -0.2],
+                  scale: [1.7, 0.45, 0.35],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.04, 10, 8] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: necroMat,
+                  position: [0.075, 0.085, 0.145],
+                  rotation: [0, 0, 0.2],
+                  scale: [1.7, 0.45, 0.35],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.04, 10, 8] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: skinPaleMat,
+                  position: [0, -0.015, 0.16],
+                  rotation: [0.6, 0, 0],
+                  scale: [0.55, 1.5, 0.85],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.032, 10, 8] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: skinPaleMat,
+                  position: [0, 0.025, 0.15],
+                  rotation: [0.3, 0, 0],
+                  scale: [0.3, 1.4, 0.6],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.022, 8, 6] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: eyeMat, position: [-0.018, -0.05, 0.17], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [9e-3, 6, 5] }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: eyeMat, position: [0.018, -0.05, 0.17], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [9e-3, 6, 5] }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: eyeMat,
+                  position: [0, -0.105, 0.145],
+                  scale: [1.3, 0.7, 0.55],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.07, 14, 10] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: fleshMat,
+                  position: [0, -0.115, 0.15],
+                  scale: [1, 0.4, 0.5],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.05, 10, 8] })
+                }
+              ),
+              [-0.055, -0.028, 0, 0.028, 0.055].map((tx) => /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "mesh",
                 {
                   material: teethMat,
-                  position: [tx, -0.118, 0.222],
-                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.028, 0.045, 0.018] })
+                  position: [tx, -0.075, 0.163],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.018, 0.03, 0.015] })
                 },
                 `top-${tx}`
               )),
-              [-0.06, -0.015, 0.03, 0.075].map((tx) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+              [-0.04, -0.012, 0.02, 0.045].map((tx) => /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "mesh",
                 {
                   material: teethMat,
-                  position: [tx, -0.198, 0.222],
-                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.024, 0.04, 0.018] })
+                  position: [tx, -0.13, 0.163],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.016, 0.026, 0.015] })
                 },
                 `bot-${tx}`
               )),
@@ -83879,56 +84955,142 @@ function StandardZombie({
                 "mesh",
                 {
                   material: teethMat,
-                  position: [0.11, -0.12, 0.222],
+                  position: [0.072, -0.092, 0.163],
                   rotation: [0, 0, -0.1],
-                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("coneGeometry", { args: [0.018, 0.07, 4] })
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("coneGeometry", { args: [0.011, 0.048, 6] })
                 }
               ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bloodFreshMat, position: [-0.04, -0.24, 0.225], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.02, 0.12, 5e-3] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: eyeMat, position: [-0.13, 0.06, 0.22], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.13, 0.11, 0.05] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: eyeMat, position: [0.13, 0.06, 0.22], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.13, 0.11, 0.05] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: teethMat, position: [-0.13, 0.06, 0.235], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.045, 8, 6] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: teethMat, position: [0.13, 0.06, 0.235], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.045, 8, 6] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("mesh", { position: [-0.13, 0.06, 0.255], children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.025, 6, 6] }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("primitive", { object: eyeGlowMat.current, attach: "material" })
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("mesh", { position: [0.13, 0.06, 0.255], children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.025, 6, 6] }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("primitive", { object: eyeGlowMat.current, attach: "material" })
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bloodMat, position: [-0.13, -0.02, 0.232], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.014, 0.08, 5e-3] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroMat, position: [0, 0.14, 0.22], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.42, 0.06, 0.04] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroDeepMat, position: [-0.13, 0.13, 0.235], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.12, 0.04, 0.012] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroDeepMat, position: [0.13, 0.13, 0.235], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.12, 0.04, 0.012] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroMat, position: [-0.22, -0.02, 0.18], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.06, 0.1, 0.06] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroMat, position: [0.22, -0.02, 0.18], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.06, 0.1, 0.06] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroDeepMat, position: [-0.18, -0.05, 0.205], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.05, 0.08, 0.012] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroDeepMat, position: [0.18, -0.05, 0.205], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.05, 0.08, 0.012] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: fleshMat, position: [0.08, 0, 0.225], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.025, 0.18, 8e-3] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bloodMat, position: [-0.05, -0.1, 0.23], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.1, 0.12, 5e-3] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bloodFreshMat, position: [0.1, 0.15, 0.23], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.06, 0.06, 5e-3] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bloodMat, position: [0.04, -0.05, 0.232], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.025, 0.32, 5e-3] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothMat, position: [0, 0.28, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.48, 0.08, 0.46] }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: necroDeepMat,
+                  position: [0, -0.06, 0.155],
+                  scale: [1.4, 0.3, 0.4],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("torusGeometry", { args: [0.05, 0.012, 6, 16] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: bloodFreshMat,
+                  position: [-0.03, -0.17, 0.16],
+                  scale: [1, 2.8, 1],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [9e-3, 6, 5] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: bloodMat,
+                  position: [0.04, -0.16, 0.16],
+                  scale: [1, 2, 1],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [7e-3, 6, 5] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: fleshMat,
+                  position: [0.06, -0.01, 0.155],
+                  rotation: [0, 0, 0.4],
+                  scale: [0.3, 1.6, 0.3],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.03, 8, 6] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: bloodMat,
+                  position: [0.03, -0.04, 0.16],
+                  scale: [0.3, 3.2, 0.3],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.02, 6, 5] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: bloodMat,
+                  position: [-0.06, -0.06, 0.16],
+                  scale: [0.5, 2.5, 0.3],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.016, 6, 5] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: bloodFreshMat,
+                  position: [0.085, 0.105, 0.16],
+                  scale: [1.2, 1, 0.3],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.022, 8, 6] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: skinMat,
+                  position: [-0.16, 0.01, 0.02],
+                  rotation: [0, -0.3, 0],
+                  scale: [0.25, 1, 0.65],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.05, 10, 8] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: skinMat,
+                  position: [0.16, 0.01, 0.02],
+                  rotation: [0, 0.3, 0],
+                  scale: [0.25, 1, 0.65],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.05, 10, 8] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: fleshMat,
+                  position: [-0.17, -0.02, 0.015],
+                  scale: [0.18, 0.55, 0.35],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.032, 8, 6] })
+                }
+              ),
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "mesh",
                 {
                   material: clothMat,
-                  position: [-0.16, 0.34, -0.05],
+                  position: [0, 0.14, -0.01],
+                  scale: [1.18, 0.75, 1.12],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.16, 18, 12] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: clothMat,
+                  position: [-0.09, 0.17, -0.04],
                   rotation: [-0.2, 0, -0.3],
-                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.08, 0.1, 0.06] })
+                  scale: [0.65, 1.3, 0.65],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.055, 10, 8] })
                 }
               ),
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "mesh",
                 {
                   material: clothMat,
-                  position: [0.18, 0.32, 0.08],
+                  position: [0.11, 0.16, 0.04],
                   rotation: [0.1, 0, 0.4],
-                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.06, 0.12, 0.06] })
+                  scale: [0.6, 1.4, 0.6],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.05, 10, 8] })
                 }
               ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: fleshMat, position: [0.05, 0.32, 0.05], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.18, 5e-3, 0.16] }) })
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: fleshMat,
+                  position: [0.04, 0.18, 0.02],
+                  scale: [1.5, 0.2, 1.3],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.06, 10, 8] })
+                }
+              )
             ]
           }
         ),
@@ -83936,47 +85098,89 @@ function StandardZombie({
           "group",
           {
             ref: leftArmRef,
-            position: [-0.38, 0.28, 0],
+            position: [-0.3, 0.18, 0],
             rotation: [-1.1, 0, 0.15],
             children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothMat, position: [0, -0.2, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.2, 0.38, 0.2] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinMat, position: [0, -0.52, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.17, 0.34, 0.17] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroDeepMat, position: [0, -0.5, 0.087], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.012, 0.28, 5e-3] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroMat, position: [0, -0.74, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.16, 0.16, 0.1] }) }),
-              [-0.05, 0, 0.05].map((fx, i2) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: static geometry array
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinPaleMat, position: [fx, -0.85, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.025, 0.12, 0.025] }) }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "mesh",
-                    {
-                      material: boneMat,
-                      position: [fx, -0.93, 5e-3],
-                      rotation: [0.2, 0, 0],
-                      children: /* @__PURE__ */ jsxRuntimeExports.jsx("coneGeometry", { args: [0.014, 0.05, 4] })
-                    }
-                  )
-                ] }, i2)
-              )),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothMat, position: [0, 0, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.085, 14, 10] }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothMat, position: [0, -0.2, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("capsuleGeometry", { args: [0.06, 0.36, 8, 14] }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinMat, position: [0, -0.41, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.06, 12, 10] }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinMat, position: [0, -0.6, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("capsuleGeometry", { args: [0.052, 0.34, 8, 14] }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroDeepMat, position: [0, -0.58, 0.048], children: /* @__PURE__ */ jsxRuntimeExports.jsx("capsuleGeometry", { args: [5e-3, 0.24, 3, 6] }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroDeepMat, position: [-0.025, -0.6, 0.045], children: /* @__PURE__ */ jsxRuntimeExports.jsx("capsuleGeometry", { args: [4e-3, 0.2, 3, 6] }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothTornMat, position: [0, -0.42, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.07, 0.07, 0.04, 14] }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinPaleMat, position: [0, -0.79, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.05, 12, 10] }) }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "mesh",
                 {
                   material: skinPaleMat,
-                  position: [0.07, -0.82, 0],
-                  rotation: [0, 0, -0.4],
-                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.022, 0.08, 0.022] })
+                  position: [0, -0.86, 8e-3],
+                  scale: [1, 1.1, 0.55],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.06, 14, 10] })
                 }
               ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothTornMat, position: [0.1, -0.38, 0.1], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.04, 0.18, 0.04] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bloodMat, position: [0.09, -0.45, 0.09], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.04, 0.1, 0.02] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: fleshMat, position: [-0.087, -0.55, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [5e-3, 0.08, 0.04] }) })
+              [-0.038, -0.012, 0.015, 0.04].map((fx, idx) => /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "mesh",
+                  {
+                    material: skinPaleMat,
+                    position: [fx, -0.97, 5e-3],
+                    rotation: [idx * 0.04, 0, 0],
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx("capsuleGeometry", { args: [0.011, 0.085, 4, 8] })
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "mesh",
+                  {
+                    material: boneMat,
+                    position: [fx, -1.05, 0.012],
+                    rotation: [0.4, 0, 0],
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx("coneGeometry", { args: [0.01, 0.038, 5] })
+                  }
+                )
+              ] }, `l-finger-${fx}`)),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: skinPaleMat,
+                  position: [-0.067, -0.93, 5e-3],
+                  rotation: [0, 0, 0.7],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("capsuleGeometry", { args: [0.011, 0.07, 4, 8] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: boneMat,
+                  position: [-0.092, -0.96, 0.012],
+                  rotation: [0, 0, 1.4],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("coneGeometry", { args: [9e-3, 0.034, 5] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: fleshMat,
+                  position: [-0.05, -0.5, 0],
+                  scale: [0.4, 1.4, 1.4],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.032, 8, 6] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: bloodFreshMat,
+                  position: [-0.052, -0.56, 0.03],
+                  scale: [0.3, 2.5, 0.5],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.014, 6, 5] })
+                }
+              )
             ]
           }
         ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
           Stump,
           {
-            position: [-0.38, 0.28, 0],
-            radius: 0.12,
+            position: [-0.3, 0.18, 0],
+            radius: 0.1,
             bloodMat,
             boneMat,
             fleshMat
@@ -83986,83 +85190,189 @@ function StandardZombie({
           "group",
           {
             ref: rightArmRef,
-            position: [0.38, 0.28, 0],
-            rotation: [-1.1, 0, -0.15],
+            position: [0.3, 0.18, 0],
+            rotation: [-1, 0, -0.15],
             children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothMat, position: [0, -0.2, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.2, 0.38, 0.2] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinMat, position: [0, -0.52, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.17, 0.34, 0.17] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroDeepMat, position: [0, -0.5, 0.087], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.012, 0.28, 5e-3] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroMat, position: [0, -0.74, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.16, 0.16, 0.1] }) }),
-              [-0.05, 0, 0.05].map((fx, i2) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: static geometry array
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinPaleMat, position: [fx, -0.85, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.025, 0.12, 0.025] }) }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "mesh",
-                    {
-                      material: boneMat,
-                      position: [fx, -0.93, 5e-3],
-                      rotation: [0.2, 0, 0],
-                      children: /* @__PURE__ */ jsxRuntimeExports.jsx("coneGeometry", { args: [0.014, 0.05, 4] })
-                    }
-                  )
-                ] }, i2)
-              )),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothMat, position: [0, 0, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.085, 14, 10] }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothMat, position: [0, -0.2, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("capsuleGeometry", { args: [0.06, 0.36, 8, 14] }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinMat, position: [0, -0.41, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.06, 12, 10] }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinMat, position: [0, -0.6, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("capsuleGeometry", { args: [0.052, 0.34, 8, 14] }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroDeepMat, position: [0, -0.58, 0.048], children: /* @__PURE__ */ jsxRuntimeExports.jsx("capsuleGeometry", { args: [5e-3, 0.24, 3, 6] }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothTornMat, position: [0, -0.42, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.07, 0.07, 0.04, 14] }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinPaleMat, position: [0, -0.79, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.05, 12, 10] }) }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "mesh",
                 {
                   material: skinPaleMat,
-                  position: [-0.07, -0.82, 0],
-                  rotation: [0, 0, 0.4],
-                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.022, 0.08, 0.022] })
+                  position: [0, -0.86, 8e-3],
+                  scale: [1, 1.1, 0.55],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.06, 14, 10] })
                 }
               ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothTornMat, position: [-0.1, -0.38, 0.1], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.04, 0.18, 0.04] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: fleshMat, position: [0.087, -0.42, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [5e-3, 0.06, 0.06] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bloodFreshMat, position: [0.088, -0.46, 0.05], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [3e-3, 0.18, 0.012] }) })
+              [-0.038, -0.012, 0.015, 0.04].map((fx, idx) => /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "mesh",
+                  {
+                    material: skinPaleMat,
+                    position: [fx, -0.97, 5e-3],
+                    rotation: [idx * 0.04, 0, 0],
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx("capsuleGeometry", { args: [0.011, 0.085, 4, 8] })
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "mesh",
+                  {
+                    material: boneMat,
+                    position: [fx, -1.05, 0.012],
+                    rotation: [0.4, 0, 0],
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx("coneGeometry", { args: [0.01, 0.038, 5] })
+                  }
+                )
+              ] }, `r-finger-${fx}`)),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: skinPaleMat,
+                  position: [0.067, -0.93, 5e-3],
+                  rotation: [0, 0, -0.7],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("capsuleGeometry", { args: [0.011, 0.07, 4, 8] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: boneMat,
+                  position: [0.092, -0.96, 0.012],
+                  rotation: [0, 0, -1.4],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("coneGeometry", { args: [9e-3, 0.034, 5] })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "mesh",
+                {
+                  material: clothTornMat,
+                  position: [0.08, -0.46, 0.06],
+                  rotation: [0.3, 0, 0.25],
+                  scale: [0.3, 2, 0.5],
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.04, 8, 6] })
+                }
+              )
             ]
           }
         ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
           Stump,
           {
-            position: [0.38, 0.28, 0],
-            radius: 0.12,
+            position: [0.3, 0.18, 0],
+            radius: 0.1,
             bloodMat,
             boneMat,
             fleshMat
           }
         )
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothMat, position: [0, -0.42, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.58, 0.22, 0.32] }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroDeepMat, position: [0, -0.34, 0.16], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.6, 0.05, 0.025] }) }),
-      !enemy.leftLegDetached ? /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { ref: leftLegRef, position: [-0.18, -0.62, 0], children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothTornMat, position: [0, -0.2, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.24, 0.38, 0.24] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothTornMat, position: [0, -0.52, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.2, 0.34, 0.2] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: fleshMat, position: [0.06, -0.5, 0.115], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.05, 0.22, 0.012] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: boneMat, position: [0.06, -0.48, 0.118], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.03, 0.18, 0.012] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: eyeMat, position: [0, -0.74, 0.04], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.22, 0.14, 0.28] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: fleshMat, position: [0, -0.74, 0.2], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.16, 0.08, 0.04] }) })
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "mesh",
+        {
+          material: clothTornMat,
+          position: [0, -0.36, 0],
+          scale: [1, 0.6, 0.6],
+          children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.24, 18, 12] })
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: necroDeepMat, position: [0, -0.3, 0.13], children: /* @__PURE__ */ jsxRuntimeExports.jsx("torusGeometry", { args: [0.23, 0.018, 8, 24] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: boneMat, position: [0, -0.3, 0.155], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.05, 0.035, 0.012] }) }),
+      !enemy.leftLegDetached ? /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { ref: leftLegRef, position: [-0.11, -0.45, 0], children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothTornMat, position: [0, -0.2, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("capsuleGeometry", { args: [0.095, 0.34, 8, 14] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothTornMat, position: [0, -0.4, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.09, 14, 10] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothTornMat, position: [0, -0.58, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("capsuleGeometry", { args: [0.085, 0.32, 8, 14] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "mesh",
+          {
+            material: fleshMat,
+            position: [0.035, -0.58, 0.075],
+            scale: [0.3, 2, 0.3],
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.045, 8, 6] })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "mesh",
+          {
+            material: boneMat,
+            position: [0.035, -0.56, 0.08],
+            scale: [0.25, 1.8, 0.25],
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.032, 8, 6] })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinPaleMat, position: [0, -0.76, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.058, 10, 8] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "mesh",
+          {
+            material: eyeMat,
+            position: [0, -0.78, 0.08],
+            scale: [0.85, 0.5, 1.8],
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.1, 14, 10] })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: eyeMat, position: [0, -0.72, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.088, 0.083, 0.07, 14] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "mesh",
+          {
+            material: necroDeepMat,
+            position: [0, -0.83, 0.08],
+            scale: [0.85, 0.2, 1.8],
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.095, 12, 8] })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: fleshMat, position: [0, -0.78, 0.22], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.035, 8, 6] }) })
       ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
         Stump,
         {
-          position: [-0.18, -0.62, 0],
-          radius: 0.13,
+          position: [-0.11, -0.45, 0],
+          radius: 0.12,
           bloodMat,
           boneMat,
           fleshMat
         }
       ),
-      !enemy.rightLegDetached ? /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { ref: rightLegRef, position: [0.18, -0.62, 0], children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothTornMat, position: [0, -0.2, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.24, 0.38, 0.24] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothTornMat, position: [0, -0.52, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.2, 0.34, 0.2] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: bloodMat, position: [-0.085, -0.45, 0.105], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.012, 0.32, 8e-3] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: eyeMat, position: [0, -0.74, 0.04], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.22, 0.14, 0.28] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: fleshMat, position: [0, -0.74, 0.2], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.16, 0.08, 0.04] }) })
+      !enemy.rightLegDetached ? /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { ref: rightLegRef, position: [0.11, -0.45, 0], children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothTornMat, position: [0, -0.2, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("capsuleGeometry", { args: [0.095, 0.34, 8, 14] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothTornMat, position: [0, -0.4, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.09, 14, 10] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: clothTornMat, position: [0, -0.58, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("capsuleGeometry", { args: [0.085, 0.32, 8, 14] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "mesh",
+          {
+            material: bloodMat,
+            position: [-0.06, -0.5, 0.075],
+            scale: [0.25, 3, 0.3],
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.014, 6, 5] })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: skinPaleMat, position: [0, -0.76, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.058, 10, 8] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "mesh",
+          {
+            material: eyeMat,
+            position: [0, -0.78, 0.08],
+            scale: [0.85, 0.5, 1.8],
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.1, 14, 10] })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: eyeMat, position: [0, -0.72, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.088, 0.083, 0.07, 14] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "mesh",
+          {
+            material: necroDeepMat,
+            position: [0, -0.83, 0.08],
+            scale: [0.85, 0.2, 1.8],
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.095, 12, 8] })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: fleshMat, position: [0, -0.78, 0.22], children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [0.035, 8, 6] }) })
       ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
         Stump,
         {
-          position: [0.18, -0.62, 0],
-          radius: 0.13,
+          position: [0.11, -0.45, 0],
+          radius: 0.12,
           bloodMat,
           boneMat,
           fleshMat
@@ -84074,7 +85384,8 @@ function StandardZombie({
 function BossZombie({
   enemy,
   onHitFlashDone,
-  playerPositionRef
+  playerPositionRef,
+  enemyPositionsRef
 }) {
   const groupRef = reactExports.useRef(null);
   const torsoRef = reactExports.useRef(null);
@@ -84086,17 +85397,19 @@ function BossZombie({
   const eyeGlow1Ref = reactExports.useRef(null);
   const eyeGlow2Ref = reactExports.useRef(null);
   const hitFlashRef = reactExports.useRef(0);
-  const skinMat = useStandardMaterial("#4a5c3a", hitFlashRef.current);
-  const skinPaleMat = useStandardMaterial("#5e7048", hitFlashRef.current);
-  const necroMat = useStandardMaterial("#2e3d22", hitFlashRef.current);
-  const necroDeepMat = useStandardMaterial("#1a2412", hitFlashRef.current);
-  const clothMat = useStandardMaterial("#1a1208", hitFlashRef.current);
-  const clothTornMat = useStandardMaterial("#120e06", hitFlashRef.current);
-  const bloodMat = useStandardMaterial("#6a0000", hitFlashRef.current);
-  const bloodFreshMat = useStandardMaterial("#8a0a0a", hitFlashRef.current);
-  const fleshMat = useStandardMaterial("#5a1010", hitFlashRef.current);
-  const boneMat = useStandardMaterial("#c8c0b0", hitFlashRef.current);
-  const teethMat = useStandardMaterial("#a89a70", hitFlashRef.current);
+  const lerpTargetRef = reactExports.useRef(new Vector3());
+  const deadMaterialsRef = reactExports.useRef(null);
+  const skinMat = useStandardMaterial("#4a5c3a");
+  const skinPaleMat = useStandardMaterial("#5e7048");
+  const necroMat = useStandardMaterial("#2e3d22");
+  const necroDeepMat = useStandardMaterial("#1a2412");
+  const clothMat = useStandardMaterial("#1a1208");
+  const clothTornMat = useStandardMaterial("#120e06");
+  const bloodMat = useStandardMaterial("#6a0000");
+  const bloodFreshMat = useStandardMaterial("#8a0a0a");
+  const fleshMat = useStandardMaterial("#5a1010");
+  const boneMat = useStandardMaterial("#c8c0b0");
+  const teethMat = useStandardMaterial("#a89a70");
   const eyeGlowMat = reactExports.useRef(null);
   if (!eyeGlowMat.current) {
     eyeGlowMat.current = new MeshBasicMaterial({
@@ -84109,19 +85422,6 @@ function BossZombie({
       color: new Color("#0a0000")
     });
   }
-  const allMats = [
-    skinMat,
-    skinPaleMat,
-    necroMat,
-    necroDeepMat,
-    clothMat,
-    clothTornMat,
-    bloodMat,
-    bloodFreshMat,
-    fleshMat,
-    boneMat,
-    teethMat
-  ];
   const [fallingLimbs, setFallingLimbs] = reactExports.useState([]);
   const prevDismember = reactExports.useRef({
     headDetached: false,
@@ -84176,79 +85476,130 @@ function BossZombie({
   ]);
   useFrame((_2, delta) => {
     if (!groupRef.current) return;
-    const [tx, ty, tz] = enemy.position;
-    groupRef.current.position.lerp(
-      new Vector3(tx, ty, tz),
-      Math.min(delta * 8, 1)
-    );
-    if (!enemy.isDead) {
-      const [px2, , pz2] = playerPositionRef.current;
-      const dx = px2 - tx;
-      const dz = pz2 - tz;
-      if (Math.abs(dx) > 0.01 || Math.abs(dz) > 0.01) {
-        groupRef.current.rotation.y = Math.atan2(dx, dz);
-      }
-      const t = Date.now() * 1e-3;
-      const bob = Math.sin(t * 4) * 0.1;
-      groupRef.current.position.y = ty + bob;
+    if (enemy.isDead) {
+      const refPos2 = enemyPositionsRef.current.get(enemy.id);
+      const baseX = refPos2 ? refPos2[0] : enemy.position[0];
+      const baseZ = refPos2 ? refPos2[2] : enemy.position[2];
+      const elapsed = (Date.now() - enemy.deathTime) / 1e3;
+      const hitDirX = enemy.deathHitDirX ?? 0;
+      const hitDirZ = enemy.deathHitDirZ ?? 1;
+      const yaw = Math.atan2(-hitDirX, -hitDirZ);
+      const seed = enemy.ragdollSeed ?? 0;
+      const pose = computeRagdollPose(
+        elapsed,
+        hitDirX,
+        hitDirZ,
+        yaw,
+        1.5,
+        0.35,
+        seed,
+        true
+      );
+      groupRef.current.position.x = baseX;
+      groupRef.current.position.y = pose.groupY;
+      groupRef.current.position.z = baseZ;
+      groupRef.current.rotation.set(
+        pose.groupPitch,
+        pose.groupYaw,
+        pose.groupRoll
+      );
+      groupRef.current.scale.y = 1;
       if (torsoRef.current) {
-        torsoRef.current.rotation.x = 0.28 + Math.sin(t * 2) * 0.05;
-        torsoRef.current.rotation.z = Math.sin(t * 1.6) * 0.04;
+        torsoRef.current.rotation.set(pose.torsoPitch, 0, pose.torsoRoll);
       }
       if (headRef.current && !enemy.headDetached) {
-        headRef.current.rotation.z = Math.sin(t * 2.5) * 0.06;
+        headRef.current.rotation.set(pose.headPitch, 0, pose.headRoll);
       }
-      if (eyeGlowMat.current) {
-        const pulse = 0.7 + Math.sin(t * 6) * 0.3;
-        eyeGlowMat.current.color.setRGB(pulse, pulse * 0.15, 0);
+      if (leftArmRef.current && !enemy.leftArmDetached) {
+        leftArmRef.current.rotation.set(pose.leftArmPitch, 0, pose.leftArmRoll);
       }
-      if (!enemy.leftArmDetached && leftArmRef.current) {
-        leftArmRef.current.rotation.x = -0.9 + Math.sin(t * 4) * 0.15;
-        leftArmRef.current.rotation.z = 0.2 + Math.sin(t * 2) * 0.05;
+      if (rightArmRef.current && !enemy.rightArmDetached) {
+        rightArmRef.current.rotation.set(
+          pose.rightArmPitch,
+          0,
+          pose.rightArmRoll
+        );
       }
-      if (!enemy.rightArmDetached && rightArmRef.current) {
-        rightArmRef.current.rotation.x = -0.9 - Math.sin(t * 4) * 0.15;
-        rightArmRef.current.rotation.z = -0.2 - Math.sin(t * 2) * 0.05;
+      if (leftLegRef.current && !enemy.leftLegDetached) {
+        leftLegRef.current.rotation.set(pose.leftLegPitch, 0, pose.leftLegRoll);
       }
-      if (!enemy.leftLegDetached && leftLegRef.current) {
-        leftLegRef.current.rotation.x = Math.sin(t * 4) * 0.3;
+      if (rightLegRef.current && !enemy.rightLegDetached) {
+        rightLegRef.current.rotation.set(
+          pose.rightLegPitch,
+          0,
+          pose.rightLegRoll
+        );
       }
-      if (!enemy.rightLegDetached && rightLegRef.current) {
-        rightLegRef.current.rotation.x = -Math.sin(t * 4) * 0.3;
+      let mats = deadMaterialsRef.current;
+      if (!mats) {
+        const set = /* @__PURE__ */ new Set();
+        groupRef.current.traverse((child) => {
+          if (child instanceof Mesh) {
+            set.add(child.material);
+          }
+        });
+        mats = Array.from(set);
+        deadMaterialsRef.current = mats;
+        for (const m2 of mats) m2.transparent = true;
       }
+      if (enemy.corpseState === "fadingOut" && enemy.fadeStartTime !== void 0) {
+        const fadeElapsed = (Date.now() - enemy.fadeStartTime) / 1e3;
+        const opacity = Math.max(0, 1 - fadeElapsed / 0.6);
+        for (const m2 of mats) m2.opacity = opacity;
+      } else {
+        for (const m2 of mats) m2.opacity = 1;
+      }
+      return;
+    }
+    const refPos = enemyPositionsRef.current.get(enemy.id);
+    const tx = refPos ? refPos[0] : enemy.position[0];
+    const ty = refPos ? refPos[1] : enemy.position[1];
+    const tz = refPos ? refPos[2] : enemy.position[2];
+    lerpTargetRef.current.set(tx, ty, tz);
+    groupRef.current.position.lerp(
+      lerpTargetRef.current,
+      Math.min(delta * 8, 1)
+    );
+    const [px2, , pz2] = playerPositionRef.current;
+    const dx = px2 - tx;
+    const dz = pz2 - tz;
+    if (Math.abs(dx) > 0.01 || Math.abs(dz) > 0.01) {
+      groupRef.current.rotation.y = Math.atan2(dx, dz);
+    }
+    const t = Date.now() * 1e-3;
+    const bob = Math.sin(t * 4) * 0.1;
+    groupRef.current.position.y = ty + bob;
+    if (torsoRef.current) {
+      torsoRef.current.rotation.x = 0.28 + Math.sin(t * 2) * 0.05;
+      torsoRef.current.rotation.z = Math.sin(t * 1.6) * 0.04;
+    }
+    if (headRef.current && !enemy.headDetached) {
+      headRef.current.rotation.z = Math.sin(t * 2.5) * 0.06;
+    }
+    if (eyeGlowMat.current) {
+      const pulse = 0.7 + Math.sin(t * 6) * 0.3;
+      eyeGlowMat.current.color.setRGB(pulse, pulse * 0.15, 0);
+    }
+    if (!enemy.leftArmDetached && leftArmRef.current) {
+      leftArmRef.current.rotation.x = -0.9 + Math.sin(t * 4) * 0.15;
+      leftArmRef.current.rotation.z = 0.2 + Math.sin(t * 2) * 0.05;
+    }
+    if (!enemy.rightArmDetached && rightArmRef.current) {
+      rightArmRef.current.rotation.x = -0.9 - Math.sin(t * 4) * 0.15;
+      rightArmRef.current.rotation.z = -0.2 - Math.sin(t * 2) * 0.05;
+    }
+    if (!enemy.leftLegDetached && leftLegRef.current) {
+      leftLegRef.current.rotation.x = Math.sin(t * 4) * 0.3;
+    }
+    if (!enemy.rightLegDetached && rightLegRef.current) {
+      rightLegRef.current.rotation.x = -Math.sin(t * 4) * 0.3;
     }
     if (enemy.isHit) {
       hitFlashRef.current = Math.min(hitFlashRef.current + delta * 8, 1);
-      for (const mat2 of allMats) {
-        if (mat2)
-          mat2.emissive.setRGB(
-            hitFlashRef.current * 0.7,
-            hitFlashRef.current * 0.05,
-            hitFlashRef.current * 0.05
-          );
-      }
       if (hitFlashRef.current >= 0.9) {
         onHitFlashDone(enemy.id);
         hitFlashRef.current = 0;
       }
-    } else {
-      hitFlashRef.current = Math.max(hitFlashRef.current - delta * 8, 0);
-      for (const mat2 of allMats) {
-        if (mat2) mat2.emissive.setRGB(0, 0, 0);
-      }
-    }
-    if (enemy.isDead) {
-      const elapsed = (Date.now() - enemy.deathTime) / 1e3;
-      groupRef.current.scale.y = Math.max(0.01, 1 - elapsed * 0.8);
-      groupRef.current.traverse((child) => {
-        if (child instanceof Mesh) {
-          child.material.opacity = Math.max(
-            0,
-            1 - elapsed * 1
-          );
-          child.material.transparent = true;
-        }
-      });
     }
   });
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
@@ -84591,10 +85942,11 @@ function BossZombie({
     ] })
   ] });
 }
-function EnemyMesh({
+function EnemyMeshInner({
   enemy,
   onHitFlashDone,
-  playerPositionRef
+  playerPositionRef,
+  enemyPositionsRef
 }) {
   if (enemy.type === "boss") {
     return /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -84602,7 +85954,8 @@ function EnemyMesh({
       {
         enemy,
         onHitFlashDone,
-        playerPositionRef
+        playerPositionRef,
+        enemyPositionsRef
       }
     );
   }
@@ -84611,10 +85964,12 @@ function EnemyMesh({
     {
       enemy,
       onHitFlashDone,
-      playerPositionRef
+      playerPositionRef,
+      enemyPositionsRef
     }
   );
 }
+const EnemyMesh = reactExports.memo(EnemyMeshInner);
 const NUCLEAR_MACHINE_POSITION = [8, 0, 0];
 const STRIPE_INDICES = [0, 1, 2, 3, 4];
 const BLADE_ANGLES = [0, 1, 2].map((i2) => i2 / 3 * Math.PI * 2 + Math.PI / 6);
@@ -85085,8 +86440,10 @@ const warSkyVertexShader = `
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
+let __warzoneGroundMatCache = null;
 function WarzoneGround() {
   const groundMat = reactExports.useMemo(() => {
+    if (__warzoneGroundMatCache) return __warzoneGroundMatCache;
     const size = 1024;
     const albedoCanvas = document.createElement("canvas");
     albedoCanvas.width = size;
@@ -85188,7 +86545,10 @@ function WarzoneGround() {
         const n = (Math.random() - 0.5) * 30;
         img.data[i2] = Math.max(0, Math.min(255, img.data[i2] + n));
         img.data[i2 + 1] = Math.max(0, Math.min(255, img.data[i2 + 1] + n));
-        img.data[i2 + 2] = Math.max(0, Math.min(255, img.data[i2 + 2] + n * 0.85));
+        img.data[i2 + 2] = Math.max(
+          0,
+          Math.min(255, img.data[i2 + 2] + n * 0.85)
+        );
       }
       aCtx.putImageData(img, 0, 0);
     }
@@ -85282,7 +86642,7 @@ function WarzoneGround() {
     roughTex.wrapS = RepeatWrapping;
     roughTex.wrapT = RepeatWrapping;
     roughTex.repeat.set(15, 15);
-    return new MeshStandardMaterial({
+    const mat2 = new MeshStandardMaterial({
       color: "#5a5550",
       map: albedoTex,
       bumpMap: bumpTex,
@@ -85291,6 +86651,8 @@ function WarzoneGround() {
       roughness: 0.92,
       metalness: 0
     });
+    __warzoneGroundMatCache = mat2;
+    return mat2;
   }, []);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "mesh",
@@ -86480,7 +87842,7 @@ const WATCHTOWERS = [
   { pos: [55, 0, 55], rot: Math.PI + Math.PI / 4 },
   { pos: [-55, 0, 55], rot: Math.PI - Math.PI / 4 }
 ];
-function WarzoneEnvironment({
+function WarzoneEnvironmentInner({
   onActivateNuclear,
   playerPosRef,
   nuclearEventActive = false
@@ -86641,6 +88003,7 @@ function WarzoneEnvironment({
     )
   ] });
 }
+const WarzoneEnvironment = React$4.memo(WarzoneEnvironmentInner);
 const MOVE_SPEED = 8;
 const SPRINT_SPEED = 14;
 const JUMP_VELOCITY = 6;
@@ -86657,7 +88020,9 @@ function FirstPersonCamera({
   isGameActive,
   isPaused,
   extraAABBs = [],
-  world
+  world,
+  isAiming = false,
+  onMovementStateChange
 }) {
   const { camera } = useThree();
   const collisionAABBs = reactExports.useMemo(() => {
@@ -86692,6 +88057,29 @@ function FirstPersonCamera({
   const velocityYRef = reactExports.useRef(0);
   const isGroundedRef = reactExports.useRef(true);
   const posRef = reactExports.useRef(new Vector3(0, PLAYER_HEIGHT, 0));
+  const tmpEulerRef = reactExports.useRef(new Euler(0, 0, 0, "YXZ"));
+  const yawEulerRef = reactExports.useRef(new Euler(0, 0, 0, "YXZ"));
+  const rollEulerRef = reactExports.useRef(new Euler(0, 0, 0, "YXZ"));
+  const forwardRef = reactExports.useRef(new Vector3());
+  const rightVecRef = reactExports.useRef(new Vector3());
+  const moveDirRef = reactExports.useRef(new Vector3());
+  const bobOffsetRef = reactExports.useRef(new Vector3());
+  const playerPosOutRef = reactExports.useRef([
+    0,
+    PLAYER_HEIGHT,
+    0
+  ]);
+  const movementStatePayloadRef = reactExports.useRef({
+    isMoving: false,
+    isSprinting: false,
+    stepPhase: 0
+  });
+  const stepPhaseRef = reactExports.useRef(0);
+  const bobYRef = reactExports.useRef(0);
+  const bobXRef = reactExports.useRef(0);
+  const bobRollRef = reactExports.useRef(0);
+  const sprintAmountRef = reactExports.useRef(0);
+  const lastMovementStateRef = reactExports.useRef({ isMoving: false, isSprinting: false });
   const mouseDownRef = reactExports.useRef(false);
   reactExports.useEffect(() => {
     camera.position.copy(posRef.current);
@@ -86784,16 +88172,16 @@ function FirstPersonCamera({
       return;
     }
     const keys = keysRef.current;
-    const speed = keys.shift ? SPRINT_SPEED : MOVE_SPEED;
-    const euler = new Euler(pitchRef.current, yawRef.current, 0, "YXZ");
-    camera.quaternion.setFromEuler(euler);
-    const forward = new Vector3(0, 0, -1).applyEuler(
-      new Euler(0, yawRef.current, 0)
-    );
-    const right = new Vector3(1, 0, 0).applyEuler(
-      new Euler(0, yawRef.current, 0)
-    );
-    const moveDir = new Vector3();
+    const wantsSprint = keys.shift && !isAiming && keys.w && !keys.s;
+    const speed = wantsSprint ? SPRINT_SPEED : MOVE_SPEED;
+    const tmpEuler = tmpEulerRef.current;
+    tmpEuler.set(pitchRef.current, yawRef.current, 0);
+    camera.quaternion.setFromEuler(tmpEuler);
+    const yawEuler = yawEulerRef.current;
+    yawEuler.set(0, yawRef.current, 0);
+    const forward = forwardRef.current.set(0, 0, -1).applyEuler(yawEuler);
+    const right = rightVecRef.current.set(1, 0, 0).applyEuler(yawEuler);
+    const moveDir = moveDirRef.current.set(0, 0, 0);
     if (keys.w) moveDir.add(forward);
     if (keys.s) moveDir.sub(forward);
     if (keys.a) moveDir.sub(right);
@@ -86844,15 +88232,59 @@ function FirstPersonCamera({
       posRef.current.x *= maxDist / dist;
       posRef.current.z *= maxDist / dist;
     }
+    const isMoving = isGroundedRef.current && (keys.w || keys.a || keys.s || keys.d);
+    const isSprinting = isMoving && wantsSprint;
+    const targetSprintAmount = isSprinting ? 1 : 0;
+    sprintAmountRef.current += (targetSprintAmount - sprintAmountRef.current) * Math.min(delta * 8, 1);
+    if (isMoving) {
+      const stepHz = isSprinting ? 3.8 : 2.5;
+      stepPhaseRef.current += delta * stepHz * Math.PI * 2;
+    } else {
+      stepPhaseRef.current *= 0.92;
+    }
+    let targetBobY = 0;
+    let targetBobX = 0;
+    let targetBobRoll = 0;
+    if (isMoving) {
+      const aimFactor = isAiming ? 0.25 : 1;
+      const sprintBoost = 1 + sprintAmountRef.current * 1.6;
+      const bobStrength = aimFactor * sprintBoost;
+      targetBobY = Math.abs(Math.sin(stepPhaseRef.current)) * 0.025 * bobStrength;
+      targetBobX = Math.sin(stepPhaseRef.current) * 0.015 * bobStrength;
+      targetBobRoll = Math.sin(stepPhaseRef.current) * 0.011 * bobStrength;
+    }
+    bobYRef.current += (targetBobY - bobYRef.current) * Math.min(delta * 12, 1);
+    bobXRef.current += (targetBobX - bobXRef.current) * Math.min(delta * 12, 1);
+    bobRollRef.current += (targetBobRoll - bobRollRef.current) * Math.min(delta * 12, 1);
     camera.position.copy(posRef.current);
+    camera.position.y += bobYRef.current;
+    bobOffsetRef.current.copy(right).multiplyScalar(bobXRef.current);
+    camera.position.add(bobOffsetRef.current);
+    if (Math.abs(bobRollRef.current) > 1e-4) {
+      const rollEuler = rollEulerRef.current;
+      rollEuler.set(pitchRef.current, yawRef.current, bobRollRef.current);
+      camera.quaternion.setFromEuler(rollEuler);
+    }
+    if (onMovementStateChange) {
+      const cached = lastMovementStateRef.current;
+      if (cached.isMoving !== isMoving || cached.isSprinting !== isSprinting) {
+        cached.isMoving = isMoving;
+        cached.isSprinting = isSprinting;
+      }
+      const payload = movementStatePayloadRef.current;
+      payload.isMoving = isMoving;
+      payload.isSprinting = isSprinting;
+      payload.stepPhase = stepPhaseRef.current;
+      onMovementStateChange(payload);
+    }
     if (mouseDownRef.current && isLocked) {
       onFire();
     }
-    onPlayerPositionUpdate([
-      posRef.current.x,
-      posRef.current.y,
-      posRef.current.z
-    ]);
+    const out = playerPosOutRef.current;
+    out[0] = posRef.current.x;
+    out[1] = posRef.current.y;
+    out[2] = posRef.current.z;
+    onPlayerPositionUpdate(out);
   });
   return null;
 }
@@ -88188,9 +89620,7 @@ function NuclearEvent({
       });
     }
     if (falloutParticles.current.length > FALLOUT_COUNT) {
-      falloutParticles.current = falloutParticles.current.slice(
-        -FALLOUT_COUNT
-      );
+      falloutParticles.current = falloutParticles.current.slice(-FALLOUT_COUNT);
     }
   };
   useFrame((_2, delta) => {
@@ -88483,11 +89913,7 @@ function NuclearEvent({
         shockwave2Ref.current.visible = true;
         const sw2Radius = Math.min(280, (swT - 0.4) * 65);
         shockwave2Ref.current.scale.set(sw2Radius / 5, 1, sw2Radius / 5);
-        shockwave2Ref.current.position.set(
-          IMPACT_POINT.x,
-          0.5,
-          IMPACT_POINT.z
-        );
+        shockwave2Ref.current.position.set(IMPACT_POINT.x, 0.5, IMPACT_POINT.z);
         const swMat = shockwave2Ref.current.material;
         swMat.opacity = Math.max(0, 0.45 - (swT - 0.4) * 0.08);
       }
@@ -88929,27 +90355,19 @@ function NuclearEvent({
         ]
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "mesh",
-      {
-        ref: dustSkirtRef,
-        rotation: [-Math.PI / 2, 0, 0],
-        visible: false,
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("circleGeometry", { args: [60, 32] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "meshStandardMaterial",
-            {
-              color: "#a08060",
-              transparent: true,
-              opacity: 0.6,
-              depthWrite: false,
-              side: DoubleSide
-            }
-          )
-        ]
-      }
-    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("mesh", { ref: dustSkirtRef, rotation: [-Math.PI / 2, 0, 0], visible: false, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("circleGeometry", { args: [60, 32] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "meshStandardMaterial",
+        {
+          color: "#a08060",
+          transparent: true,
+          opacity: 0.6,
+          depthWrite: false,
+          side: DoubleSide
+        }
+      )
+    ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "mesh",
       {
@@ -88986,26 +90404,18 @@ function NuclearEvent({
         }
       )
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "mesh",
-      {
-        ref: shockwave2Ref,
-        rotation: [-Math.PI / 2, 0, 0],
-        visible: false,
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("torusGeometry", { args: [5, 1.2, 6, 48] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "meshStandardMaterial",
-            {
-              color: "#aaccff",
-              transparent: true,
-              opacity: 0.45,
-              depthWrite: false
-            }
-          )
-        ]
-      }
-    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("mesh", { ref: shockwave2Ref, rotation: [-Math.PI / 2, 0, 0], visible: false, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("torusGeometry", { args: [5, 1.2, 6, 48] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "meshStandardMaterial",
+        {
+          color: "#aaccff",
+          transparent: true,
+          opacity: 0.45,
+          depthWrite: false
+        }
+      )
+    ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       "pointLight",
       {
@@ -89210,9 +90620,9 @@ function PauseOverlay({ onResume }) {
     }
   );
 }
-function PickupMesh({
+function PickupMeshInner({
   pickup,
-  playerPos,
+  playerPosRef,
   onCollect,
   onPickupSound,
   onHealthPickup,
@@ -89224,6 +90634,7 @@ function PickupMesh({
     if (!meshRef.current || collectedRef.current) return;
     meshRef.current.position.y = pickup.position[1] + Math.sin(Date.now() * 3e-3) * 0.15 + 0.3;
     meshRef.current.rotation.y += delta * 2;
+    const playerPos = playerPosRef.current;
     const dx = playerPos[0] - pickup.position[0];
     const dz = playerPos[2] - pickup.position[2];
     const dist = Math.sqrt(dx * dx + dz * dz);
@@ -89245,6 +90656,7 @@ function PickupMesh({
     /* @__PURE__ */ jsxRuntimeExports.jsx("meshBasicMaterial", { color })
   ] });
 }
+const PickupMesh = reactExports.memo(PickupMeshInner);
 const DESERT_PORTAL_POSITION = [20, 0, 0];
 const WARZONE_PORTAL_POSITION = [0, 0, 20];
 const PORTAL_INTERACT_RANGE = 3;
@@ -89918,14 +91330,30 @@ function Portal({
         /* @__PURE__ */ jsxRuntimeExports.jsx("primitive", { object: haloMat, attach: "material" })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("group", { position: [0, 1.97, 0], children: /* @__PURE__ */ jsxRuntimeExports.jsx(PortalSurface, { theme }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("mesh", { ref: ringRef, position: [0, 1.97, 0.02], scale: [1.05, 1.275, 1], children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("torusGeometry", { args: [1.2, 0.055, 16, 72] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("primitive", { object: ringMat, attach: "material" })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("mesh", { ref: ring2Ref, position: [0, 1.97, 0.04], scale: [1, 1.215, 1], children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("torusGeometry", { args: [1.18, 0.03, 12, 60] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("primitive", { object: ring2Mat, attach: "material" })
-      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "mesh",
+        {
+          ref: ringRef,
+          position: [0, 1.97, 0.02],
+          scale: [1.05, 1.275, 1],
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("torusGeometry", { args: [1.2, 0.055, 16, 72] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("primitive", { object: ringMat, attach: "material" })
+          ]
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "mesh",
+        {
+          ref: ring2Ref,
+          position: [0, 1.97, 0.04],
+          scale: [1, 1.215, 1],
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("torusGeometry", { args: [1.18, 0.03, 12, 60] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("primitive", { object: ring2Mat, attach: "material" })
+          ]
+        }
+      ),
       crackLines.map((crack) => /* @__PURE__ */ jsxRuntimeExports.jsx(
         "mesh",
         {
@@ -90986,12 +92414,13 @@ function PistolModel({
       }
     }
     const targetX = isAiming ? 0 : 0.22;
-    const targetY = (isAiming ? -0.13 : -0.25) - recoilOffset * 0.35;
-    const targetZ = (isAiming ? -0.32 : -0.5) + recoilOffset * 0.08;
+    const targetY = isAiming ? -0.13 : -0.25;
+    const baseZ = isAiming ? -0.32 : -0.5;
+    const targetZ = baseZ + recoilOffset * 0.12;
     groupRef.current.position.x += (targetX - groupRef.current.position.x) * Math.min(delta * 15, 1);
     groupRef.current.position.y += (targetY - groupRef.current.position.y) * Math.min(delta * 15, 1);
     groupRef.current.position.z += (targetZ - groupRef.current.position.z) * Math.min(delta * 15, 1);
-    groupRef.current.rotation.x += (-recoilOffset * 0.3 + tiltX - groupRef.current.rotation.x) * Math.min(delta * 12, 1);
+    groupRef.current.rotation.x += (recoilOffset * 0.35 + tiltX - groupRef.current.rotation.x) * Math.min(delta * 12, 1);
     if (droppedMagRef.current) {
       if (dropMagDataRef.current.active) {
         const elapsed = (performance.now() - dropMagDataRef.current.startTime) / 1e3;
@@ -91339,7 +92768,7 @@ function ShotgunModel({
     if (groupRef.current) {
       const baseZ = isAiming ? -0.42 : -0.65;
       const pumpTotalZ = pumpZ + pumpRecoilRef.current;
-      const targetZ = baseZ + pumpTotalZ * 0.6;
+      const targetZ = baseZ + pumpTotalZ * 0.6 + recoilOffset * 0.25;
       groupRef.current.position.z += (targetZ - groupRef.current.position.z) * Math.min(delta * 25, 1);
     }
     if (shellRef.current) {
@@ -91351,10 +92780,10 @@ function ShotgunModel({
       }
     }
     const targetX = isAiming ? 0.04 : 0.3;
-    const targetY = (isAiming ? -0.18 : -0.3) - recoilOffset * 0.6;
+    const targetY = isAiming ? -0.18 : -0.3;
     groupRef.current.position.x += (targetX - groupRef.current.position.x) * Math.min(delta * 12, 1);
     groupRef.current.position.y += (targetY - groupRef.current.position.y) * Math.min(delta * 12, 1);
-    groupRef.current.rotation.x += (-recoilOffset * 0.55 + tiltX - groupRef.current.rotation.x) * Math.min(delta * 12, 1);
+    groupRef.current.rotation.x += (recoilOffset * 0.6 + tiltX - groupRef.current.rotation.x) * Math.min(delta * 12, 1);
     if (ejectedShellRef.current) {
       if (ejectShellDataRef.current.active) {
         const elapsed = (performance.now() - ejectShellDataRef.current.startTime) / 1e3;
@@ -91697,12 +93126,13 @@ function AssaultRifleModel({
       }
     }
     const targetX = isAiming ? 0.02 : 0.26;
-    const targetY = (isAiming ? -0.14 : -0.26) - recoilOffset * 0.22;
-    const targetZ = isAiming ? -0.36 : -0.55;
+    const targetY = isAiming ? -0.14 : -0.26;
+    const baseZ = isAiming ? -0.36 : -0.55;
+    const targetZ = baseZ + recoilOffset * 0.15;
     groupRef.current.position.x += (targetX - groupRef.current.position.x) * Math.min(delta * 18, 1);
     groupRef.current.position.y += (targetY - groupRef.current.position.y) * Math.min(delta * 18, 1);
     groupRef.current.position.z += (targetZ - groupRef.current.position.z) * Math.min(delta * 18, 1);
-    groupRef.current.rotation.x += (-recoilOffset * 0.2 + tiltX - groupRef.current.rotation.x) * Math.min(delta * 18, 1);
+    groupRef.current.rotation.x += (recoilOffset * 0.22 + tiltX - groupRef.current.rotation.x) * Math.min(delta * 18, 1);
     if (droppedMagRef.current) {
       if (dropMagDataRef.current.active) {
         const elapsed = (performance.now() - dropMagDataRef.current.startTime) / 1e3;
@@ -92174,11 +93604,11 @@ function SniperRifleModel({
       boltRef.current.position.y += (boltY - boltRef.current.position.y) * Math.min(delta * 25, 1);
       boltRef.current.position.z += (boltZ - boltRef.current.position.z) * Math.min(delta * 25, 1);
     }
-    const targetY = -0.27 - recoilOffset * 0.45;
-    const targetZ = -0.72 + recoilOffset * 0.1;
+    const targetY = -0.27;
+    const targetZ = -0.72 + recoilOffset * 0.3;
     groupRef.current.position.y += (targetY - groupRef.current.position.y) * Math.min(delta * 12, 1);
     groupRef.current.position.z += (targetZ - groupRef.current.position.z) * Math.min(delta * 12, 1);
-    groupRef.current.rotation.x += (-recoilOffset * 0.4 + tiltX - groupRef.current.rotation.x) * Math.min(delta * 12, 1);
+    groupRef.current.rotation.x += (recoilOffset * 0.45 + tiltX - groupRef.current.rotation.x) * Math.min(delta * 12, 1);
     if (ejectedShellRef.current) {
       if (ejectShellDataRef.current.active) {
         const elapsed = (performance.now() - ejectShellDataRef.current.startTime) / 1e3;
@@ -92294,11 +93724,7 @@ function SniperRifleModel({
         "mesh",
         {
           material: fluteMat,
-          position: [
-            Math.cos(angle) * r2,
-            0.015 + Math.sin(angle) * r2,
-            -0.38
-          ],
+          position: [Math.cos(angle) * r2, 0.015 + Math.sin(angle) * r2, -0.38],
           rotation: [Math.PI / 2, 0, 0],
           children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [5e-3, 0.6, 3e-3] })
         },
@@ -92339,17 +93765,10 @@ function SniperRifleModel({
       },
       `brake-slot-${s2.id}`
     )),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "mesh",
-      {
-        position: [0, 0.015, -0.86],
-        rotation: [Math.PI / 2, 0, 0],
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.013, 0.013, 0.012, 14] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("meshBasicMaterial", { color: "#000000" })
-        ]
-      }
-    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("mesh", { position: [0, 0.015, -0.86], rotation: [Math.PI / 2, 0, 0], children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.013, 0.013, 0.012, 14] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("meshBasicMaterial", { color: "#000000" })
+    ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: steelMat, position: [0, -5e-3, -0.22], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.04, 0.022, 0.05] }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: steelDarkMat, position: [0, -0.018, -0.22], children: /* @__PURE__ */ jsxRuntimeExports.jsx("boxGeometry", { args: [0.046, 0.012, 0.04] }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -92370,14 +93789,7 @@ function SniperRifleModel({
         children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [6e-3, 6e-3, 0.06, 8] })
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "mesh",
-      {
-        material: rubberMat,
-        position: [-0.092, -0.185, -0.218],
-        children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.011, 0.011, 0.012, 8] })
-      }
-    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: rubberMat, position: [-0.092, -0.185, -0.218], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.011, 0.011, 0.012, 8] }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       "mesh",
       {
@@ -92396,14 +93808,7 @@ function SniperRifleModel({
         children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [6e-3, 6e-3, 0.06, 8] })
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "mesh",
-      {
-        material: rubberMat,
-        position: [0.092, -0.185, -0.218],
-        children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.011, 0.011, 0.012, 8] })
-      }
-    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: rubberMat, position: [0.092, -0.185, -0.218], children: /* @__PURE__ */ jsxRuntimeExports.jsx("cylinderGeometry", { args: [0.011, 0.011, 0.012, 8] }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       "mesh",
       {
@@ -92630,16 +94035,44 @@ function WeaponViewModel({
   upgradeTier,
   lastFireTime,
   reloadProgress,
-  isAiming = false
+  isAiming = false,
+  movementStateRef
 }) {
   const { camera } = useThree();
   const groupRef = reactExports.useRef(null);
-  useFrame(() => {
+  const swayGroupRef = reactExports.useRef(null);
+  const sprintBlendRef = reactExports.useRef(0);
+  useFrame((_2, delta) => {
     if (!groupRef.current) return;
     groupRef.current.position.copy(camera.position);
     groupRef.current.quaternion.copy(camera.quaternion);
+    if (!swayGroupRef.current) return;
+    const sway = swayGroupRef.current;
+    const ms = movementStateRef == null ? void 0 : movementStateRef.current;
+    const isMoving = (ms == null ? void 0 : ms.isMoving) ?? false;
+    const isSprinting = (ms == null ? void 0 : ms.isSprinting) ?? false;
+    const stepPhase = (ms == null ? void 0 : ms.stepPhase) ?? 0;
+    const wantsSprint = isSprinting && !isReloading && !isAiming;
+    const target = wantsSprint ? 1 : 0;
+    sprintBlendRef.current += (target - sprintBlendRef.current) * Math.min(delta * 8, 1);
+    const sb = sprintBlendRef.current;
+    const aimReduce = isAiming ? 0.15 : 1;
+    const walkAmp = isMoving ? 1 : 0;
+    const sprintBoost = 1 + sb * 1.4;
+    const swayAmount = aimReduce * walkAmp * sprintBoost;
+    const walkBobY = Math.abs(Math.sin(stepPhase)) * 0.012 * swayAmount;
+    const walkBobX = Math.sin(stepPhase) * 0.014 * swayAmount;
+    const walkRoll = Math.sin(stepPhase) * 0.025 * swayAmount;
+    const sprintPosX = sb * 0.08;
+    const sprintPosY = sb * -0.06;
+    const sprintPosZ = sb * 0.04;
+    const sprintRotY = sb * -0.4;
+    const sprintRotZ = sb * -0.45;
+    const sprintRotX = sb * 0.15;
+    sway.position.set(sprintPosX + walkBobX, sprintPosY + walkBobY, sprintPosZ);
+    sway.rotation.set(sprintRotX, sprintRotY, sprintRotZ + walkRoll);
   });
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { ref: groupRef, children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("group", { ref: groupRef, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { ref: swayGroupRef, children: [
     weapon === "pistol" && /* @__PURE__ */ jsxRuntimeExports.jsx(
       PistolModel,
       {
@@ -92683,7 +94116,7 @@ function WeaponViewModel({
         reloadProgress
       }
     )
-  ] });
+  ] }) });
 }
 const HEADSHOT_DAMAGE_MULTIPLIER = 1.5;
 const JUGGERNOG_INTERACT_RANGE = 3.5;
@@ -92699,7 +94132,6 @@ const WARZONE_EXTRA_AABBS = [
   SPEED_COLA_AABB
 ];
 const EMPTY_AABBS = [];
-let bloodEffectIdCounter = 0;
 function isHeadHit(hitObject) {
   let current = hitObject;
   while (current) {
@@ -92734,13 +94166,18 @@ function RaycastShooter({
           const obj = hit.object;
           let current = obj;
           let enemyId = null;
+          let isCorpse = false;
           while (current) {
+            if (current.userData.isCorpse) {
+              isCorpse = true;
+            }
             if (current.userData.enemyId) {
               enemyId = current.userData.enemyId;
               break;
             }
             current = current.parent;
           }
+          if (isCorpse) continue;
           if (enemyId) {
             const headshot = isHeadHit(obj);
             const finalDamage = headshot ? Math.round(damage * HEADSHOT_DAMAGE_MULTIPLIER) : damage;
@@ -92763,11 +94200,42 @@ function EnemyUpdater({
   playerPos,
   onPlayerHit,
   updatePositions,
-  isPaused
+  isPaused,
+  enemiesRef,
+  cullCorpses
 }) {
+  const { camera } = useThree();
+  const frustumRef = reactExports.useRef(new Frustum());
+  const projScreenMatrixRef = reactExports.useRef(new Matrix4());
+  const sphereRef = reactExports.useRef(new Sphere(new Vector3(), 1.5));
+  const visibleIdsRef = reactExports.useRef(/* @__PURE__ */ new Set());
+  const cullAccumRef = reactExports.useRef(0);
   useFrame((_2, delta) => {
     if (isPaused) return;
     updatePositions(playerPos.current, delta, onPlayerHit);
+    cullAccumRef.current += delta;
+    if (cullAccumRef.current < 0.25) return;
+    cullAccumRef.current = 0;
+    camera.updateMatrixWorld();
+    projScreenMatrixRef.current.multiplyMatrices(
+      camera.projectionMatrix,
+      camera.matrixWorldInverse
+    );
+    frustumRef.current.setFromProjectionMatrix(projScreenMatrixRef.current);
+    const list = enemiesRef.current;
+    const visibleIds = visibleIdsRef.current;
+    visibleIds.clear();
+    for (let i2 = 0; i2 < list.length; i2++) {
+      const e = list[i2];
+      if (!e.isDead) continue;
+      const r2 = e.type === "boss" ? 2.5 : 1.5;
+      sphereRef.current.center.set(e.position[0], e.position[1], e.position[2]);
+      sphereRef.current.radius = r2;
+      if (frustumRef.current.intersectsSphere(sphereRef.current)) {
+        visibleIds.add(e.id);
+      }
+    }
+    cullCorpses(visibleIds);
   });
   return null;
 }
@@ -92781,7 +94249,8 @@ function CameraFOVController({
     let targetFov = 75;
     if (isAiming) {
       if (weapon === "assault_rifle") targetFov = 52;
-      else if (weapon === "sniper_rifle") targetFov = 75;
+      else if (weapon === "sniper_rifle")
+        targetFov = 75;
       else targetFov = 60;
     }
     const lerpSpeed = Math.min(delta * 12, 1);
@@ -92801,13 +94270,18 @@ function GameScene({ onGameOver }) {
   const [nearJuggernog, setNearJuggernog] = reactExports.useState(false);
   const [nearNuclearMachine, setNearNuclearMachine] = reactExports.useState(false);
   const [nearSpeedCola, setNearSpeedCola] = reactExports.useState(false);
-  const [bloodEffects, setBloodEffects] = reactExports.useState([]);
+  const bloodEffectsRef = reactExports.useRef(null);
   const [currentWorld, setCurrentWorld] = reactExports.useState("desert");
   const [nearPortal, setNearPortal] = reactExports.useState(false);
   const [teleportOverlay, setTeleportOverlay] = reactExports.useState(0);
   const [isTeleporting, setIsTeleporting] = reactExports.useState(false);
   const currentWorldRef = reactExports.useRef("desert");
   const isTeleportingRef = reactExports.useRef(false);
+  const movementStateRef = reactExports.useRef({
+    isMoving: false,
+    isSprinting: false,
+    stepPhase: 0
+  });
   const [nuclearEventActive, setNuclearEventActive] = reactExports.useState(false);
   const [nuclearCountdownNum, setNuclearCountdownNum] = reactExports.useState(
     null
@@ -92843,6 +94317,8 @@ function GameScene({ onGameOver }) {
   } = useWeaponSystem(speedColaSystem.reloadMultiplier);
   const {
     enemies,
+    enemiesRef,
+    enemyPositionsRef,
     pickups,
     score,
     points,
@@ -92854,7 +94330,8 @@ function GameScene({ onGameOver }) {
     clearHitFlash,
     updateEnemyPositions,
     collectPickup,
-    clearDeadEnemies
+    clearDeadEnemies,
+    cullCorpses
   } = useEnemySystem();
   const {
     playGunshot,
@@ -93181,18 +94658,15 @@ function GameScene({ onGameOver }) {
   ]);
   const handleEnemyHit = reactExports.useCallback(
     (id, damage, isHeadshot, hitPoint) => {
-      var _a3, _b3;
+      var _a3, _b3, _c2;
       const result = damageEnemy(id, damage, isHeadshot, hitPoint);
-      const shotDir = new Vector3(0, 0, -1);
       const intensity = result.isDismemberment ? 2.5 : 1;
-      const newEffect = {
-        id: bloodEffectIdCounter++,
-        position: [hitPoint.x, hitPoint.y, hitPoint.z],
-        direction: [shotDir.x, shotDir.y, shotDir.z],
+      (_a3 = bloodEffectsRef.current) == null ? void 0 : _a3.add(
+        [hitPoint.x, hitPoint.y, hitPoint.z],
+        [0, 0, -1],
         intensity
-      };
-      setBloodEffects((prev) => [...prev, newEffect]);
-      (_a3 = bloodDecalsRef.current) == null ? void 0 : _a3.addBloodSplatter([
+      );
+      (_b3 = bloodDecalsRef.current) == null ? void 0 : _b3.addBloodSplatter([
         hitPoint.x,
         hitPoint.y,
         hitPoint.z
@@ -93200,7 +94674,7 @@ function GameScene({ onGameOver }) {
       if (result.killed) {
         killsRef.current += 1;
         if (isHeadshot) headshotsRef.current += 1;
-        (_b3 = bloodDecalsRef.current) == null ? void 0 : _b3.addBloodPool([
+        (_c2 = bloodDecalsRef.current) == null ? void 0 : _c2.addBloodPool([
           hitPoint.x,
           hitPoint.y,
           hitPoint.z
@@ -93216,9 +94690,6 @@ function GameScene({ onGameOver }) {
     },
     [damageEnemy]
   );
-  const removeBloodEffect = reactExports.useCallback((id) => {
-    setBloodEffects((prev) => prev.filter((e) => e.id !== id));
-  }, []);
   const handleHealthPickup = reactExports.useCallback(
     (amount) => {
       setHealth((prev) => Math.min(maxHealth, prev + amount));
@@ -93245,6 +94716,26 @@ function GameScene({ onGameOver }) {
     (count, show) => {
       setNuclearCountdownNum(count);
       setShowNuclearCountdownHUD(show);
+    },
+    []
+  );
+  const handleActivateNuclear = reactExports.useCallback(() => {
+    setNuclearEventActive(true);
+  }, []);
+  const handleNuclearComplete = reactExports.useCallback(() => {
+    setNuclearEventActive(false);
+  }, []);
+  const handleSpeedColaPurchaseStub = reactExports.useCallback(() => {
+  }, []);
+  const handlePlayerPositionUpdate = reactExports.useCallback(
+    (pos) => {
+      playerPosRef.current = pos;
+    },
+    []
+  );
+  const handleMovementStateChange = reactExports.useCallback(
+    (s2) => {
+      movementStateRef.current = s2;
     },
     []
   );
@@ -93307,7 +94798,7 @@ function GameScene({ onGameOver }) {
             /* @__PURE__ */ jsxRuntimeExports.jsx(
               WarzoneEnvironment,
               {
-                onActivateNuclear: () => setNuclearEventActive(true),
+                onActivateNuclear: handleActivateNuclear,
                 playerPosRef,
                 nuclearEventActive
               }
@@ -93325,8 +94816,7 @@ function GameScene({ onGameOver }) {
               SpeedColaMachine,
               {
                 isPurchased: speedColaSystem.isPurchased,
-                onPurchase: () => {
-                }
+                onPurchase: handleSpeedColaPurchaseStub
               }
             )
           ] }),
@@ -93334,7 +94824,7 @@ function GameScene({ onGameOver }) {
             NuclearEvent,
             {
               active: nuclearEventActive,
-              onComplete: () => setNuclearEventActive(false),
+              onComplete: handleNuclearComplete,
               playerPosRef,
               destroyedBuildingIds,
               flashRef: nuclearFlashRef,
@@ -93345,14 +94835,14 @@ function GameScene({ onGameOver }) {
             FirstPersonCamera,
             {
               isLocked,
-              onPlayerPositionUpdate: (pos) => {
-                playerPosRef.current = pos;
-              },
+              onPlayerPositionUpdate: handlePlayerPositionUpdate,
               onFire: handleFire,
               isGameActive,
               isPaused,
               extraAABBs: currentWorld === "warzone" ? WARZONE_EXTRA_AABBS : EMPTY_AABBS,
-              world: currentWorld
+              world: currentWorld,
+              isAiming,
+              onMovementStateChange: handleMovementStateChange
             }
           ),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -93371,7 +94861,8 @@ function GameScene({ onGameOver }) {
               upgradeTier: weaponState.upgradeTier,
               lastFireTime: weaponState.lastFireTime,
               reloadProgress: weaponState.reloadProgress,
-              isAiming
+              isAiming,
+              movementStateRef
             }
           ),
           /* @__PURE__ */ jsxRuntimeExports.jsx(RaycastShooter, { onHit: handleEnemyHit, isActive: isGameActive }),
@@ -93381,33 +94872,34 @@ function GameScene({ onGameOver }) {
               playerPos: playerPosRef,
               onPlayerHit: handlePlayerHit,
               updatePositions: updateEnemyPositions,
-              isPaused
+              isPaused,
+              enemiesRef,
+              cullCorpses
             }
           ),
           /* @__PURE__ */ jsxRuntimeExports.jsx(BloodDecals, { ref: bloodDecalsRef }),
-          enemies.map((enemy) => /* @__PURE__ */ jsxRuntimeExports.jsx("group", { userData: { enemyId: enemy.id }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-            EnemyMesh,
+          /* @__PURE__ */ jsxRuntimeExports.jsx(BloodEffectsManager, { ref: bloodEffectsRef }),
+          enemies.map((enemy) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "group",
             {
-              enemy,
-              onHitFlashDone: clearHitFlash,
-              playerPositionRef: playerPosRef
-            }
-          ) }, enemy.id)),
-          bloodEffects.map((effect) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-            BloodParticles,
-            {
-              position: effect.position,
-              direction: effect.direction,
-              intensity: effect.intensity,
-              onComplete: () => removeBloodEffect(effect.id)
+              userData: { enemyId: enemy.id, isCorpse: enemy.isDead },
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                EnemyMesh,
+                {
+                  enemy,
+                  onHitFlashDone: clearHitFlash,
+                  playerPositionRef: playerPosRef,
+                  enemyPositionsRef
+                }
+              )
             },
-            effect.id
+            enemy.id
           )),
           pickups.map((pickup) => /* @__PURE__ */ jsxRuntimeExports.jsx(
             PickupMesh,
             {
               pickup,
-              playerPos: playerPosRef.current,
+              playerPosRef,
               onCollect: collectPickup,
               onPickupSound: playPickup,
               onHealthPickup: handleHealthPickup,
@@ -93501,6 +94993,16 @@ const UserRole = Variant({
   "user": Null,
   "guest": Null
 });
+const Clan = Record({
+  "id": Text,
+  "tag": Text,
+  "members": Vec(Principal2),
+  "ownerPrincipal": Principal2,
+  "name": Text,
+  "createdAt": Int,
+  "description": Text,
+  "inviteCode": Text
+});
 const PlayerProfile$1 = Record({
   "username": Opt(Text),
   "totalHeadshots": Nat,
@@ -93509,6 +95011,15 @@ const PlayerProfile$1 = Record({
   "currentLevel": Nat,
   "totalPoints": Nat,
   "totalKills": Nat
+});
+const ChatType = Variant({ "clan": Text, "global": Null });
+const ChatMessage = Record({
+  "id": Text,
+  "authorUsername": Text,
+  "content": Text,
+  "timestamp": Int,
+  "chatType": ChatType,
+  "authorPrincipal": Principal2
 });
 const ScoreEntry = Record({
   "wave": Nat,
@@ -93524,9 +95035,23 @@ const SessionStats = Record({
 Service({
   "_initializeAccessControl": Func([], [], []),
   "assignCallerUserRole": Func([Principal2, UserRole], [], []),
+  "createClan": Func(
+    [Text, Text, Text],
+    [Variant({ "ok": Clan, "err": Text })],
+    []
+  ),
+  "getAllClans": Func([], [Vec(Clan)], ["query"]),
   "getCallerUserProfile": Func([], [Opt(PlayerProfile$1)], ["query"]),
   "getCallerUserRole": Func([], [UserRole], ["query"]),
+  "getClan": Func([Text], [Opt(Clan)], ["query"]),
+  "getClanMessages": Func(
+    [],
+    [Variant({ "ok": Vec(ChatMessage), "err": Text })],
+    ["query"]
+  ),
+  "getGlobalMessages": Func([], [Vec(ChatMessage)], ["query"]),
   "getHighScores": Func([], [Vec(ScoreEntry)], ["query"]),
+  "getMyClan": Func([], [Opt(Clan)], ["query"]),
   "getOrCreateProfile": Func([], [PlayerProfile$1], []),
   "getProfile": Func([Principal2], [Opt(PlayerProfile$1)], ["query"]),
   "getUserProfile": Func(
@@ -93536,7 +95061,27 @@ Service({
   ),
   "getUsername": Func([], [Opt(Text)], ["query"]),
   "isCallerAdmin": Func([], [Bool], ["query"]),
+  "joinClanByCode": Func(
+    [Text],
+    [Variant({ "ok": Clan, "err": Text })],
+    []
+  ),
+  "leaveClan": Func(
+    [],
+    [Variant({ "ok": Null, "err": Text })],
+    []
+  ),
   "saveCallerUserProfile": Func([PlayerProfile$1], [], []),
+  "sendClanMessage": Func(
+    [Text],
+    [Variant({ "ok": ChatMessage, "err": Text })],
+    []
+  ),
+  "sendGlobalMessage": Func(
+    [Text],
+    [Variant({ "ok": ChatMessage, "err": Text })],
+    []
+  ),
   "setUsername": Func(
     [Text],
     [Variant({ "ok": Null, "err": Text })],
@@ -93555,6 +95100,16 @@ const idlFactory = ({ IDL: IDL2 }) => {
     "user": IDL2.Null,
     "guest": IDL2.Null
   });
+  const Clan2 = IDL2.Record({
+    "id": IDL2.Text,
+    "tag": IDL2.Text,
+    "members": IDL2.Vec(IDL2.Principal),
+    "ownerPrincipal": IDL2.Principal,
+    "name": IDL2.Text,
+    "createdAt": IDL2.Int,
+    "description": IDL2.Text,
+    "inviteCode": IDL2.Text
+  });
   const PlayerProfile2 = IDL2.Record({
     "username": IDL2.Opt(IDL2.Text),
     "totalHeadshots": IDL2.Nat,
@@ -93563,6 +95118,15 @@ const idlFactory = ({ IDL: IDL2 }) => {
     "currentLevel": IDL2.Nat,
     "totalPoints": IDL2.Nat,
     "totalKills": IDL2.Nat
+  });
+  const ChatType2 = IDL2.Variant({ "clan": IDL2.Text, "global": IDL2.Null });
+  const ChatMessage2 = IDL2.Record({
+    "id": IDL2.Text,
+    "authorUsername": IDL2.Text,
+    "content": IDL2.Text,
+    "timestamp": IDL2.Int,
+    "chatType": ChatType2,
+    "authorPrincipal": IDL2.Principal
   });
   const ScoreEntry2 = IDL2.Record({
     "wave": IDL2.Nat,
@@ -93578,9 +95142,23 @@ const idlFactory = ({ IDL: IDL2 }) => {
   return IDL2.Service({
     "_initializeAccessControl": IDL2.Func([], [], []),
     "assignCallerUserRole": IDL2.Func([IDL2.Principal, UserRole2], [], []),
+    "createClan": IDL2.Func(
+      [IDL2.Text, IDL2.Text, IDL2.Text],
+      [IDL2.Variant({ "ok": Clan2, "err": IDL2.Text })],
+      []
+    ),
+    "getAllClans": IDL2.Func([], [IDL2.Vec(Clan2)], ["query"]),
     "getCallerUserProfile": IDL2.Func([], [IDL2.Opt(PlayerProfile2)], ["query"]),
     "getCallerUserRole": IDL2.Func([], [UserRole2], ["query"]),
+    "getClan": IDL2.Func([IDL2.Text], [IDL2.Opt(Clan2)], ["query"]),
+    "getClanMessages": IDL2.Func(
+      [],
+      [IDL2.Variant({ "ok": IDL2.Vec(ChatMessage2), "err": IDL2.Text })],
+      ["query"]
+    ),
+    "getGlobalMessages": IDL2.Func([], [IDL2.Vec(ChatMessage2)], ["query"]),
     "getHighScores": IDL2.Func([], [IDL2.Vec(ScoreEntry2)], ["query"]),
+    "getMyClan": IDL2.Func([], [IDL2.Opt(Clan2)], ["query"]),
     "getOrCreateProfile": IDL2.Func([], [PlayerProfile2], []),
     "getProfile": IDL2.Func(
       [IDL2.Principal],
@@ -93594,7 +95172,27 @@ const idlFactory = ({ IDL: IDL2 }) => {
     ),
     "getUsername": IDL2.Func([], [IDL2.Opt(IDL2.Text)], ["query"]),
     "isCallerAdmin": IDL2.Func([], [IDL2.Bool], ["query"]),
+    "joinClanByCode": IDL2.Func(
+      [IDL2.Text],
+      [IDL2.Variant({ "ok": Clan2, "err": IDL2.Text })],
+      []
+    ),
+    "leaveClan": IDL2.Func(
+      [],
+      [IDL2.Variant({ "ok": IDL2.Null, "err": IDL2.Text })],
+      []
+    ),
     "saveCallerUserProfile": IDL2.Func([PlayerProfile2], [], []),
+    "sendClanMessage": IDL2.Func(
+      [IDL2.Text],
+      [IDL2.Variant({ "ok": ChatMessage2, "err": IDL2.Text })],
+      []
+    ),
+    "sendGlobalMessage": IDL2.Func(
+      [IDL2.Text],
+      [IDL2.Variant({ "ok": ChatMessage2, "err": IDL2.Text })],
+      []
+    ),
     "setUsername": IDL2.Func(
       [IDL2.Text],
       [IDL2.Variant({ "ok": IDL2.Null, "err": IDL2.Text })],
@@ -93654,32 +95252,102 @@ class Backend {
       return result;
     }
   }
+  async createClan(arg0, arg1, arg2) {
+    if (this.processError) {
+      try {
+        const result = await this.actor.createClan(arg0, arg1, arg2);
+        return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
+      } catch (e) {
+        this.processError(e);
+        throw new Error("unreachable");
+      }
+    } else {
+      const result = await this.actor.createClan(arg0, arg1, arg2);
+      return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
+    }
+  }
+  async getAllClans() {
+    if (this.processError) {
+      try {
+        const result = await this.actor.getAllClans();
+        return result;
+      } catch (e) {
+        this.processError(e);
+        throw new Error("unreachable");
+      }
+    } else {
+      const result = await this.actor.getAllClans();
+      return result;
+    }
+  }
   async getCallerUserProfile() {
     if (this.processError) {
       try {
         const result = await this.actor.getCallerUserProfile();
-        return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
+        return from_candid_opt_n4(this._uploadFile, this._downloadFile, result);
       } catch (e) {
         this.processError(e);
         throw new Error("unreachable");
       }
     } else {
       const result = await this.actor.getCallerUserProfile();
-      return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
+      return from_candid_opt_n4(this._uploadFile, this._downloadFile, result);
     }
   }
   async getCallerUserRole() {
     if (this.processError) {
       try {
         const result = await this.actor.getCallerUserRole();
-        return from_candid_UserRole_n7(this._uploadFile, this._downloadFile, result);
+        return from_candid_UserRole_n8(this._uploadFile, this._downloadFile, result);
       } catch (e) {
         this.processError(e);
         throw new Error("unreachable");
       }
     } else {
       const result = await this.actor.getCallerUserRole();
-      return from_candid_UserRole_n7(this._uploadFile, this._downloadFile, result);
+      return from_candid_UserRole_n8(this._uploadFile, this._downloadFile, result);
+    }
+  }
+  async getClan(arg0) {
+    if (this.processError) {
+      try {
+        const result = await this.actor.getClan(arg0);
+        return from_candid_opt_n10(this._uploadFile, this._downloadFile, result);
+      } catch (e) {
+        this.processError(e);
+        throw new Error("unreachable");
+      }
+    } else {
+      const result = await this.actor.getClan(arg0);
+      return from_candid_opt_n10(this._uploadFile, this._downloadFile, result);
+    }
+  }
+  async getClanMessages() {
+    if (this.processError) {
+      try {
+        const result = await this.actor.getClanMessages();
+        return from_candid_variant_n11(this._uploadFile, this._downloadFile, result);
+      } catch (e) {
+        this.processError(e);
+        throw new Error("unreachable");
+      }
+    } else {
+      const result = await this.actor.getClanMessages();
+      return from_candid_variant_n11(this._uploadFile, this._downloadFile, result);
+    }
+  }
+  async getGlobalMessages() {
+    if (this.processError) {
+      try {
+        const result = await this.actor.getGlobalMessages();
+        return from_candid_vec_n12(this._uploadFile, this._downloadFile, result);
+      } catch (e) {
+        this.processError(e);
+        throw new Error("unreachable");
+      }
+    } else {
+      const result = await this.actor.getGlobalMessages();
+      return from_candid_vec_n12(this._uploadFile, this._downloadFile, result);
     }
   }
   async getHighScores() {
@@ -93696,60 +95364,74 @@ class Backend {
       return result;
     }
   }
+  async getMyClan() {
+    if (this.processError) {
+      try {
+        const result = await this.actor.getMyClan();
+        return from_candid_opt_n10(this._uploadFile, this._downloadFile, result);
+      } catch (e) {
+        this.processError(e);
+        throw new Error("unreachable");
+      }
+    } else {
+      const result = await this.actor.getMyClan();
+      return from_candid_opt_n10(this._uploadFile, this._downloadFile, result);
+    }
+  }
   async getOrCreateProfile() {
     if (this.processError) {
       try {
         const result = await this.actor.getOrCreateProfile();
-        return from_candid_PlayerProfile_n4(this._uploadFile, this._downloadFile, result);
+        return from_candid_PlayerProfile_n5(this._uploadFile, this._downloadFile, result);
       } catch (e) {
         this.processError(e);
         throw new Error("unreachable");
       }
     } else {
       const result = await this.actor.getOrCreateProfile();
-      return from_candid_PlayerProfile_n4(this._uploadFile, this._downloadFile, result);
+      return from_candid_PlayerProfile_n5(this._uploadFile, this._downloadFile, result);
     }
   }
   async getProfile(arg0) {
     if (this.processError) {
       try {
         const result = await this.actor.getProfile(arg0);
-        return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
+        return from_candid_opt_n4(this._uploadFile, this._downloadFile, result);
       } catch (e) {
         this.processError(e);
         throw new Error("unreachable");
       }
     } else {
       const result = await this.actor.getProfile(arg0);
-      return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
+      return from_candid_opt_n4(this._uploadFile, this._downloadFile, result);
     }
   }
   async getUserProfile(arg0) {
     if (this.processError) {
       try {
         const result = await this.actor.getUserProfile(arg0);
-        return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
+        return from_candid_opt_n4(this._uploadFile, this._downloadFile, result);
       } catch (e) {
         this.processError(e);
         throw new Error("unreachable");
       }
     } else {
       const result = await this.actor.getUserProfile(arg0);
-      return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
+      return from_candid_opt_n4(this._uploadFile, this._downloadFile, result);
     }
   }
   async getUsername() {
     if (this.processError) {
       try {
         const result = await this.actor.getUsername();
-        return from_candid_opt_n6(this._uploadFile, this._downloadFile, result);
+        return from_candid_opt_n7(this._uploadFile, this._downloadFile, result);
       } catch (e) {
         this.processError(e);
         throw new Error("unreachable");
       }
     } else {
       const result = await this.actor.getUsername();
-      return from_candid_opt_n6(this._uploadFile, this._downloadFile, result);
+      return from_candid_opt_n7(this._uploadFile, this._downloadFile, result);
     }
   }
   async isCallerAdmin() {
@@ -93766,32 +95448,88 @@ class Backend {
       return result;
     }
   }
+  async joinClanByCode(arg0) {
+    if (this.processError) {
+      try {
+        const result = await this.actor.joinClanByCode(arg0);
+        return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
+      } catch (e) {
+        this.processError(e);
+        throw new Error("unreachable");
+      }
+    } else {
+      const result = await this.actor.joinClanByCode(arg0);
+      return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
+    }
+  }
+  async leaveClan() {
+    if (this.processError) {
+      try {
+        const result = await this.actor.leaveClan();
+        return from_candid_variant_n17(this._uploadFile, this._downloadFile, result);
+      } catch (e) {
+        this.processError(e);
+        throw new Error("unreachable");
+      }
+    } else {
+      const result = await this.actor.leaveClan();
+      return from_candid_variant_n17(this._uploadFile, this._downloadFile, result);
+    }
+  }
   async saveCallerUserProfile(arg0) {
     if (this.processError) {
       try {
-        const result = await this.actor.saveCallerUserProfile(to_candid_PlayerProfile_n9(this._uploadFile, this._downloadFile, arg0));
+        const result = await this.actor.saveCallerUserProfile(to_candid_PlayerProfile_n18(this._uploadFile, this._downloadFile, arg0));
         return result;
       } catch (e) {
         this.processError(e);
         throw new Error("unreachable");
       }
     } else {
-      const result = await this.actor.saveCallerUserProfile(to_candid_PlayerProfile_n9(this._uploadFile, this._downloadFile, arg0));
+      const result = await this.actor.saveCallerUserProfile(to_candid_PlayerProfile_n18(this._uploadFile, this._downloadFile, arg0));
       return result;
+    }
+  }
+  async sendClanMessage(arg0) {
+    if (this.processError) {
+      try {
+        const result = await this.actor.sendClanMessage(arg0);
+        return from_candid_variant_n20(this._uploadFile, this._downloadFile, result);
+      } catch (e) {
+        this.processError(e);
+        throw new Error("unreachable");
+      }
+    } else {
+      const result = await this.actor.sendClanMessage(arg0);
+      return from_candid_variant_n20(this._uploadFile, this._downloadFile, result);
+    }
+  }
+  async sendGlobalMessage(arg0) {
+    if (this.processError) {
+      try {
+        const result = await this.actor.sendGlobalMessage(arg0);
+        return from_candid_variant_n20(this._uploadFile, this._downloadFile, result);
+      } catch (e) {
+        this.processError(e);
+        throw new Error("unreachable");
+      }
+    } else {
+      const result = await this.actor.sendGlobalMessage(arg0);
+      return from_candid_variant_n20(this._uploadFile, this._downloadFile, result);
     }
   }
   async setUsername(arg0) {
     if (this.processError) {
       try {
         const result = await this.actor.setUsername(arg0);
-        return from_candid_variant_n11(this._uploadFile, this._downloadFile, result);
+        return from_candid_variant_n17(this._uploadFile, this._downloadFile, result);
       } catch (e) {
         this.processError(e);
         throw new Error("unreachable");
       }
     } else {
       const result = await this.actor.setUsername(arg0);
-      return from_candid_variant_n11(this._uploadFile, this._downloadFile, result);
+      return from_candid_variant_n17(this._uploadFile, this._downloadFile, result);
     }
   }
   async submitScore(arg0, arg1) {
@@ -93812,32 +95550,51 @@ class Backend {
     if (this.processError) {
       try {
         const result = await this.actor.updateProfile(arg0, arg1);
-        return from_candid_PlayerProfile_n4(this._uploadFile, this._downloadFile, result);
+        return from_candid_PlayerProfile_n5(this._uploadFile, this._downloadFile, result);
       } catch (e) {
         this.processError(e);
         throw new Error("unreachable");
       }
     } else {
       const result = await this.actor.updateProfile(arg0, arg1);
-      return from_candid_PlayerProfile_n4(this._uploadFile, this._downloadFile, result);
+      return from_candid_PlayerProfile_n5(this._uploadFile, this._downloadFile, result);
     }
   }
 }
-function from_candid_PlayerProfile_n4(_uploadFile, _downloadFile, value) {
-  return from_candid_record_n5(_uploadFile, _downloadFile, value);
+function from_candid_ChatMessage_n13(_uploadFile, _downloadFile, value) {
+  return from_candid_record_n14(_uploadFile, _downloadFile, value);
 }
-function from_candid_UserRole_n7(_uploadFile, _downloadFile, value) {
-  return from_candid_variant_n8(_uploadFile, _downloadFile, value);
+function from_candid_ChatType_n15(_uploadFile, _downloadFile, value) {
+  return from_candid_variant_n16(_uploadFile, _downloadFile, value);
 }
-function from_candid_opt_n3(_uploadFile, _downloadFile, value) {
-  return value.length === 0 ? null : from_candid_PlayerProfile_n4(_uploadFile, _downloadFile, value[0]);
+function from_candid_PlayerProfile_n5(_uploadFile, _downloadFile, value) {
+  return from_candid_record_n6(_uploadFile, _downloadFile, value);
 }
-function from_candid_opt_n6(_uploadFile, _downloadFile, value) {
+function from_candid_UserRole_n8(_uploadFile, _downloadFile, value) {
+  return from_candid_variant_n9(_uploadFile, _downloadFile, value);
+}
+function from_candid_opt_n10(_uploadFile, _downloadFile, value) {
   return value.length === 0 ? null : value[0];
 }
-function from_candid_record_n5(_uploadFile, _downloadFile, value) {
+function from_candid_opt_n4(_uploadFile, _downloadFile, value) {
+  return value.length === 0 ? null : from_candid_PlayerProfile_n5(_uploadFile, _downloadFile, value[0]);
+}
+function from_candid_opt_n7(_uploadFile, _downloadFile, value) {
+  return value.length === 0 ? null : value[0];
+}
+function from_candid_record_n14(_uploadFile, _downloadFile, value) {
   return {
-    username: record_opt_to_undefined(from_candid_opt_n6(_uploadFile, _downloadFile, value.username)),
+    id: value.id,
+    authorUsername: value.authorUsername,
+    content: value.content,
+    timestamp: value.timestamp,
+    chatType: from_candid_ChatType_n15(_uploadFile, _downloadFile, value.chatType),
+    authorPrincipal: value.authorPrincipal
+  };
+}
+function from_candid_record_n6(_uploadFile, _downloadFile, value) {
+  return {
+    username: record_opt_to_undefined(from_candid_opt_n7(_uploadFile, _downloadFile, value.username)),
     totalHeadshots: value.totalHeadshots,
     totalShots: value.totalShots,
     totalRounds: value.totalRounds,
@@ -93849,22 +95606,61 @@ function from_candid_record_n5(_uploadFile, _downloadFile, value) {
 function from_candid_variant_n11(_uploadFile, _downloadFile, value) {
   return "ok" in value ? {
     __kind__: "ok",
+    ok: from_candid_vec_n12(_uploadFile, _downloadFile, value.ok)
+  } : "err" in value ? {
+    __kind__: "err",
+    err: value.err
+  } : value;
+}
+function from_candid_variant_n16(_uploadFile, _downloadFile, value) {
+  return "clan" in value ? {
+    __kind__: "clan",
+    clan: value.clan
+  } : "global" in value ? {
+    __kind__: "global",
+    global: value.global
+  } : value;
+}
+function from_candid_variant_n17(_uploadFile, _downloadFile, value) {
+  return "ok" in value ? {
+    __kind__: "ok",
     ok: value.ok
   } : "err" in value ? {
     __kind__: "err",
     err: value.err
   } : value;
 }
-function from_candid_variant_n8(_uploadFile, _downloadFile, value) {
+function from_candid_variant_n20(_uploadFile, _downloadFile, value) {
+  return "ok" in value ? {
+    __kind__: "ok",
+    ok: from_candid_ChatMessage_n13(_uploadFile, _downloadFile, value.ok)
+  } : "err" in value ? {
+    __kind__: "err",
+    err: value.err
+  } : value;
+}
+function from_candid_variant_n3(_uploadFile, _downloadFile, value) {
+  return "ok" in value ? {
+    __kind__: "ok",
+    ok: value.ok
+  } : "err" in value ? {
+    __kind__: "err",
+    err: value.err
+  } : value;
+}
+function from_candid_variant_n9(_uploadFile, _downloadFile, value) {
   return "admin" in value ? "admin" : "user" in value ? "user" : "guest" in value ? "guest" : value;
 }
-function to_candid_PlayerProfile_n9(_uploadFile, _downloadFile, value) {
-  return to_candid_record_n10(_uploadFile, _downloadFile, value);
+function from_candid_vec_n12(_uploadFile, _downloadFile, value) {
+  return value.map((x3) => from_candid_ChatMessage_n13(_uploadFile, _downloadFile, x3));
+}
+function to_candid_PlayerProfile_n18(_uploadFile, _downloadFile, value) {
+  return to_candid_record_n19(_uploadFile, _downloadFile, value);
 }
 function to_candid_UserRole_n1(_uploadFile, _downloadFile, value) {
   return to_candid_variant_n2(_uploadFile, _downloadFile, value);
 }
-function to_candid_record_n10(_uploadFile, _downloadFile, value) {
+function to_candid_record_n19(_uploadFile, _downloadFile, value) {
   return {
     username: value.username ? candid_some(value.username) : candid_none(),
     totalHeadshots: value.totalHeadshots,
@@ -94595,30 +96391,23 @@ function Leaderboard({ onBack }) {
               ]
             }
           ),
-          !isLoading && !isError && leaderboard.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-            "div",
-            {
-              className: "mx-auto px-8 py-6",
-              style: { maxWidth: "1400px" },
-              children: [
-                top3.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(Top3Podium, { entries: top3 }),
-                rest.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-8", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel$1, { children: "FURTHER COMBATANTS" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-3 flex flex-col gap-1.5", children: rest.map((entry, idx) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    RankRow,
-                    {
-                      rank: idx + 4,
-                      name: entry.playerName,
-                      score: Number(entry.score),
-                      wave: Number(entry.wave),
-                      delay: idx * 50
-                    },
-                    `row-${idx + 4}-${entry.playerName}`
-                  )) })
-                ] })
-              ]
-            }
-          )
+          !isLoading && !isError && leaderboard.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-auto px-8 py-6", style: { maxWidth: "1400px" }, children: [
+            top3.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(Top3Podium, { entries: top3 }),
+            rest.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-8", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel$1, { children: "FURTHER COMBATANTS" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-3 flex flex-col gap-1.5", children: rest.map((entry, idx) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+                RankRow,
+                {
+                  rank: idx + 4,
+                  name: entry.playerName,
+                  score: Number(entry.score),
+                  wave: Number(entry.wave),
+                  delay: idx * 50
+                },
+                `row-${idx + 4}-${entry.playerName}`
+              )) })
+            ] })
+          ] })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("style", { children: `
         @keyframes pulse {
@@ -94996,10 +96785,54 @@ function PanelCorners$1({ color = "rgba(255,122,0,0.5)" }) {
     pointerEvents: "none"
   };
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { ...cs, top: 0, left: 0, borderTop: "2px solid", borderLeft: "2px solid" } }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { ...cs, top: 0, right: 0, borderTop: "2px solid", borderRight: "2px solid" } }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { ...cs, bottom: 0, left: 0, borderBottom: "2px solid", borderLeft: "2px solid" } }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { ...cs, bottom: 0, right: 0, borderBottom: "2px solid", borderRight: "2px solid" } })
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        style: {
+          ...cs,
+          top: 0,
+          left: 0,
+          borderTop: "2px solid",
+          borderLeft: "2px solid"
+        }
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        style: {
+          ...cs,
+          top: 0,
+          right: 0,
+          borderTop: "2px solid",
+          borderRight: "2px solid"
+        }
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        style: {
+          ...cs,
+          bottom: 0,
+          left: 0,
+          borderBottom: "2px solid",
+          borderLeft: "2px solid"
+        }
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        style: {
+          ...cs,
+          bottom: 0,
+          right: 0,
+          borderBottom: "2px solid",
+          borderRight: "2px solid"
+        }
+      }
+    )
   ] });
 }
 function SectionLabel$1({ children }) {
@@ -95032,6 +96865,331 @@ function HexBackground$1() {
         backgroundSize: "60px 52px",
         zIndex: 0
       }
+    }
+  );
+}
+function formatTimeShort(ts) {
+  const ms = Number(ts) / 1e6;
+  const diff = Date.now() - ms;
+  if (diff < 6e4) return "now";
+  if (diff < 36e5) return `${Math.floor(diff / 6e4)}m`;
+  return `${Math.floor(diff / 36e5)}h`;
+}
+function GlobalChatWidget({ onOpenFullscreen }) {
+  const { actor } = useActor();
+  const { identity: identity2 } = useInternetIdentity();
+  const isAuthenticated = !!identity2;
+  const { data: username } = useGetUsername();
+  const [minimized, setMinimized] = reactExports.useState(false);
+  const [messages, setMessages] = reactExports.useState([]);
+  const [text, setText] = reactExports.useState("");
+  const [sending, setSending] = reactExports.useState(false);
+  const bottomRef = reactExports.useRef(null);
+  const fetchMessages = reactExports.useCallback(async () => {
+    if (!actor) return;
+    try {
+      const msgs = await actor.getGlobalMessages();
+      setMessages(msgs.slice(-10));
+    } catch {
+    }
+  }, [actor]);
+  reactExports.useEffect(() => {
+    fetchMessages();
+    const id = setInterval(fetchMessages, 8e3);
+    return () => clearInterval(id);
+  }, [fetchMessages]);
+  reactExports.useEffect(() => {
+    var _a3;
+    (_a3 = bottomRef.current) == null ? void 0 : _a3.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+  const handleSend = async () => {
+    if (!text.trim() || !actor || sending) return;
+    setSending(true);
+    try {
+      const res = await actor.sendGlobalMessage(text.trim());
+      if (res.__kind__ === "ok") {
+        setText("");
+        await fetchMessages();
+      }
+    } catch {
+    } finally {
+      setSending(false);
+    }
+  };
+  const canChat = isAuthenticated && !!username;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      "data-ocid": "global_chat_widget.panel",
+      style: {
+        position: "fixed",
+        bottom: "16px",
+        right: "16px",
+        width: "300px",
+        zIndex: 50,
+        background: "rgba(10,10,10,0.93)",
+        border: "1px solid rgba(255,122,0,0.3)",
+        boxShadow: "0 4px 32px rgba(0,0,0,0.6), 0 0 12px rgba(255,122,0,0.06)",
+        fontFamily: "'Oswald', sans-serif"
+      },
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "button",
+          {
+            type: "button",
+            style: {
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "8px 12px",
+              borderBottom: minimized ? "none" : "1px solid rgba(255,255,255,0.08)",
+              background: "rgba(255,122,0,0.06)",
+              cursor: "pointer",
+              userSelect: "none",
+              width: "100%",
+              border: "none",
+              textAlign: "left"
+            },
+            onClick: () => setMinimized((v2) => !v2),
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "6px" }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "div",
+                  {
+                    style: {
+                      width: "6px",
+                      height: "6px",
+                      background: "#FF7A00",
+                      borderRadius: "50%",
+                      boxShadow: "0 0 6px #FF7A00"
+                    }
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "span",
+                  {
+                    style: {
+                      color: "#FF7A00",
+                      fontSize: "0.72rem",
+                      letterSpacing: "0.22em",
+                      fontWeight: 700
+                    },
+                    children: "GLOBAL CHAT"
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: "4px" }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    onClick: (e) => {
+                      e.stopPropagation();
+                      onOpenFullscreen();
+                    },
+                    "data-ocid": "global_chat_widget.fullscreen_button",
+                    title: "Open fullscreen",
+                    style: {
+                      background: "transparent",
+                      border: "none",
+                      color: "rgba(255,255,255,0.45)",
+                      cursor: "pointer",
+                      fontSize: "0.85rem",
+                      lineHeight: 1,
+                      padding: "2px 5px"
+                    },
+                    onMouseEnter: (e) => {
+                      e.currentTarget.style.color = "#FF7A00";
+                    },
+                    onMouseLeave: (e) => {
+                      e.currentTarget.style.color = "rgba(255,255,255,0.45)";
+                    },
+                    children: "⛶"
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    onClick: (e) => {
+                      e.stopPropagation();
+                      setMinimized((v2) => !v2);
+                    },
+                    "data-ocid": "global_chat_widget.minimize_button",
+                    title: minimized ? "Expand" : "Minimize",
+                    style: {
+                      background: "transparent",
+                      border: "none",
+                      color: "rgba(255,255,255,0.45)",
+                      cursor: "pointer",
+                      fontSize: "0.85rem",
+                      lineHeight: 1,
+                      padding: "2px 5px"
+                    },
+                    onMouseEnter: (e) => {
+                      e.currentTarget.style.color = "rgba(255,255,255,0.9)";
+                    },
+                    onMouseLeave: (e) => {
+                      e.currentTarget.style.color = "rgba(255,255,255,0.45)";
+                    },
+                    children: minimized ? "▲" : "▼"
+                  }
+                )
+              ] })
+            ]
+          }
+        ),
+        !minimized && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "div",
+            {
+              style: {
+                maxHeight: "180px",
+                overflowY: "auto",
+                padding: "8px 12px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "5px"
+              },
+              "data-ocid": "global_chat_widget.message_list",
+              children: [
+                messages.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "div",
+                  {
+                    style: {
+                      color: "rgba(255,255,255,0.3)",
+                      fontSize: "0.75rem",
+                      letterSpacing: "0.06em"
+                    },
+                    children: "No messages yet."
+                  }
+                ),
+                messages.map((m2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "div",
+                  {
+                    style: {
+                      display: "flex",
+                      gap: "5px",
+                      alignItems: "baseline",
+                      fontSize: "0.78rem"
+                    },
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                        "span",
+                        {
+                          style: {
+                            color: "#FF7A00",
+                            fontWeight: 600,
+                            flexShrink: 0,
+                            fontSize: "0.78rem"
+                          },
+                          children: [
+                            m2.authorUsername,
+                            ":"
+                          ]
+                        }
+                      ),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "span",
+                        {
+                          style: {
+                            color: "rgba(255,255,255,0.8)",
+                            flex: 1,
+                            wordBreak: "break-word",
+                            lineHeight: 1.3
+                          },
+                          children: m2.content
+                        }
+                      ),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "span",
+                        {
+                          style: {
+                            color: "rgba(255,255,255,0.25)",
+                            fontSize: "0.62rem",
+                            flexShrink: 0
+                          },
+                          children: formatTimeShort(m2.timestamp)
+                        }
+                      )
+                    ]
+                  },
+                  m2.id
+                )),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: bottomRef })
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              style: {
+                borderTop: "1px solid rgba(255,255,255,0.07)",
+                padding: "7px 10px"
+              },
+              children: !canChat ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "div",
+                {
+                  style: {
+                    fontSize: "0.72rem",
+                    color: "rgba(255,255,255,0.35)",
+                    letterSpacing: "0.04em",
+                    textAlign: "center",
+                    padding: "2px 0"
+                  },
+                  children: !isAuthenticated ? "Sign in and set a username to chat" : "Set a username in Profile to chat"
+                }
+              ) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: "6px" }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "input",
+                  {
+                    style: {
+                      flex: 1,
+                      background: "rgba(255,255,255,0.06)",
+                      border: "1px solid rgba(255,255,255,0.12)",
+                      color: "rgba(255,255,255,0.9)",
+                      fontFamily: "'Oswald', sans-serif",
+                      fontSize: "0.8rem",
+                      padding: "5px 9px",
+                      outline: "none",
+                      minWidth: 0
+                    },
+                    placeholder: "Message...",
+                    value: text,
+                    onChange: (e) => setText(e.target.value),
+                    onKeyDown: (e) => {
+                      if (e.key === "Enter") handleSend();
+                    },
+                    maxLength: 300,
+                    "data-ocid": "global_chat_widget.input"
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    onClick: handleSend,
+                    disabled: sending || !text.trim(),
+                    "data-ocid": "global_chat_widget.send_button",
+                    style: {
+                      background: "rgba(255,122,0,0.2)",
+                      border: "1px solid rgba(255,122,0,0.5)",
+                      color: "#FF7A00",
+                      fontFamily: "'Oswald', sans-serif",
+                      fontWeight: 600,
+                      fontSize: "0.72rem",
+                      letterSpacing: "0.15em",
+                      padding: "5px 10px",
+                      cursor: "pointer"
+                    },
+                    children: sending ? "..." : "SEND"
+                  }
+                )
+              ] })
+            }
+          )
+        ] })
+      ]
     }
   );
 }
@@ -95228,7 +97386,12 @@ function createAsteroidGeometry(seed, sizeClass) {
       }
     }
     const displacement = 1 + lowFreq + midFreq + highFreq + microFreq + craterDisplacement;
-    pos.setXYZ(i2, x3 * ax * displacement, y2 * ay * displacement, z2 * az * displacement);
+    pos.setXYZ(
+      i2,
+      x3 * ax * displacement,
+      y2 * ay * displacement,
+      z2 * az * displacement
+    );
   }
   geo.computeVertexNormals();
   return geo;
@@ -95318,7 +97481,11 @@ function AsteroidScene() {
         size,
         initialPos: new Vector3(x3, y2, z2),
         velocity: new Vector3(vx, vy, 0),
-        rotationAxis: new Vector3(rng() - 0.5, rng() - 0.5, rng() - 0.5).normalize(),
+        rotationAxis: new Vector3(
+          rng() - 0.5,
+          rng() - 0.5,
+          rng() - 0.5
+        ).normalize(),
         rotationSpeed: 0.05 + rng() * 0.15,
         shapeSeed: i2,
         detail: 0,
@@ -95337,7 +97504,11 @@ function AsteroidScene() {
         size,
         initialPos: new Vector3(x3, y2, z2),
         velocity: new Vector3(vx, vy, 0),
-        rotationAxis: new Vector3(rng() - 0.5, rng() - 0.5, rng() - 0.5).normalize(),
+        rotationAxis: new Vector3(
+          rng() - 0.5,
+          rng() - 0.5,
+          rng() - 0.5
+        ).normalize(),
         rotationSpeed: 0.1 + rng() * 0.3,
         shapeSeed: i2 + 100,
         detail: 1,
@@ -95356,7 +97527,11 @@ function AsteroidScene() {
         size,
         initialPos: new Vector3(x3, y2, z2),
         velocity: new Vector3(vx, vy, 0),
-        rotationAxis: new Vector3(rng() - 0.5, rng() - 0.5, rng() - 0.5).normalize(),
+        rotationAxis: new Vector3(
+          rng() - 0.5,
+          rng() - 0.5,
+          rng() - 0.5
+        ).normalize(),
         rotationSpeed: 0.15 + rng() * 0.4,
         shapeSeed: i2 + 200,
         detail: 2,
@@ -95408,28 +97583,21 @@ function AsteroidScene() {
   ] });
 }
 function MenuAsteroidField() {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "div",
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 pointer-events-none", style: { zIndex: 3 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    Canvas,
     {
-      className: "absolute inset-0 pointer-events-none",
-      style: { zIndex: 3 },
-      children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-        Canvas,
-        {
-          gl: {
-            antialias: true,
-            alpha: true,
-            powerPreference: "high-performance",
-            stencil: false
-          },
-          dpr: [1, 1.5],
-          camera: { position: [0, 0, 10], fov: 60, near: 0.1, far: 200 },
-          style: { background: "transparent" },
-          children: /* @__PURE__ */ jsxRuntimeExports.jsx(AsteroidScene, {})
-        }
-      )
+      gl: {
+        antialias: true,
+        alpha: true,
+        powerPreference: "high-performance",
+        stencil: false
+      },
+      dpr: [1, 1.5],
+      camera: { position: [0, 0, 10], fov: 60, near: 0.1, far: 200 },
+      style: { background: "transparent" },
+      children: /* @__PURE__ */ jsxRuntimeExports.jsx(AsteroidScene, {})
     }
-  );
+  ) });
 }
 function useFullscreen() {
   const [isFullscreen, setIsFullscreen] = reactExports.useState(false);
@@ -95457,7 +97625,7 @@ function FullscreenButton() {
       type: "button",
       "data-ocid": "fullscreen-toggle",
       onClick: toggle,
-      title: isFullscreen ? "Vollbild beenden" : "Vollbild",
+      title: isFullscreen ? "Exit Fullscreen" : "Fullscreen",
       style: {
         position: "absolute",
         top: "16px",
@@ -95487,7 +97655,7 @@ function FullscreenButton() {
       },
       children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "1.1rem", lineHeight: 1 }, children: isFullscreen ? "⊠" : "⛶" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: isFullscreen ? "VOLLBILD BEENDEN" : "VOLLBILD" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: isFullscreen ? "Exit Fullscreen" : "Fullscreen" })
       ]
     }
   );
@@ -95536,7 +97704,8 @@ function MainMenu({
   onStartGame,
   onShowLeaderboard,
   onShowControls,
-  onShowProfile
+  onShowProfile,
+  onSocials
 }) {
   const { login, clear, loginStatus, identity: identity2 } = useInternetIdentity();
   const queryClient2 = useQueryClient();
@@ -95592,6 +97761,7 @@ function MainMenu({
     { label: "LEADERBOARD", action: onShowLeaderboard },
     ...isAuthenticated ? [{ label: "MY PROFILE", action: onShowProfile }] : [],
     { label: "CONTROLS", action: onShowControls },
+    { label: "SOCIALS", action: onSocials },
     {
       label: isLoggingIn ? "SIGNING IN..." : isAuthenticated ? "SIGN OUT" : "SIGN IN",
       action: handleAuth
@@ -95833,6 +98003,7 @@ function MainMenu({
             ]
           }
         ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(GlobalChatWidget, { onOpenFullscreen: onSocials }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "div",
           {
@@ -96299,7 +98470,7 @@ function PlayerProfile({ onBack }) {
                     "div",
                     {
                       className: "relative flex flex-col items-center gap-4 p-6",
-                      style: panelStyle,
+                      style: panelStyle$1,
                       children: [
                         /* @__PURE__ */ jsxRuntimeExports.jsx(PanelCorners, {}),
                         /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel, { children: "OPERATIVE STATUS" }),
@@ -96396,7 +98567,7 @@ function PlayerProfile({ onBack }) {
                       ]
                     }
                   ),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative p-5", style: panelStyle, children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative p-5", style: panelStyle$1, children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsx(PanelCorners, {}),
                     /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel, { children: "PERFORMANCE" }),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 flex flex-col gap-3", children: [
@@ -96422,7 +98593,7 @@ function PlayerProfile({ onBack }) {
                   ] })
                 ] }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col gap-5", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-5", style: panelStyle, children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-5", style: panelStyle$1, children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsx(PanelCorners, {}),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-between items-baseline", children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel, { children: "EXPERIENCE PROGRESSION" }),
@@ -96469,7 +98640,7 @@ function PlayerProfile({ onBack }) {
                       }
                     )
                   ] }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-5", style: panelStyle, children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-5", style: panelStyle$1, children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsx(PanelCorners, {}),
                     /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel, { children: "CAREER STATISTICS" }),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4", children: [
@@ -96511,7 +98682,7 @@ function PlayerProfile({ onBack }) {
                       )
                     ] })
                   ] }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-5", style: panelStyle, children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-5", style: panelStyle$1, children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsx(PanelCorners, {}),
                     /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel, { children: "COMBAT METRICS" }),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 lg:grid-cols-3 gap-3 mt-4", children: [
@@ -96584,7 +98755,7 @@ function PlayerProfile({ onBack }) {
     }
   );
 }
-const panelStyle = {
+const panelStyle$1 = {
   background: "linear-gradient(180deg, rgba(20,12,8,0.85) 0%, rgba(8,5,3,0.95) 100%)",
   border: "1px solid rgba(255,122,0,0.18)",
   boxShadow: "0 8px 32px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04)",
@@ -96924,7 +99095,10 @@ function MetricTile({
     }
   );
 }
-function XPBar({ progress, isMaxLevel }) {
+function XPBar({
+  progress,
+  isMaxLevel
+}) {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
@@ -97067,6 +99241,1032 @@ function getRankInfo(level) {
   if (level >= 8) return { name: "CORPORAL", color: "#cc6644" };
   if (level >= 3) return { name: "PRIVATE", color: "#aa5544" };
   return { name: "RECRUIT", color: "#888888" };
+}
+const panelStyle = {
+  background: "rgba(0,0,0,0.65)",
+  border: "1px solid rgba(255,255,255,0.1)",
+  padding: "16px 20px"
+};
+const labelStyle = {
+  fontFamily: "'Oswald', sans-serif",
+  fontSize: "0.65rem",
+  letterSpacing: "0.28em",
+  color: "rgba(255,180,80,0.7)",
+  textTransform: "uppercase",
+  marginBottom: "6px"
+};
+const inputStyle = {
+  width: "100%",
+  background: "rgba(255,255,255,0.05)",
+  border: "1px solid rgba(255,255,255,0.15)",
+  color: "rgba(255,255,255,0.9)",
+  fontFamily: "'Oswald', sans-serif",
+  fontSize: "0.95rem",
+  padding: "8px 12px",
+  outline: "none",
+  letterSpacing: "0.04em"
+};
+const btnStyle = (variant = "primary") => ({
+  fontFamily: "'Oswald', sans-serif",
+  fontWeight: 600,
+  fontSize: "0.78rem",
+  letterSpacing: "0.18em",
+  textTransform: "uppercase",
+  padding: "8px 18px",
+  border: variant === "primary" ? "1px solid rgba(255,122,0,0.6)" : variant === "danger" ? "1px solid rgba(220,50,50,0.5)" : "1px solid rgba(255,255,255,0.2)",
+  background: variant === "primary" ? "rgba(255,122,0,0.15)" : variant === "danger" ? "rgba(200,40,40,0.12)" : "rgba(255,255,255,0.05)",
+  color: variant === "primary" ? "#FF7A00" : variant === "danger" ? "rgba(255,100,100,0.9)" : "rgba(255,255,255,0.7)",
+  cursor: "pointer"
+});
+function formatTime(ts) {
+  const ms = Number(ts) / 1e6;
+  const diff = Date.now() - ms;
+  if (diff < 6e4) return "now";
+  if (diff < 36e5) return `${Math.floor(diff / 6e4)}m ago`;
+  if (diff < 864e5) return `${Math.floor(diff / 36e5)}h ago`;
+  return `${Math.floor(diff / 864e5)}d ago`;
+}
+function GlobalChatPanel() {
+  const { actor } = useActor();
+  const { data: username } = useGetUsername();
+  const [messages, setMessages] = reactExports.useState([]);
+  const [text, setText] = reactExports.useState("");
+  const [sending, setSending] = reactExports.useState(false);
+  const [statusMsg, setStatusMsg] = reactExports.useState("");
+  const bottomRef = reactExports.useRef(null);
+  const fetchMessages = reactExports.useCallback(async () => {
+    if (!actor) return;
+    try {
+      const msgs = await actor.getGlobalMessages();
+      setMessages(msgs);
+    } catch {
+    }
+  }, [actor]);
+  reactExports.useEffect(() => {
+    fetchMessages();
+    const id = setInterval(fetchMessages, 5e3);
+    return () => clearInterval(id);
+  }, [fetchMessages]);
+  reactExports.useEffect(() => {
+    var _a3;
+    (_a3 = bottomRef.current) == null ? void 0 : _a3.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+  const handleSend = async () => {
+    if (!text.trim() || !actor || sending) return;
+    setSending(true);
+    setStatusMsg("");
+    try {
+      const res = await actor.sendGlobalMessage(text.trim());
+      if (res.__kind__ === "ok") {
+        setText("");
+        await fetchMessages();
+      } else {
+        setStatusMsg(res.err);
+      }
+    } catch (e) {
+      setStatusMsg(e instanceof Error ? e.message : "Failed to send");
+    } finally {
+      setSending(false);
+    }
+  };
+  const canChat = !!actor && !!username;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", flexDirection: "column", gap: "12px" }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        style: {
+          ...panelStyle,
+          maxHeight: "300px",
+          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px"
+        },
+        "data-ocid": "socials.global_chat.list",
+        children: [
+          messages.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              style: {
+                color: "rgba(255,255,255,0.35)",
+                fontFamily: "'Oswald', sans-serif",
+                fontSize: "0.85rem"
+              },
+              children: "No messages yet. Be the first!"
+            }
+          ),
+          messages.map((m2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "div",
+            {
+              style: { display: "flex", gap: "8px", alignItems: "baseline" },
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "span",
+                  {
+                    style: {
+                      fontFamily: "'Oswald', sans-serif",
+                      fontWeight: 600,
+                      fontSize: "0.88rem",
+                      color: "#FF7A00",
+                      flexShrink: 0
+                    },
+                    children: [
+                      m2.authorUsername,
+                      ":"
+                    ]
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "span",
+                  {
+                    style: {
+                      fontFamily: "'Oswald', sans-serif",
+                      fontSize: "0.85rem",
+                      color: "rgba(255,255,255,0.85)",
+                      flex: 1,
+                      wordBreak: "break-word"
+                    },
+                    children: m2.content
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "span",
+                  {
+                    style: {
+                      fontFamily: "'Oswald', sans-serif",
+                      fontSize: "0.65rem",
+                      color: "rgba(255,255,255,0.3)",
+                      flexShrink: 0
+                    },
+                    children: formatTime(m2.timestamp)
+                  }
+                )
+              ]
+            },
+            m2.id
+          )),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: bottomRef })
+        ]
+      }
+    ),
+    !canChat ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        style: {
+          ...panelStyle,
+          color: "rgba(255,255,255,0.45)",
+          fontFamily: "'Oswald', sans-serif",
+          fontSize: "0.85rem",
+          textAlign: "center"
+        },
+        children: !actor ? "Sign in to chat" : "Set a username in Profile to chat"
+      }
+    ) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: "8px" }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "input",
+        {
+          style: { ...inputStyle, flex: 1 },
+          placeholder: "Type a message...",
+          value: text,
+          onChange: (e) => setText(e.target.value),
+          onKeyDown: (e) => {
+            if (e.key === "Enter") handleSend();
+          },
+          maxLength: 300,
+          "data-ocid": "socials.global_chat.input"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          style: btnStyle("primary"),
+          onClick: handleSend,
+          disabled: sending || !text.trim(),
+          "data-ocid": "socials.global_chat.send_button",
+          children: sending ? "..." : "SEND"
+        }
+      )
+    ] }),
+    statusMsg && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        style: {
+          color: "rgba(255,100,100,0.8)",
+          fontFamily: "'Oswald', sans-serif",
+          fontSize: "0.8rem"
+        },
+        children: statusMsg
+      }
+    )
+  ] });
+}
+function ClanChatPanel({ inClan }) {
+  const { actor } = useActor();
+  const { data: username } = useGetUsername();
+  const [messages, setMessages] = reactExports.useState([]);
+  const [text, setText] = reactExports.useState("");
+  const [sending, setSending] = reactExports.useState(false);
+  const [statusMsg, setStatusMsg] = reactExports.useState("");
+  const bottomRef = reactExports.useRef(null);
+  const fetchMessages = reactExports.useCallback(async () => {
+    if (!actor || !inClan) return;
+    try {
+      const res = await actor.getClanMessages();
+      if (res.__kind__ === "ok") {
+        setMessages(res.ok);
+      }
+    } catch {
+    }
+  }, [actor, inClan]);
+  reactExports.useEffect(() => {
+    fetchMessages();
+    const id = setInterval(fetchMessages, 5e3);
+    return () => clearInterval(id);
+  }, [fetchMessages]);
+  reactExports.useEffect(() => {
+    var _a3;
+    (_a3 = bottomRef.current) == null ? void 0 : _a3.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+  if (!inClan) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        style: {
+          ...panelStyle,
+          color: "rgba(255,255,255,0.45)",
+          fontFamily: "'Oswald', sans-serif",
+          fontSize: "0.9rem",
+          textAlign: "center",
+          padding: "32px 20px"
+        },
+        children: "Join a clan to access clan chat"
+      }
+    );
+  }
+  const handleSend = async () => {
+    if (!text.trim() || !actor || sending) return;
+    setSending(true);
+    setStatusMsg("");
+    try {
+      const res = await actor.sendClanMessage(text.trim());
+      if (res.__kind__ === "ok") {
+        setText("");
+        await fetchMessages();
+      } else {
+        setStatusMsg(res.err);
+      }
+    } catch (e) {
+      setStatusMsg(e instanceof Error ? e.message : "Failed to send");
+    } finally {
+      setSending(false);
+    }
+  };
+  const canChat = !!actor && !!username;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", flexDirection: "column", gap: "12px" }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        style: {
+          ...panelStyle,
+          maxHeight: "300px",
+          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px"
+        },
+        "data-ocid": "socials.clan_chat.list",
+        children: [
+          messages.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              style: {
+                color: "rgba(255,255,255,0.35)",
+                fontFamily: "'Oswald', sans-serif",
+                fontSize: "0.85rem"
+              },
+              children: "No clan messages yet."
+            }
+          ),
+          messages.map((m2) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "div",
+            {
+              style: { display: "flex", gap: "8px", alignItems: "baseline" },
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "span",
+                  {
+                    style: {
+                      fontFamily: "'Oswald', sans-serif",
+                      fontWeight: 600,
+                      fontSize: "0.88rem",
+                      color: "#FF7A00",
+                      flexShrink: 0
+                    },
+                    children: [
+                      m2.authorUsername,
+                      ":"
+                    ]
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "span",
+                  {
+                    style: {
+                      fontFamily: "'Oswald', sans-serif",
+                      fontSize: "0.85rem",
+                      color: "rgba(255,255,255,0.85)",
+                      flex: 1,
+                      wordBreak: "break-word"
+                    },
+                    children: m2.content
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "span",
+                  {
+                    style: {
+                      fontFamily: "'Oswald', sans-serif",
+                      fontSize: "0.65rem",
+                      color: "rgba(255,255,255,0.3)",
+                      flexShrink: 0
+                    },
+                    children: formatTime(m2.timestamp)
+                  }
+                )
+              ]
+            },
+            m2.id
+          )),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: bottomRef })
+        ]
+      }
+    ),
+    !canChat ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        style: {
+          ...panelStyle,
+          color: "rgba(255,255,255,0.45)",
+          fontFamily: "'Oswald', sans-serif",
+          fontSize: "0.85rem",
+          textAlign: "center"
+        },
+        children: "Set a username in Profile to chat"
+      }
+    ) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: "8px" }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "input",
+        {
+          style: { ...inputStyle, flex: 1 },
+          placeholder: "Type to your clan...",
+          value: text,
+          onChange: (e) => setText(e.target.value),
+          onKeyDown: (e) => {
+            if (e.key === "Enter") handleSend();
+          },
+          maxLength: 300,
+          "data-ocid": "socials.clan_chat.input"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          style: btnStyle("primary"),
+          onClick: handleSend,
+          disabled: sending || !text.trim(),
+          "data-ocid": "socials.clan_chat.send_button",
+          children: sending ? "..." : "SEND"
+        }
+      )
+    ] }),
+    statusMsg && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        style: {
+          color: "rgba(255,100,100,0.8)",
+          fontFamily: "'Oswald', sans-serif",
+          fontSize: "0.8rem"
+        },
+        children: statusMsg
+      }
+    )
+  ] });
+}
+function ClansPanel({ onClanChange }) {
+  const { actor } = useActor();
+  const { identity: identity2 } = useInternetIdentity();
+  const isAuthenticated = !!identity2;
+  const [myClan, setMyClan] = reactExports.useState(null);
+  const [allClans, setAllClans] = reactExports.useState([]);
+  const [loading2, setLoading] = reactExports.useState(false);
+  const [statusMsg, setStatusMsg] = reactExports.useState("");
+  const [isSuccess, setIsSuccess] = reactExports.useState(false);
+  const [createName, setCreateName] = reactExports.useState("");
+  const [createTag, setCreateTag] = reactExports.useState("");
+  const [createDesc, setCreateDesc] = reactExports.useState("");
+  const [creating, setCreating] = reactExports.useState(false);
+  const [joinCode, setJoinCode] = reactExports.useState("");
+  const [joining, setJoining] = reactExports.useState(false);
+  const [copied, setCopied] = reactExports.useState(false);
+  const fetchData = reactExports.useCallback(async () => {
+    if (!actor || !isAuthenticated) return;
+    setLoading(true);
+    try {
+      const [mine, all] = await Promise.all([
+        actor.getMyClan(),
+        actor.getAllClans()
+      ]);
+      setMyClan(mine);
+      setAllClans(all);
+    } catch {
+    } finally {
+      setLoading(false);
+    }
+  }, [actor, isAuthenticated]);
+  reactExports.useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+  const showStatus = (msg, success = false) => {
+    setStatusMsg(msg);
+    setIsSuccess(success);
+    setTimeout(() => setStatusMsg(""), 4e3);
+  };
+  const handleCreate = async () => {
+    if (!actor || !createName.trim() || !createTag.trim()) return;
+    setCreating(true);
+    try {
+      const res = await actor.createClan(
+        createName.trim(),
+        createTag.trim(),
+        createDesc.trim()
+      );
+      if (res.__kind__ === "ok") {
+        setCreateName("");
+        setCreateTag("");
+        setCreateDesc("");
+        showStatus("Clan created!", true);
+        await fetchData();
+        onClanChange();
+      } else {
+        showStatus(res.err);
+      }
+    } catch (e) {
+      showStatus(e instanceof Error ? e.message : "Failed to create clan");
+    } finally {
+      setCreating(false);
+    }
+  };
+  const handleJoin = async (code) => {
+    if (!actor || !code.trim()) return;
+    setJoining(true);
+    try {
+      const res = await actor.joinClanByCode(code.trim());
+      if (res.__kind__ === "ok") {
+        setJoinCode("");
+        showStatus("Joined clan!", true);
+        await fetchData();
+        onClanChange();
+      } else {
+        showStatus(res.err);
+      }
+    } catch (e) {
+      showStatus(e instanceof Error ? e.message : "Failed to join");
+    } finally {
+      setJoining(false);
+    }
+  };
+  const handleLeave = async () => {
+    if (!actor) return;
+    try {
+      const res = await actor.leaveClan();
+      if (res.__kind__ === "ok") {
+        showStatus("Left clan", true);
+        await fetchData();
+        onClanChange();
+      } else {
+        showStatus(res.err);
+      }
+    } catch (e) {
+      showStatus(e instanceof Error ? e.message : "Failed to leave");
+    }
+  };
+  const handleCopy = (text) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2e3);
+    });
+  };
+  if (!isAuthenticated) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        style: {
+          ...panelStyle,
+          textAlign: "center",
+          padding: "40px 20px",
+          color: "rgba(255,255,255,0.5)",
+          fontFamily: "'Oswald', sans-serif",
+          fontSize: "1rem",
+          letterSpacing: "0.1em"
+        },
+        children: "Sign in to access Socials"
+      }
+    );
+  }
+  if (loading2 && !myClan && allClans.length === 0) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        style: {
+          ...panelStyle,
+          textAlign: "center",
+          color: "rgba(255,255,255,0.4)",
+          fontFamily: "'Oswald', sans-serif",
+          letterSpacing: "0.2em"
+        },
+        children: "LOADING..."
+      }
+    );
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", flexDirection: "column", gap: "16px" }, children: [
+    statusMsg && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        style: {
+          ...panelStyle,
+          padding: "10px 16px",
+          color: isSuccess ? "#4caf50" : "rgba(255,100,100,0.9)",
+          fontFamily: "'Oswald', sans-serif",
+          fontSize: "0.85rem",
+          letterSpacing: "0.06em",
+          borderColor: isSuccess ? "rgba(76,175,80,0.4)" : "rgba(220,50,50,0.4)"
+        },
+        children: statusMsg
+      }
+    ),
+    myClan ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: panelStyle, "data-ocid": "socials.my_clan.card", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: labelStyle, children: "MY CLAN" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
+        {
+          style: {
+            fontFamily: "'Oswald', sans-serif",
+            fontSize: "1.4rem",
+            fontWeight: 700,
+            color: "rgba(255,255,255,0.95)",
+            letterSpacing: "0.06em",
+            marginBottom: "4px"
+          },
+          children: [
+            myClan.name,
+            " ",
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { color: "#FF7A00", fontSize: "1rem" }, children: [
+              "[",
+              myClan.tag,
+              "]"
+            ] })
+          ]
+        }
+      ),
+      myClan.description && /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "div",
+        {
+          style: {
+            fontFamily: "'Oswald', sans-serif",
+            fontSize: "0.82rem",
+            color: "rgba(255,255,255,0.5)",
+            marginBottom: "8px",
+            letterSpacing: "0.04em"
+          },
+          children: myClan.description
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
+        {
+          style: {
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            flexWrap: "wrap"
+          },
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "span",
+              {
+                style: {
+                  fontFamily: "'Oswald', sans-serif",
+                  fontSize: "0.78rem",
+                  color: "rgba(255,255,255,0.45)",
+                  letterSpacing: "0.12em"
+                },
+                children: [
+                  myClan.members.length,
+                  " MEMBER",
+                  myClan.members.length !== 1 ? "S" : ""
+                ]
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: "6px" }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "span",
+                {
+                  style: {
+                    fontFamily: "'Oswald', sans-serif",
+                    fontSize: "0.78rem",
+                    color: "rgba(255,255,255,0.45)",
+                    letterSpacing: "0.1em"
+                  },
+                  children: "INVITE:"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "code",
+                {
+                  style: {
+                    fontFamily: "monospace",
+                    fontSize: "0.8rem",
+                    color: "rgba(255,180,80,0.9)",
+                    background: "rgba(255,180,80,0.08)",
+                    border: "1px solid rgba(255,180,80,0.2)",
+                    padding: "2px 8px"
+                  },
+                  children: myClan.inviteCode
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  style: btnStyle("ghost"),
+                  onClick: () => handleCopy(myClan.inviteCode),
+                  "data-ocid": "socials.clan_invite.copy_button",
+                  children: copied ? "COPIED!" : "COPY"
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                style: btnStyle("danger"),
+                onClick: handleLeave,
+                "data-ocid": "socials.clan.leave_button",
+                children: "LEAVE CLAN"
+              }
+            )
+          ]
+        }
+      )
+    ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", flexDirection: "column", gap: "12px" }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: panelStyle, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: labelStyle, children: "CREATE A CLAN" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "div",
+          {
+            style: { display: "flex", flexDirection: "column", gap: "8px" },
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: "8px" }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "input",
+                  {
+                    style: { ...inputStyle, flex: 2 },
+                    placeholder: "Clan Name",
+                    value: createName,
+                    onChange: (e) => setCreateName(e.target.value),
+                    maxLength: 40,
+                    "data-ocid": "socials.create_clan.name_input"
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "input",
+                  {
+                    style: { ...inputStyle, flex: 1, maxWidth: "100px" },
+                    placeholder: "[TAG]",
+                    value: createTag,
+                    onChange: (e) => setCreateTag(e.target.value.toUpperCase()),
+                    maxLength: 5,
+                    "data-ocid": "socials.create_clan.tag_input"
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "textarea",
+                {
+                  style: {
+                    ...inputStyle,
+                    resize: "none",
+                    height: "56px",
+                    fontFamily: "'Oswald', sans-serif"
+                  },
+                  placeholder: "Description (optional)",
+                  value: createDesc,
+                  onChange: (e) => setCreateDesc(e.target.value),
+                  maxLength: 200,
+                  "data-ocid": "socials.create_clan.desc_textarea"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  style: btnStyle("primary"),
+                  onClick: handleCreate,
+                  disabled: creating || !createName.trim() || !createTag.trim(),
+                  "data-ocid": "socials.create_clan.submit_button",
+                  children: creating ? "CREATING..." : "CREATE CLAN"
+                }
+              ) })
+            ]
+          }
+        )
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: panelStyle, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: labelStyle, children: "JOIN WITH INVITE CODE" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: "8px" }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              style: { ...inputStyle, flex: 1 },
+              placeholder: "Enter invite code...",
+              value: joinCode,
+              onChange: (e) => setJoinCode(e.target.value),
+              "data-ocid": "socials.join_clan.code_input"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              style: btnStyle("primary"),
+              onClick: () => handleJoin(joinCode),
+              disabled: joining || !joinCode.trim(),
+              "data-ocid": "socials.join_clan.submit_button",
+              children: joining ? "JOINING..." : "JOIN"
+            }
+          )
+        ] })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: labelStyle, children: "ALL CLANS" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", flexDirection: "column", gap: "8px" }, children: [
+        allClans.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            style: {
+              ...panelStyle,
+              color: "rgba(255,255,255,0.35)",
+              fontFamily: "'Oswald', sans-serif",
+              fontSize: "0.85rem",
+              textAlign: "center"
+            },
+            "data-ocid": "socials.clans.empty_state",
+            children: "No clans yet. Create one!"
+          }
+        ),
+        allClans.map((clan) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "div",
+          {
+            style: {
+              ...panelStyle,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+              padding: "10px 16px"
+            },
+            "data-ocid": "socials.clan.item",
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { minWidth: 0 }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "span",
+                  {
+                    style: {
+                      fontFamily: "'Oswald', sans-serif",
+                      fontWeight: 600,
+                      fontSize: "1rem",
+                      color: "rgba(255,255,255,0.9)",
+                      letterSpacing: "0.04em",
+                      marginRight: "6px"
+                    },
+                    children: clan.name
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "span",
+                  {
+                    style: {
+                      color: "#FF7A00",
+                      fontFamily: "'Oswald', sans-serif",
+                      fontSize: "0.82rem"
+                    },
+                    children: [
+                      "[",
+                      clan.tag,
+                      "]"
+                    ]
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "span",
+                  {
+                    style: {
+                      fontFamily: "'Oswald', sans-serif",
+                      fontSize: "0.7rem",
+                      color: "rgba(255,255,255,0.35)",
+                      marginLeft: "10px",
+                      letterSpacing: "0.1em"
+                    },
+                    children: [
+                      clan.members.length,
+                      " member",
+                      clan.members.length !== 1 ? "s" : ""
+                    ]
+                  }
+                )
+              ] }),
+              (myClan == null ? void 0 : myClan.id) !== clan.id && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  style: btnStyle("ghost"),
+                  onClick: () => handleJoin(clan.inviteCode),
+                  disabled: joining,
+                  "data-ocid": "socials.clan.join_button",
+                  children: "JOIN"
+                }
+              ),
+              (myClan == null ? void 0 : myClan.id) === clan.id && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "span",
+                {
+                  style: {
+                    fontFamily: "'Oswald', sans-serif",
+                    fontSize: "0.7rem",
+                    color: "#FF7A00",
+                    letterSpacing: "0.15em"
+                  },
+                  children: "★ YOURS"
+                }
+              )
+            ]
+          },
+          clan.id
+        ))
+      ] })
+    ] })
+  ] });
+}
+function SocialsHub({ onBack, initialTab = "clans" }) {
+  const { actor } = useActor();
+  const { identity: identity2 } = useInternetIdentity();
+  const isAuthenticated = !!identity2;
+  const [activeTab, setActiveTab] = reactExports.useState(initialTab);
+  const [inClan, setInClan] = reactExports.useState(false);
+  reactExports.useEffect(() => {
+    if (!actor || !isAuthenticated) return;
+    actor.getMyClan().then((clan) => {
+      setInClan(!!clan);
+    }).catch(() => {
+    });
+  }, [actor, isAuthenticated]);
+  const tabs = [
+    { id: "clans", label: "CLANS" },
+    { id: "global", label: "GLOBAL CHAT" },
+    { id: "clan", label: "CLAN CHAT" }
+  ];
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      className: "fixed inset-0 overflow-y-auto",
+      style: {
+        background: "radial-gradient(ellipse at 50% 0%, rgba(80,15,5,0.18) 0%, #050505 60%)",
+        fontFamily: "'Oswald', sans-serif"
+      },
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "div",
+          {
+            style: {
+              position: "sticky",
+              top: 0,
+              zIndex: 20,
+              background: "rgba(5,3,2,0.97)",
+              borderBottom: "1px solid rgba(255,122,0,0.18)",
+              padding: "12px 32px",
+              display: "flex",
+              alignItems: "center",
+              gap: "24px"
+            },
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  type: "button",
+                  onClick: onBack,
+                  "data-ocid": "socials.back.button",
+                  style: {
+                    ...btnStyle("ghost"),
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    fontSize: "0.8rem",
+                    padding: "7px 14px"
+                  },
+                  onMouseEnter: (e) => {
+                    e.currentTarget.style.borderColor = "rgba(255,122,0,0.4)";
+                    e.currentTarget.style.color = "#FF7A00";
+                  },
+                  onMouseLeave: (e) => {
+                    e.currentTarget.style.borderColor = "rgba(255,255,255,0.2)";
+                    e.currentTarget.style.color = "rgba(255,255,255,0.7)";
+                  },
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "1.1rem", lineHeight: 1 }, children: "‹" }),
+                    "BACK"
+                  ]
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "div",
+                {
+                  style: {
+                    fontFamily: "'Oswald', sans-serif",
+                    fontWeight: 700,
+                    fontSize: "1.6rem",
+                    letterSpacing: "0.35em",
+                    color: "rgba(255,255,255,0.95)",
+                    textShadow: "0 0 20px rgba(255,122,0,0.3)"
+                  },
+                  children: "SOCIALS"
+                }
+              )
+            ]
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            style: {
+              display: "flex",
+              gap: "0",
+              borderBottom: "1px solid rgba(255,255,255,0.08)",
+              padding: "0 32px",
+              background: "rgba(0,0,0,0.3)"
+            },
+            children: tabs.map((tab) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                onClick: () => setActiveTab(tab.id),
+                "data-ocid": `socials.tab.${tab.id}`,
+                style: {
+                  fontFamily: "'Oswald', sans-serif",
+                  fontWeight: 600,
+                  fontSize: "0.8rem",
+                  letterSpacing: "0.2em",
+                  padding: "14px 20px",
+                  background: "transparent",
+                  border: "none",
+                  borderBottom: activeTab === tab.id ? "2px solid #FF7A00" : "2px solid transparent",
+                  color: activeTab === tab.id ? "#FF7A00" : "rgba(255,255,255,0.55)",
+                  cursor: "pointer",
+                  transition: "color 0.15s ease"
+                },
+                children: tab.label
+              },
+              tab.id
+            ))
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "div",
+          {
+            style: {
+              maxWidth: "760px",
+              margin: "0 auto",
+              padding: "24px 32px 48px"
+            },
+            children: [
+              activeTab === "clans" && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                ClansPanel,
+                {
+                  onClanChange: () => {
+                    actor == null ? void 0 : actor.getMyClan().then((clan) => setInClan(!!clan)).catch(() => {
+                    });
+                  }
+                }
+              ),
+              activeTab === "global" && /* @__PURE__ */ jsxRuntimeExports.jsx(GlobalChatPanel, {}),
+              activeTab === "clan" && /* @__PURE__ */ jsxRuntimeExports.jsx(ClanChatPanel, { inClan })
+            ]
+          }
+        )
+      ]
+    }
+  );
 }
 const USERNAME_REGEX = /^[a-zA-Z0-9_-]{3,20}$/;
 function UsernameSetup({ onComplete }) {
@@ -97283,6 +100483,9 @@ function App() {
   const handleShowProfile = () => {
     setScreen("profile");
   };
+  const handleShowSocials = () => {
+    setScreen("socials");
+  };
   const handleRetry = () => {
     setScreen("game");
   };
@@ -97306,7 +100509,8 @@ function App() {
             onStartGame: handleStartGame,
             onShowLeaderboard: handleShowLeaderboard,
             onShowControls: handleShowControls,
-            onShowProfile: handleShowProfile
+            onShowProfile: handleShowProfile,
+            onSocials: handleShowSocials
           }
         ),
         screen2 === "game" && /* @__PURE__ */ jsxRuntimeExports.jsx(GameScene, { onGameOver: handleGameOver }),
@@ -97325,7 +100529,8 @@ function App() {
         ),
         screen2 === "leaderboard" && /* @__PURE__ */ jsxRuntimeExports.jsx(Leaderboard, { onBack: handleBackToMenu }),
         screen2 === "controls" && /* @__PURE__ */ jsxRuntimeExports.jsx(ControlsScreen, { onBack: handleBackToMenu }),
-        screen2 === "profile" && /* @__PURE__ */ jsxRuntimeExports.jsx(PlayerProfile, { onBack: handleBackToMenu })
+        screen2 === "profile" && /* @__PURE__ */ jsxRuntimeExports.jsx(PlayerProfile, { onBack: handleBackToMenu }),
+        screen2 === "socials" && /* @__PURE__ */ jsxRuntimeExports.jsx(SocialsHub, { onBack: handleBackToMenu })
       ]
     }
   );

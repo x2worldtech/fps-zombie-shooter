@@ -27,18 +27,73 @@ type PlayerProfile =
    totalShots: nat;
    username: opt text;
  };
+type Clan = 
+ record {
+   createdAt: int;
+   description: text;
+   id: text;
+   inviteCode: text;
+   members: vec principal;
+   name: text;
+   ownerPrincipal: principal;
+   tag: text;
+ };
+type ChatType = 
+ variant {
+   clan: text;
+   global;
+ };
+type ChatMessage = 
+ record {
+   authorPrincipal: principal;
+   authorUsername: text;
+   chatType: ChatType;
+   content: text;
+   id: text;
+   timestamp: int;
+ };
 service : {
   _initializeAccessControl: () -> ();
   assignCallerUserRole: (user: principal, role: UserRole) -> ();
+  createClan: (name: text, tag: text, description: text) ->
+   (variant {
+      err: text;
+      ok: Clan;
+    });
+  getAllClans: () -> (vec Clan) query;
   getCallerUserProfile: () -> (opt PlayerProfile) query;
   getCallerUserRole: () -> (UserRole) query;
+  getClan: (clanId: text) -> (opt Clan) query;
+  getClanMessages: () -> (variant {
+                            err: text;
+                            ok: vec ChatMessage;
+                          }) query;
+  getGlobalMessages: () -> (vec ChatMessage) query;
   getHighScores: () -> (vec ScoreEntry) query;
+  getMyClan: () -> (opt Clan) query;
   getOrCreateProfile: () -> (PlayerProfile);
   getProfile: ("principal": principal) -> (opt PlayerProfile) query;
   getUserProfile: (user: principal) -> (opt PlayerProfile) query;
   getUsername: () -> (opt text) query;
   isCallerAdmin: () -> (bool) query;
+  joinClanByCode: (inviteCode: text) -> (variant {
+                                           err: text;
+                                           ok: Clan;
+                                         });
+  leaveClan: () -> (variant {
+                      err: text;
+                      ok;
+                    });
   saveCallerUserProfile: (profile: PlayerProfile) -> ();
+  sendClanMessage: (content: text) -> (variant {
+                                         err: text;
+                                         ok: ChatMessage;
+                                       });
+  sendGlobalMessage: (content: text) ->
+   (variant {
+      err: text;
+      ok: ChatMessage;
+    });
   setUsername: (username: text) -> (variant {
                                       err: text;
                                       ok;

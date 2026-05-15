@@ -1,20 +1,27 @@
 import { useFrame } from "@react-three/fiber";
-import { useRef } from "react";
+import type React from "react";
+import { memo, useRef } from "react";
 import type * as THREE from "three";
 import type { Pickup } from "../../types/enemy";
 
 interface PickupMeshProps {
   pickup: Pickup;
-  playerPos: [number, number, number];
+  /**
+   * PERF: stabile Ref auf die Spielerposition statt eines Tupels.
+   * Das Tupel wechselte vorher seine Referenz jeden Frame → React.memo war
+   * wirkungslos. Mit einer Ref bleibt die Prop stabil; PickupMesh re-rendert
+   * nur noch wenn sich `pickup` ändert (Spawn / collected).
+   */
+  playerPosRef: React.MutableRefObject<[number, number, number]>;
   onCollect: (id: string) => void;
   onPickupSound: () => void;
   onHealthPickup: (amount: number) => void;
   onAmmoPickup: (weapon: string) => void;
 }
 
-export function PickupMesh({
+function PickupMeshInner({
   pickup,
-  playerPos,
+  playerPosRef,
   onCollect,
   onPickupSound,
   onHealthPickup,
@@ -31,7 +38,8 @@ export function PickupMesh({
       pickup.position[1] + Math.sin(Date.now() * 0.003) * 0.15 + 0.3;
     meshRef.current.rotation.y += delta * 2;
 
-    // Check collection
+    // Check collection — Position aus Ref lesen (per-Frame mutiert)
+    const playerPos = playerPosRef.current;
     const dx = playerPos[0] - pickup.position[0];
     const dz = playerPos[2] - pickup.position[2];
     const dist = Math.sqrt(dx * dx + dz * dz);
@@ -63,3 +71,8 @@ export function PickupMesh({
     </mesh>
   );
 }
+
+// PERF: memo verhindert Re-Renders wenn nur GameScene re-rendert. Da
+// playerPosRef nun stabil ist, hängt die Render-Entscheidung nur noch am
+// `pickup`-Objekt (referenz-stabil aus pickups-Array) und den Callbacks.
+export const PickupMesh = memo(PickupMeshInner);

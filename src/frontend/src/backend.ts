@@ -89,16 +89,41 @@ export class ExternalBlob {
         return this;
     }
 }
+export interface Clan {
+    id: string;
+    tag: string;
+    members: Array<Principal>;
+    ownerPrincipal: Principal;
+    name: string;
+    createdAt: bigint;
+    description: string;
+    inviteCode: string;
+}
+export interface ScoreEntry {
+    wave: bigint;
+    score: bigint;
+    playerName: string;
+}
+export type ChatType = {
+    __kind__: "clan";
+    clan: string;
+} | {
+    __kind__: "global";
+    global: null;
+};
 export interface SessionStats {
     shots: bigint;
     headshots: bigint;
     kills: bigint;
     points: bigint;
 }
-export interface ScoreEntry {
-    wave: bigint;
-    score: bigint;
-    playerName: string;
+export interface ChatMessage {
+    id: string;
+    authorUsername: string;
+    content: string;
+    timestamp: bigint;
+    chatType: ChatType;
+    authorPrincipal: Principal;
 }
 export interface PlayerProfile {
     username?: string;
@@ -117,15 +142,61 @@ export enum UserRole {
 export interface backendInterface {
     _initializeAccessControl(): Promise<void>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
+    createClan(name: string, tag: string, description: string): Promise<{
+        __kind__: "ok";
+        ok: Clan;
+    } | {
+        __kind__: "err";
+        err: string;
+    }>;
+    getAllClans(): Promise<Array<Clan>>;
     getCallerUserProfile(): Promise<PlayerProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
+    getClan(clanId: string): Promise<Clan | null>;
+    getClanMessages(): Promise<{
+        __kind__: "ok";
+        ok: Array<ChatMessage>;
+    } | {
+        __kind__: "err";
+        err: string;
+    }>;
+    getGlobalMessages(): Promise<Array<ChatMessage>>;
     getHighScores(): Promise<Array<ScoreEntry>>;
+    getMyClan(): Promise<Clan | null>;
     getOrCreateProfile(): Promise<PlayerProfile>;
     getProfile(principal: Principal): Promise<PlayerProfile | null>;
     getUserProfile(user: Principal): Promise<PlayerProfile | null>;
     getUsername(): Promise<string | null>;
     isCallerAdmin(): Promise<boolean>;
+    joinClanByCode(inviteCode: string): Promise<{
+        __kind__: "ok";
+        ok: Clan;
+    } | {
+        __kind__: "err";
+        err: string;
+    }>;
+    leaveClan(): Promise<{
+        __kind__: "ok";
+        ok: null;
+    } | {
+        __kind__: "err";
+        err: string;
+    }>;
     saveCallerUserProfile(profile: PlayerProfile): Promise<void>;
+    sendClanMessage(content: string): Promise<{
+        __kind__: "ok";
+        ok: ChatMessage;
+    } | {
+        __kind__: "err";
+        err: string;
+    }>;
+    sendGlobalMessage(content: string): Promise<{
+        __kind__: "ok";
+        ok: ChatMessage;
+    } | {
+        __kind__: "err";
+        err: string;
+    }>;
     setUsername(username: string): Promise<{
         __kind__: "ok";
         ok: null;
@@ -136,7 +207,7 @@ export interface backendInterface {
     submitScore(score: bigint, wave: bigint): Promise<void>;
     updateProfile(principal: Principal, sessionStats: SessionStats): Promise<PlayerProfile>;
 }
-import type { PlayerProfile as _PlayerProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
+import type { ChatMessage as _ChatMessage, ChatType as _ChatType, Clan as _Clan, PlayerProfile as _PlayerProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>, private _uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, private _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, private processError?: (error: unknown) => never){}
     async _initializeAccessControl(): Promise<void> {
@@ -167,32 +238,114 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async createClan(arg0: string, arg1: string, arg2: string): Promise<{
+        __kind__: "ok";
+        ok: Clan;
+    } | {
+        __kind__: "err";
+        err: string;
+    }> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.createClan(arg0, arg1, arg2);
+                return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.createClan(arg0, arg1, arg2);
+            return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getAllClans(): Promise<Array<Clan>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getAllClans();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getAllClans();
+            return result;
+        }
+    }
     async getCallerUserProfile(): Promise<PlayerProfile | null> {
         if (this.processError) {
             try {
                 const result = await this.actor.getCallerUserProfile();
-                return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
+                return from_candid_opt_n4(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getCallerUserProfile();
-            return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
+            return from_candid_opt_n4(this._uploadFile, this._downloadFile, result);
         }
     }
     async getCallerUserRole(): Promise<UserRole> {
         if (this.processError) {
             try {
                 const result = await this.actor.getCallerUserRole();
-                return from_candid_UserRole_n7(this._uploadFile, this._downloadFile, result);
+                return from_candid_UserRole_n8(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getCallerUserRole();
-            return from_candid_UserRole_n7(this._uploadFile, this._downloadFile, result);
+            return from_candid_UserRole_n8(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getClan(arg0: string): Promise<Clan | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getClan(arg0);
+                return from_candid_opt_n10(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getClan(arg0);
+            return from_candid_opt_n10(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getClanMessages(): Promise<{
+        __kind__: "ok";
+        ok: Array<ChatMessage>;
+    } | {
+        __kind__: "err";
+        err: string;
+    }> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getClanMessages();
+                return from_candid_variant_n11(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getClanMessages();
+            return from_candid_variant_n11(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getGlobalMessages(): Promise<Array<ChatMessage>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getGlobalMessages();
+                return from_candid_vec_n12(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getGlobalMessages();
+            return from_candid_vec_n12(this._uploadFile, this._downloadFile, result);
         }
     }
     async getHighScores(): Promise<Array<ScoreEntry>> {
@@ -209,60 +362,74 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async getMyClan(): Promise<Clan | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getMyClan();
+                return from_candid_opt_n10(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getMyClan();
+            return from_candid_opt_n10(this._uploadFile, this._downloadFile, result);
+        }
+    }
     async getOrCreateProfile(): Promise<PlayerProfile> {
         if (this.processError) {
             try {
                 const result = await this.actor.getOrCreateProfile();
-                return from_candid_PlayerProfile_n4(this._uploadFile, this._downloadFile, result);
+                return from_candid_PlayerProfile_n5(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getOrCreateProfile();
-            return from_candid_PlayerProfile_n4(this._uploadFile, this._downloadFile, result);
+            return from_candid_PlayerProfile_n5(this._uploadFile, this._downloadFile, result);
         }
     }
     async getProfile(arg0: Principal): Promise<PlayerProfile | null> {
         if (this.processError) {
             try {
                 const result = await this.actor.getProfile(arg0);
-                return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
+                return from_candid_opt_n4(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getProfile(arg0);
-            return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
+            return from_candid_opt_n4(this._uploadFile, this._downloadFile, result);
         }
     }
     async getUserProfile(arg0: Principal): Promise<PlayerProfile | null> {
         if (this.processError) {
             try {
                 const result = await this.actor.getUserProfile(arg0);
-                return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
+                return from_candid_opt_n4(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getUserProfile(arg0);
-            return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
+            return from_candid_opt_n4(this._uploadFile, this._downloadFile, result);
         }
     }
     async getUsername(): Promise<string | null> {
         if (this.processError) {
             try {
                 const result = await this.actor.getUsername();
-                return from_candid_opt_n6(this._uploadFile, this._downloadFile, result);
+                return from_candid_opt_n7(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getUsername();
-            return from_candid_opt_n6(this._uploadFile, this._downloadFile, result);
+            return from_candid_opt_n7(this._uploadFile, this._downloadFile, result);
         }
     }
     async isCallerAdmin(): Promise<boolean> {
@@ -279,18 +446,98 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async joinClanByCode(arg0: string): Promise<{
+        __kind__: "ok";
+        ok: Clan;
+    } | {
+        __kind__: "err";
+        err: string;
+    }> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.joinClanByCode(arg0);
+                return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.joinClanByCode(arg0);
+            return from_candid_variant_n3(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async leaveClan(): Promise<{
+        __kind__: "ok";
+        ok: null;
+    } | {
+        __kind__: "err";
+        err: string;
+    }> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.leaveClan();
+                return from_candid_variant_n17(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.leaveClan();
+            return from_candid_variant_n17(this._uploadFile, this._downloadFile, result);
+        }
+    }
     async saveCallerUserProfile(arg0: PlayerProfile): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.saveCallerUserProfile(to_candid_PlayerProfile_n9(this._uploadFile, this._downloadFile, arg0));
+                const result = await this.actor.saveCallerUserProfile(to_candid_PlayerProfile_n18(this._uploadFile, this._downloadFile, arg0));
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.saveCallerUserProfile(to_candid_PlayerProfile_n9(this._uploadFile, this._downloadFile, arg0));
+            const result = await this.actor.saveCallerUserProfile(to_candid_PlayerProfile_n18(this._uploadFile, this._downloadFile, arg0));
             return result;
+        }
+    }
+    async sendClanMessage(arg0: string): Promise<{
+        __kind__: "ok";
+        ok: ChatMessage;
+    } | {
+        __kind__: "err";
+        err: string;
+    }> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.sendClanMessage(arg0);
+                return from_candid_variant_n20(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.sendClanMessage(arg0);
+            return from_candid_variant_n20(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async sendGlobalMessage(arg0: string): Promise<{
+        __kind__: "ok";
+        ok: ChatMessage;
+    } | {
+        __kind__: "err";
+        err: string;
+    }> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.sendGlobalMessage(arg0);
+                return from_candid_variant_n20(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.sendGlobalMessage(arg0);
+            return from_candid_variant_n20(this._uploadFile, this._downloadFile, result);
         }
     }
     async setUsername(arg0: string): Promise<{
@@ -303,14 +550,14 @@ export class Backend implements backendInterface {
         if (this.processError) {
             try {
                 const result = await this.actor.setUsername(arg0);
-                return from_candid_variant_n11(this._uploadFile, this._downloadFile, result);
+                return from_candid_variant_n17(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.setUsername(arg0);
-            return from_candid_variant_n11(this._uploadFile, this._downloadFile, result);
+            return from_candid_variant_n17(this._uploadFile, this._downloadFile, result);
         }
     }
     async submitScore(arg0: bigint, arg1: bigint): Promise<void> {
@@ -331,30 +578,63 @@ export class Backend implements backendInterface {
         if (this.processError) {
             try {
                 const result = await this.actor.updateProfile(arg0, arg1);
-                return from_candid_PlayerProfile_n4(this._uploadFile, this._downloadFile, result);
+                return from_candid_PlayerProfile_n5(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.updateProfile(arg0, arg1);
-            return from_candid_PlayerProfile_n4(this._uploadFile, this._downloadFile, result);
+            return from_candid_PlayerProfile_n5(this._uploadFile, this._downloadFile, result);
         }
     }
 }
-function from_candid_PlayerProfile_n4(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _PlayerProfile): PlayerProfile {
-    return from_candid_record_n5(_uploadFile, _downloadFile, value);
+function from_candid_ChatMessage_n13(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _ChatMessage): ChatMessage {
+    return from_candid_record_n14(_uploadFile, _downloadFile, value);
 }
-function from_candid_UserRole_n7(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _UserRole): UserRole {
-    return from_candid_variant_n8(_uploadFile, _downloadFile, value);
+function from_candid_ChatType_n15(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _ChatType): ChatType {
+    return from_candid_variant_n16(_uploadFile, _downloadFile, value);
 }
-function from_candid_opt_n3(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_PlayerProfile]): PlayerProfile | null {
-    return value.length === 0 ? null : from_candid_PlayerProfile_n4(_uploadFile, _downloadFile, value[0]);
+function from_candid_PlayerProfile_n5(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _PlayerProfile): PlayerProfile {
+    return from_candid_record_n6(_uploadFile, _downloadFile, value);
 }
-function from_candid_opt_n6(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [string]): string | null {
+function from_candid_UserRole_n8(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _UserRole): UserRole {
+    return from_candid_variant_n9(_uploadFile, _downloadFile, value);
+}
+function from_candid_opt_n10(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_Clan]): Clan | null {
     return value.length === 0 ? null : value[0];
 }
-function from_candid_record_n5(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+function from_candid_opt_n4(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_PlayerProfile]): PlayerProfile | null {
+    return value.length === 0 ? null : from_candid_PlayerProfile_n5(_uploadFile, _downloadFile, value[0]);
+}
+function from_candid_opt_n7(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [string]): string | null {
+    return value.length === 0 ? null : value[0];
+}
+function from_candid_record_n14(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    id: string;
+    authorUsername: string;
+    content: string;
+    timestamp: bigint;
+    chatType: _ChatType;
+    authorPrincipal: Principal;
+}): {
+    id: string;
+    authorUsername: string;
+    content: string;
+    timestamp: bigint;
+    chatType: ChatType;
+    authorPrincipal: Principal;
+} {
+    return {
+        id: value.id,
+        authorUsername: value.authorUsername,
+        content: value.content,
+        timestamp: value.timestamp,
+        chatType: from_candid_ChatType_n15(_uploadFile, _downloadFile, value.chatType),
+        authorPrincipal: value.authorPrincipal
+    };
+}
+function from_candid_record_n6(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     username: [] | [string];
     totalHeadshots: bigint;
     totalShots: bigint;
@@ -372,7 +652,7 @@ function from_candid_record_n5(_uploadFile: (file: ExternalBlob) => Promise<Uint
     totalKills: bigint;
 } {
     return {
-        username: record_opt_to_undefined(from_candid_opt_n6(_uploadFile, _downloadFile, value.username)),
+        username: record_opt_to_undefined(from_candid_opt_n7(_uploadFile, _downloadFile, value.username)),
         totalHeadshots: value.totalHeadshots,
         totalShots: value.totalShots,
         totalRounds: value.totalRounds,
@@ -382,6 +662,44 @@ function from_candid_record_n5(_uploadFile: (file: ExternalBlob) => Promise<Uint
     };
 }
 function from_candid_variant_n11(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    ok: Array<_ChatMessage>;
+} | {
+    err: string;
+}): {
+    __kind__: "ok";
+    ok: Array<ChatMessage>;
+} | {
+    __kind__: "err";
+    err: string;
+} {
+    return "ok" in value ? {
+        __kind__: "ok",
+        ok: from_candid_vec_n12(_uploadFile, _downloadFile, value.ok)
+    } : "err" in value ? {
+        __kind__: "err",
+        err: value.err
+    } : value;
+}
+function from_candid_variant_n16(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    clan: string;
+} | {
+    global: null;
+}): {
+    __kind__: "clan";
+    clan: string;
+} | {
+    __kind__: "global";
+    global: null;
+} {
+    return "clan" in value ? {
+        __kind__: "clan",
+        clan: value.clan
+    } : "global" in value ? {
+        __kind__: "global",
+        global: value.global
+    } : value;
+}
+function from_candid_variant_n17(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     ok: null;
 } | {
     err: string;
@@ -400,7 +718,45 @@ function from_candid_variant_n11(_uploadFile: (file: ExternalBlob) => Promise<Ui
         err: value.err
     } : value;
 }
-function from_candid_variant_n8(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+function from_candid_variant_n20(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    ok: _ChatMessage;
+} | {
+    err: string;
+}): {
+    __kind__: "ok";
+    ok: ChatMessage;
+} | {
+    __kind__: "err";
+    err: string;
+} {
+    return "ok" in value ? {
+        __kind__: "ok",
+        ok: from_candid_ChatMessage_n13(_uploadFile, _downloadFile, value.ok)
+    } : "err" in value ? {
+        __kind__: "err",
+        err: value.err
+    } : value;
+}
+function from_candid_variant_n3(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    ok: _Clan;
+} | {
+    err: string;
+}): {
+    __kind__: "ok";
+    ok: Clan;
+} | {
+    __kind__: "err";
+    err: string;
+} {
+    return "ok" in value ? {
+        __kind__: "ok",
+        ok: value.ok
+    } : "err" in value ? {
+        __kind__: "err",
+        err: value.err
+    } : value;
+}
+function from_candid_variant_n9(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     admin: null;
 } | {
     user: null;
@@ -409,13 +765,16 @@ function from_candid_variant_n8(_uploadFile: (file: ExternalBlob) => Promise<Uin
 }): UserRole {
     return "admin" in value ? UserRole.admin : "user" in value ? UserRole.user : "guest" in value ? UserRole.guest : value;
 }
-function to_candid_PlayerProfile_n9(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: PlayerProfile): _PlayerProfile {
-    return to_candid_record_n10(_uploadFile, _downloadFile, value);
+function from_candid_vec_n12(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: Array<_ChatMessage>): Array<ChatMessage> {
+    return value.map((x)=>from_candid_ChatMessage_n13(_uploadFile, _downloadFile, x));
+}
+function to_candid_PlayerProfile_n18(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: PlayerProfile): _PlayerProfile {
+    return to_candid_record_n19(_uploadFile, _downloadFile, value);
 }
 function to_candid_UserRole_n1(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): _UserRole {
     return to_candid_variant_n2(_uploadFile, _downloadFile, value);
 }
-function to_candid_record_n10(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+function to_candid_record_n19(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
     username?: string;
     totalHeadshots: bigint;
     totalShots: bigint;

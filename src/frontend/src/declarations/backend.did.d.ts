@@ -10,6 +10,26 @@ import type { ActorMethod } from '@icp-sdk/core/agent';
 import type { IDL } from '@icp-sdk/core/candid';
 import type { Principal } from '@icp-sdk/core/principal';
 
+export interface ChatMessage {
+  'id' : string,
+  'authorUsername' : string,
+  'content' : string,
+  'timestamp' : bigint,
+  'chatType' : ChatType,
+  'authorPrincipal' : Principal,
+}
+export type ChatType = { 'clan' : string } |
+  { 'global' : null };
+export interface Clan {
+  'id' : string,
+  'tag' : string,
+  'members' : Array<Principal>,
+  'ownerPrincipal' : Principal,
+  'name' : string,
+  'createdAt' : bigint,
+  'description' : string,
+  'inviteCode' : string,
+}
 export interface PlayerProfile {
   'username' : [] | [string],
   'totalHeadshots' : bigint,
@@ -36,15 +56,45 @@ export type UserRole = { 'admin' : null } |
 export interface _SERVICE {
   '_initializeAccessControl' : ActorMethod<[], undefined>,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
+  'createClan' : ActorMethod<
+    [string, string, string],
+    { 'ok' : Clan } |
+      { 'err' : string }
+  >,
+  'getAllClans' : ActorMethod<[], Array<Clan>>,
   'getCallerUserProfile' : ActorMethod<[], [] | [PlayerProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
+  'getClan' : ActorMethod<[string], [] | [Clan]>,
+  'getClanMessages' : ActorMethod<
+    [],
+    { 'ok' : Array<ChatMessage> } |
+      { 'err' : string }
+  >,
+  'getGlobalMessages' : ActorMethod<[], Array<ChatMessage>>,
   'getHighScores' : ActorMethod<[], Array<ScoreEntry>>,
+  'getMyClan' : ActorMethod<[], [] | [Clan]>,
   'getOrCreateProfile' : ActorMethod<[], PlayerProfile>,
   'getProfile' : ActorMethod<[Principal], [] | [PlayerProfile]>,
   'getUserProfile' : ActorMethod<[Principal], [] | [PlayerProfile]>,
   'getUsername' : ActorMethod<[], [] | [string]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
+  'joinClanByCode' : ActorMethod<
+    [string],
+    { 'ok' : Clan } |
+      { 'err' : string }
+  >,
+  'leaveClan' : ActorMethod<[], { 'ok' : null } | { 'err' : string }>,
   'saveCallerUserProfile' : ActorMethod<[PlayerProfile], undefined>,
+  'sendClanMessage' : ActorMethod<
+    [string],
+    { 'ok' : ChatMessage } |
+      { 'err' : string }
+  >,
+  'sendGlobalMessage' : ActorMethod<
+    [string],
+    { 'ok' : ChatMessage } |
+      { 'err' : string }
+  >,
   'setUsername' : ActorMethod<[string], { 'ok' : null } | { 'err' : string }>,
   'submitScore' : ActorMethod<[bigint, bigint], undefined>,
   'updateProfile' : ActorMethod<[Principal, SessionStats], PlayerProfile>,

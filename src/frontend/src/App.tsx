@@ -5,6 +5,7 @@ import { GameOver } from "./components/GameOver";
 import { Leaderboard } from "./components/Leaderboard";
 import { MainMenu } from "./components/MainMenu";
 import { PlayerProfile } from "./components/PlayerProfile";
+import { SocialsHub } from "./components/SocialsHub";
 import { UsernameSetup } from "./components/UsernameSetup";
 import { useInternetIdentity } from "./hooks/useInternetIdentity";
 import { useGetUsername } from "./hooks/useUsername";
@@ -15,7 +16,8 @@ type Screen =
   | "gameover"
   | "leaderboard"
   | "controls"
-  | "profile";
+  | "profile"
+  | "socials";
 
 interface GameResult {
   score: number;
@@ -76,6 +78,10 @@ export default function App() {
     setScreen("profile");
   };
 
+  const handleShowSocials = () => {
+    setScreen("socials");
+  };
+
   const handleRetry = () => {
     setScreen("game");
   };
@@ -98,6 +104,7 @@ export default function App() {
           onShowLeaderboard={handleShowLeaderboard}
           onShowControls={handleShowControls}
           onShowProfile={handleShowProfile}
+          onSocials={handleShowSocials}
         />
       )}
 
@@ -121,6 +128,8 @@ export default function App() {
       {screen === "controls" && <ControlsScreen onBack={handleBackToMenu} />}
 
       {screen === "profile" && <PlayerProfile onBack={handleBackToMenu} />}
+
+      {screen === "socials" && <SocialsHub onBack={handleBackToMenu} />}
     </div>
   );
 }

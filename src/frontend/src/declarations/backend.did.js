@@ -13,6 +13,16 @@ export const UserRole = IDL.Variant({
   'user' : IDL.Null,
   'guest' : IDL.Null,
 });
+export const Clan = IDL.Record({
+  'id' : IDL.Text,
+  'tag' : IDL.Text,
+  'members' : IDL.Vec(IDL.Principal),
+  'ownerPrincipal' : IDL.Principal,
+  'name' : IDL.Text,
+  'createdAt' : IDL.Int,
+  'description' : IDL.Text,
+  'inviteCode' : IDL.Text,
+});
 export const PlayerProfile = IDL.Record({
   'username' : IDL.Opt(IDL.Text),
   'totalHeadshots' : IDL.Nat,
@@ -21,6 +31,15 @@ export const PlayerProfile = IDL.Record({
   'currentLevel' : IDL.Nat,
   'totalPoints' : IDL.Nat,
   'totalKills' : IDL.Nat,
+});
+export const ChatType = IDL.Variant({ 'clan' : IDL.Text, 'global' : IDL.Null });
+export const ChatMessage = IDL.Record({
+  'id' : IDL.Text,
+  'authorUsername' : IDL.Text,
+  'content' : IDL.Text,
+  'timestamp' : IDL.Int,
+  'chatType' : ChatType,
+  'authorPrincipal' : IDL.Principal,
 });
 export const ScoreEntry = IDL.Record({
   'wave' : IDL.Nat,
@@ -37,9 +56,23 @@ export const SessionStats = IDL.Record({
 export const idlService = IDL.Service({
   '_initializeAccessControl' : IDL.Func([], [], []),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+  'createClan' : IDL.Func(
+      [IDL.Text, IDL.Text, IDL.Text],
+      [IDL.Variant({ 'ok' : Clan, 'err' : IDL.Text })],
+      [],
+    ),
+  'getAllClans' : IDL.Func([], [IDL.Vec(Clan)], ['query']),
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(PlayerProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+  'getClan' : IDL.Func([IDL.Text], [IDL.Opt(Clan)], ['query']),
+  'getClanMessages' : IDL.Func(
+      [],
+      [IDL.Variant({ 'ok' : IDL.Vec(ChatMessage), 'err' : IDL.Text })],
+      ['query'],
+    ),
+  'getGlobalMessages' : IDL.Func([], [IDL.Vec(ChatMessage)], ['query']),
   'getHighScores' : IDL.Func([], [IDL.Vec(ScoreEntry)], ['query']),
+  'getMyClan' : IDL.Func([], [IDL.Opt(Clan)], ['query']),
   'getOrCreateProfile' : IDL.Func([], [PlayerProfile], []),
   'getProfile' : IDL.Func([IDL.Principal], [IDL.Opt(PlayerProfile)], ['query']),
   'getUserProfile' : IDL.Func(
@@ -49,7 +82,27 @@ export const idlService = IDL.Service({
     ),
   'getUsername' : IDL.Func([], [IDL.Opt(IDL.Text)], ['query']),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+  'joinClanByCode' : IDL.Func(
+      [IDL.Text],
+      [IDL.Variant({ 'ok' : Clan, 'err' : IDL.Text })],
+      [],
+    ),
+  'leaveClan' : IDL.Func(
+      [],
+      [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
+      [],
+    ),
   'saveCallerUserProfile' : IDL.Func([PlayerProfile], [], []),
+  'sendClanMessage' : IDL.Func(
+      [IDL.Text],
+      [IDL.Variant({ 'ok' : ChatMessage, 'err' : IDL.Text })],
+      [],
+    ),
+  'sendGlobalMessage' : IDL.Func(
+      [IDL.Text],
+      [IDL.Variant({ 'ok' : ChatMessage, 'err' : IDL.Text })],
+      [],
+    ),
   'setUsername' : IDL.Func(
       [IDL.Text],
       [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
@@ -71,6 +124,16 @@ export const idlFactory = ({ IDL }) => {
     'user' : IDL.Null,
     'guest' : IDL.Null,
   });
+  const Clan = IDL.Record({
+    'id' : IDL.Text,
+    'tag' : IDL.Text,
+    'members' : IDL.Vec(IDL.Principal),
+    'ownerPrincipal' : IDL.Principal,
+    'name' : IDL.Text,
+    'createdAt' : IDL.Int,
+    'description' : IDL.Text,
+    'inviteCode' : IDL.Text,
+  });
   const PlayerProfile = IDL.Record({
     'username' : IDL.Opt(IDL.Text),
     'totalHeadshots' : IDL.Nat,
@@ -79,6 +142,15 @@ export const idlFactory = ({ IDL }) => {
     'currentLevel' : IDL.Nat,
     'totalPoints' : IDL.Nat,
     'totalKills' : IDL.Nat,
+  });
+  const ChatType = IDL.Variant({ 'clan' : IDL.Text, 'global' : IDL.Null });
+  const ChatMessage = IDL.Record({
+    'id' : IDL.Text,
+    'authorUsername' : IDL.Text,
+    'content' : IDL.Text,
+    'timestamp' : IDL.Int,
+    'chatType' : ChatType,
+    'authorPrincipal' : IDL.Principal,
   });
   const ScoreEntry = IDL.Record({
     'wave' : IDL.Nat,
@@ -95,9 +167,23 @@ export const idlFactory = ({ IDL }) => {
   return IDL.Service({
     '_initializeAccessControl' : IDL.Func([], [], []),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+    'createClan' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Text],
+        [IDL.Variant({ 'ok' : Clan, 'err' : IDL.Text })],
+        [],
+      ),
+    'getAllClans' : IDL.Func([], [IDL.Vec(Clan)], ['query']),
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(PlayerProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+    'getClan' : IDL.Func([IDL.Text], [IDL.Opt(Clan)], ['query']),
+    'getClanMessages' : IDL.Func(
+        [],
+        [IDL.Variant({ 'ok' : IDL.Vec(ChatMessage), 'err' : IDL.Text })],
+        ['query'],
+      ),
+    'getGlobalMessages' : IDL.Func([], [IDL.Vec(ChatMessage)], ['query']),
     'getHighScores' : IDL.Func([], [IDL.Vec(ScoreEntry)], ['query']),
+    'getMyClan' : IDL.Func([], [IDL.Opt(Clan)], ['query']),
     'getOrCreateProfile' : IDL.Func([], [PlayerProfile], []),
     'getProfile' : IDL.Func(
         [IDL.Principal],
@@ -111,7 +197,27 @@ export const idlFactory = ({ IDL }) => {
       ),
     'getUsername' : IDL.Func([], [IDL.Opt(IDL.Text)], ['query']),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+    'joinClanByCode' : IDL.Func(
+        [IDL.Text],
+        [IDL.Variant({ 'ok' : Clan, 'err' : IDL.Text })],
+        [],
+      ),
+    'leaveClan' : IDL.Func(
+        [],
+        [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],
+        [],
+      ),
     'saveCallerUserProfile' : IDL.Func([PlayerProfile], [], []),
+    'sendClanMessage' : IDL.Func(
+        [IDL.Text],
+        [IDL.Variant({ 'ok' : ChatMessage, 'err' : IDL.Text })],
+        [],
+      ),
+    'sendGlobalMessage' : IDL.Func(
+        [IDL.Text],
+        [IDL.Variant({ 'ok' : ChatMessage, 'err' : IDL.Text })],
+        [],
+      ),
     'setUsername' : IDL.Func(
         [IDL.Text],
         [IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text })],

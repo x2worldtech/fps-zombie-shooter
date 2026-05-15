@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import * as THREE from "three";
 import { skyFragmentShader, skyVertexShader } from "../../shaders/skyShader";
 import {
@@ -103,6 +103,15 @@ interface DesertEnvironmentProps {
 }
 
 // ─── Shared PBR material helpers ─────────────────────────────────────────────
+// PERF: Module-Level-Cache für non-textured PBR-Materialien.
+// Vorher: usePBRMat erzeugt pro Component-Instanz ein eigenes Material →
+// Window ruft den Hook 2× auf (frame + sill), bei ~470 Windows × 2 Aufrufe
+// × ~10 Buildings mit derselben Farbe = viel Duplikat. Jetzt: identische
+// (color, roughness, metalness, emissive, emissiveIntensity)-Kombinationen
+// teilen sich eine Material-Instanz, deutlich weniger Material-State-
+// Switches im Renderer.
+const __pbrMatCache = new Map<string, THREE.MeshStandardMaterial>();
+
 function usePBRMat(
   color: string,
   roughness = 0.82,
@@ -110,27 +119,46 @@ function usePBRMat(
   emissive?: string,
   emissiveIntensity = 0,
 ) {
-  return useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: new THREE.Color(color),
-        roughness,
-        metalness,
-        emissive: emissive ? new THREE.Color(emissive) : undefined,
-        emissiveIntensity,
-      }),
+  return useMemo(() => {
+    const key = `${color}|${roughness}|${metalness}|${emissive ?? ""}|${emissiveIntensity}`;
+    const cached = __pbrMatCache.get(key);
+    if (cached) return cached;
+    const mat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(color),
+      roughness,
+      metalness,
+      emissive: emissive ? new THREE.Color(emissive) : undefined,
+      emissiveIntensity,
+    });
+    __pbrMatCache.set(key, mat);
+    return mat;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [color, roughness, metalness, emissive, emissiveIntensity],
-  );
+  }, [color, roughness, metalness, emissive, emissiveIntensity]);
 }
 
 /**
  * Procedural Adobe/Stucco wall material with detailed albedo + bump.
  * Gives houses a textured wall surface instead of flat solid color.
  * Each instance gets a unique noise pattern via `seed`.
+ *
+ * PERF: Module-Level-Cache. Beim ersten Mount mit einer (color, seed)-Kombi
+ * wird das Material generiert und gespeichert. Spätere Re-Mounts (z.B. nach
+ * Portal-Wechsel Warzone → Desert) bekommen das Material instant zurück, ohne
+ * das 512×512 Canvas + Per-Pixel-Korn neu zu rechnen. Visuell 1:1 identisch,
+ * da Seed und Color exakt erhalten bleiben.
+ *
+ * Erst-Last: jedes Building hat einen positionsabhängigen Seed → eindeutig pro
+ * Gebäude → kein Cache-Hit beim allerersten Mount. Folge-Mounts (Portal-Loop
+ * Desert↔Warzone↔Desert) sind nahezu kostenlos.
  */
+const adobeWallMatCache = new Map<string, THREE.MeshStandardMaterial>();
+
 function useAdobeWallMat(color: string, seed: number) {
   return useMemo(() => {
+    const cacheKey = `${color}_${seed}`;
+    const cached = adobeWallMatCache.get(cacheKey);
+    if (cached) return cached;
+
     const size = 512;
     let s = seed | 0;
     const rng = () => {
@@ -212,7 +240,7 @@ function useAdobeWallMat(color: string, seed: number) {
         const y = rng() * size;
         const r = 0.6 + rng() * 1.4;
         const bright = 0.5 + rng() * 0.4;
-        aCtx.fillStyle = `rgba(${220 * bright | 0},${200 * bright | 0},${160 * bright | 0},${0.25 + rng() * 0.3})`;
+        aCtx.fillStyle = `rgba(${(220 * bright) | 0},${(200 * bright) | 0},${(160 * bright) | 0},${0.25 + rng() * 0.3})`;
         aCtx.beginPath();
         aCtx.arc(x, y, r, 0, Math.PI * 2);
         aCtx.fill();
@@ -224,7 +252,10 @@ function useAdobeWallMat(color: string, seed: number) {
         const n = (rng() - 0.5) * 20;
         img.data[i] = Math.max(0, Math.min(255, img.data[i] + n));
         img.data[i + 1] = Math.max(0, Math.min(255, img.data[i + 1] + n * 0.9));
-        img.data[i + 2] = Math.max(0, Math.min(255, img.data[i + 2] + n * 0.75));
+        img.data[i + 2] = Math.max(
+          0,
+          Math.min(255, img.data[i + 2] + n * 0.75),
+        );
       }
       aCtx.putImageData(img, 0, 0);
     }
@@ -307,7 +338,7 @@ function useAdobeWallMat(color: string, seed: number) {
     bumpTex.repeat.set(2, 2);
     bumpTex.anisotropy = 8;
 
-    return new THREE.MeshStandardMaterial({
+    const material = new THREE.MeshStandardMaterial({
       color: new THREE.Color(color),
       map: albedoTex,
       bumpMap: bumpTex,
@@ -315,6 +346,9 @@ function useAdobeWallMat(color: string, seed: number) {
       roughness: 0.92,
       metalness: 0.0,
     });
+    // PERF: ins Module-Cache speichern
+    adobeWallMatCache.set(cacheKey, material);
+    return material;
   }, [color, seed]);
 }
 
@@ -324,6 +358,50 @@ function useAdobeWallMat(color: string, seed: number) {
 //   Back wall   (-Z): rotationY = Math.PI
 //   Right wall  (+X): rotationY = Math.PI / 2
 //   Left wall   (-X): rotationY = -Math.PI / 2
+
+// PERF: Module-Level-Cache für die Fenster-Glas-Materialien.
+// Vorher: jedes <Window> erzeugte sein eigenes glassMaterial via useMemo →
+// bei ~470 Fenstern in 26 Buildings = ~470 Material-Instanzen, davon ~470
+// transparent (=teure Sortier-/Draw-Pässe). Jetzt: zwei geteilte Materialien
+// (eines mit Licht, eines ohne) für alle Fenster. Visuell bit-identisch da
+// die Material-Properties vorher schon ausschließlich von `hasLight` abhingen
+// — kein per-Window-Variations-Verlust.
+//
+// Wirkung: Renderer kann gleichartige Fenster batchen (mit BatchedMesh-Logik
+// auf GPU-Treiber-Ebene), Material-State-Switches drop von ~470 auf 2 pro
+// Frame, deutlich weniger GC-Druck und Shader-Compile-Pässe.
+let __windowGlassMatLit: THREE.MeshStandardMaterial | null = null;
+let __windowGlassMatDark: THREE.MeshStandardMaterial | null = null;
+
+function getSharedWindowGlassMat(hasLight: boolean): THREE.MeshStandardMaterial {
+  if (hasLight) {
+    if (!__windowGlassMatLit) {
+      __windowGlassMatLit = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(0.9, 0.8, 0.5),
+        roughness: 0.05,
+        metalness: 0.6,
+        emissive: new THREE.Color(0.4, 0.3, 0.1),
+        emissiveIntensity: 0.8,
+        transparent: true,
+        opacity: 0.85,
+      });
+    }
+    return __windowGlassMatLit;
+  }
+  if (!__windowGlassMatDark) {
+    __windowGlassMatDark = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(0.04, 0.07, 0.14),
+      roughness: 0.05,
+      metalness: 0.6,
+      emissive: new THREE.Color(0.01, 0.02, 0.05),
+      emissiveIntensity: 0.3,
+      transparent: true,
+      opacity: 0.7,
+    });
+  }
+  return __windowGlassMatDark;
+}
+
 function Window({
   position,
   rotationY = 0,
@@ -340,23 +418,8 @@ function Window({
   hasLight?: boolean;
 }) {
   const frameMat = usePBRMat(frameColor, 0.75);
-  const glassMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: hasLight
-          ? new THREE.Color(0.9, 0.8, 0.5)
-          : new THREE.Color(0.04, 0.07, 0.14),
-        roughness: 0.05,
-        metalness: 0.6,
-        emissive: hasLight
-          ? new THREE.Color(0.4, 0.3, 0.1)
-          : new THREE.Color(0.01, 0.02, 0.05),
-        emissiveIntensity: hasLight ? 0.8 : 0.3,
-        transparent: true,
-        opacity: hasLight ? 0.85 : 0.7,
-      }),
-    [hasLight],
-  );
+  // PERF: shared module-cached Material statt per-Component useMemo
+  const glassMat = getSharedWindowGlassMat(hasLight);
   const sillMat = usePBRMat(frameColor, 0.6);
 
   return (
@@ -795,7 +858,6 @@ function IntactBuilding({
           ]}
         />
       )}
-
     </group>
   );
 }
@@ -1071,7 +1133,7 @@ function SandGround() {
         const y = Math.random() * size;
         const r = 1 + Math.random() * 3.5;
         const dark = 0.4 + Math.random() * 0.3;
-        aCtx.fillStyle = `rgba(${60 * dark | 0},${50 * dark | 0},${35 * dark | 0},${0.5 + Math.random() * 0.4})`;
+        aCtx.fillStyle = `rgba(${(60 * dark) | 0},${(50 * dark) | 0},${(35 * dark) | 0},${0.5 + Math.random() * 0.4})`;
         aCtx.beginPath();
         aCtx.arc(x, y, r, 0, Math.PI * 2);
         aCtx.fill();
@@ -1087,7 +1149,10 @@ function SandGround() {
       for (let i = 0; i < img.data.length; i += 4) {
         const n = (Math.random() - 0.5) * 38;
         img.data[i] = Math.max(0, Math.min(255, img.data[i] + n));
-        img.data[i + 1] = Math.max(0, Math.min(255, img.data[i + 1] + n * 0.85));
+        img.data[i + 1] = Math.max(
+          0,
+          Math.min(255, img.data[i + 1] + n * 0.85),
+        );
         img.data[i + 2] = Math.max(0, Math.min(255, img.data[i + 2] + n * 0.7));
       }
       aCtx.putImageData(img, 0, 0);
@@ -1189,7 +1254,10 @@ function SandGround() {
       // Smooth-fade-in: 0% bei innerRadius, 100% bei outerRadius
       let influence = 0;
       if (dist > innerRadius) {
-        const t = Math.min(1, (dist - innerRadius) / (outerRadius - innerRadius));
+        const t = Math.min(
+          1,
+          (dist - innerRadius) / (outerRadius - innerRadius),
+        );
         // ease-in-out für sanften Übergang
         influence = t * t * (3 - 2 * t);
       }
@@ -1280,7 +1348,7 @@ function BuildingDispatcher({ b }: { b: BuildingData }) {
   return <RubblePile position={[bx, 0, bz]} />;
 }
 
-export function DesertEnvironment({
+function DesertEnvironmentInner({
   upgradeTier = 0,
   juggernogPurchaseCount = 0,
 }: DesertEnvironmentProps) {
@@ -1370,3 +1438,9 @@ export function DesertEnvironment({
     </group>
   );
 }
+
+// PERF: memo verhindert, dass DesertEnvironment bei jedem GameScene-Re-Render
+// seinen kompletten Sub-Tree (26 Buildings + Palmen + Trümmer + Machines + Sun
+// + Lighting) reconciliert. Re-Render nur noch wenn upgradeTier oder
+// juggernogPurchaseCount sich ändern — also bei Pack-a-Punch / Juggernog-Kauf.
+export const DesertEnvironment = memo(DesertEnvironmentInner);

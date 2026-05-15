@@ -70,8 +70,7 @@ function DebrisMesh({
         ? "#1a1208"
         : "#4a4238";
   const emissive = chunk.variant === 1 ? "#ff3300" : "#000000";
-  const emissiveIntensity =
-    chunk.variant === 1 ? Math.max(0, 1.5 - t * 2) : 0;
+  const emissiveIntensity = chunk.variant === 1 ? Math.max(0, 1.5 - t * 2) : 0;
 
   return (
     <group>
@@ -313,9 +312,7 @@ export function NuclearEvent({
     }
     // Limit
     if (falloutParticles.current.length > FALLOUT_COUNT) {
-      falloutParticles.current = falloutParticles.current.slice(
-        -FALLOUT_COUNT,
-      );
+      falloutParticles.current = falloutParticles.current.slice(-FALLOUT_COUNT);
     }
   };
 
@@ -425,8 +422,7 @@ export function NuclearEvent({
 
     // Ground-Flash ausblenden
     if (groundFlashRef.current?.visible) {
-      const gfMat = groundFlashRef.current
-        .material as THREE.MeshBasicMaterial;
+      const gfMat = groundFlashRef.current.material as THREE.MeshBasicMaterial;
       gfMat.opacity = Math.max(0, gfMat.opacity - 0.04);
       const sc = (groundFlashRef.current.scale.x || 1) + 1.2;
       groundFlashRef.current.scale.set(sc, 1, sc);
@@ -479,8 +475,7 @@ export function NuclearEvent({
       if (fireballMidRef.current) {
         fireballMidRef.current.scale.setScalar(fbBase * 0.85);
         fireballMidRef.current.visible = true;
-        const m = fireballMidRef.current
-          .material as THREE.MeshStandardMaterial;
+        const m = fireballMidRef.current.material as THREE.MeshStandardMaterial;
         const fadeT = Math.min(1, ct / 4);
         m.emissiveIntensity = Math.max(0.2, 8 - ct * 1.5);
         m.color.setRGB(
@@ -512,8 +507,7 @@ export function NuclearEvent({
           stemH / 2,
           IMPACT_POINT.z,
         );
-        const m1 = stemInnerRef.current
-          .material as THREE.MeshStandardMaterial;
+        const m1 = stemInnerRef.current.material as THREE.MeshStandardMaterial;
         const smokeT = Math.min(1, ct / 6);
         m1.color.setRGB(1.0 - smokeT * 0.7, 0.4 - smokeT * 0.35, 0);
         m1.emissive.setRGB(0.9 - smokeT * 0.8, 0.25 - smokeT * 0.2, 0);
@@ -526,8 +520,7 @@ export function NuclearEvent({
           stemH / 2 + 4,
           IMPACT_POINT.z,
         );
-        const m2 = stemOuterRef.current
-          .material as THREE.MeshStandardMaterial;
+        const m2 = stemOuterRef.current.material as THREE.MeshStandardMaterial;
         m2.color.setRGB(
           0.4 - smokeT * 0.2,
           0.3 - smokeT * 0.18,
@@ -658,11 +651,7 @@ export function NuclearEvent({
         shockwave2Ref.current.visible = true;
         const sw2Radius = Math.min(280, (swT - 0.4) * 65);
         shockwave2Ref.current.scale.set(sw2Radius / 5, 1, sw2Radius / 5);
-        shockwave2Ref.current.position.set(
-          IMPACT_POINT.x,
-          0.5,
-          IMPACT_POINT.z,
-        );
+        shockwave2Ref.current.position.set(IMPACT_POINT.x, 0.5, IMPACT_POINT.z);
         const swMat = shockwave2Ref.current
           .material as THREE.MeshStandardMaterial;
         swMat.opacity = Math.max(0, 0.45 - (swT - 0.4) * 0.08);
@@ -934,11 +923,7 @@ export function NuclearEvent({
         })).map(({ angle, colorIdx }) => {
           const r = 28;
           const color =
-            colorIdx === 0
-              ? "#7a4020"
-              : colorIdx === 1
-                ? "#5a3018"
-                : "#4a2818";
+            colorIdx === 0 ? "#7a4020" : colorIdx === 1 ? "#5a3018" : "#4a2818";
           return (
             <mesh
               key={angle}
@@ -963,11 +948,7 @@ export function NuclearEvent({
         })).map(({ angle, colorIdx }) => {
           const r = 38;
           const color =
-            colorIdx === 0
-              ? "#3a2818"
-              : colorIdx === 1
-                ? "#2a2018"
-                : "#252018";
+            colorIdx === 0 ? "#3a2818" : colorIdx === 1 ? "#2a2018" : "#252018";
           return (
             <mesh
               key={angle}
@@ -1048,11 +1029,7 @@ export function NuclearEvent({
           side={THREE.DoubleSide}
         />
       </mesh>
-      <mesh
-        ref={dustSkirtRef}
-        rotation={[-Math.PI / 2, 0, 0]}
-        visible={false}
-      >
+      <mesh ref={dustSkirtRef} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
         <circleGeometry args={[60, 32]} />
         <meshStandardMaterial
           color="#a08060"
@@ -1092,11 +1069,7 @@ export function NuclearEvent({
           emissiveIntensity={0.4}
         />
       </mesh>
-      <mesh
-        ref={shockwave2Ref}
-        rotation={[-Math.PI / 2, 0, 0]}
-        visible={false}
-      >
+      <mesh ref={shockwave2Ref} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
         <torusGeometry args={[5, 1.2, 6, 48]} />
         <meshStandardMaterial
           color="#aaccff"

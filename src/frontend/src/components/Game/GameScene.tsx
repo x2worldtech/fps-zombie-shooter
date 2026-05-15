@@ -5,7 +5,7 @@ import {
   PointerLockControls,
 } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { useEnemySystem } from "../../hooks/useEnemySystem";
 import { useGameAudio } from "../../hooks/useGameAudio";
@@ -17,7 +17,9 @@ import { UPGRADE_COSTS } from "../../types/weapon";
 import { JUGGERNOG_POSITION } from "../../utils/proceduralGeometry";
 import type { CollisionAABB } from "../../utils/proceduralGeometry";
 import BloodDecals, { type BloodDecalsHandle } from "./BloodDecals";
-import BloodParticles from "./BloodParticles";
+import BloodEffectsManager, {
+  type BloodEffectsHandle,
+} from "./BloodEffectsManager";
 import { DesertEnvironment } from "./DesertEnvironment";
 import { EnemyMesh } from "./EnemyMesh";
 import { FirstPersonCamera } from "./FirstPersonCamera";
@@ -76,14 +78,8 @@ const WARZONE_EXTRA_AABBS: CollisionAABB[] = [
 ];
 const EMPTY_AABBS: CollisionAABB[] = [];
 
-interface BloodEffect {
-  id: number;
-  position: [number, number, number];
-  direction: [number, number, number];
-  intensity: number;
-}
-
-let bloodEffectIdCounter = 0;
+// PERF: BloodEffect-Typ + IDs sind jetzt im BloodEffectsManager gekapselt.
+// GameScene hält den State nicht mehr selbst.
 
 function isHeadHit(hitObject: THREE.Object3D): boolean {
   let current: THREE.Object3D | null = hitObject;
@@ -135,13 +131,21 @@ function RaycastShooter({
 
           let current: THREE.Object3D | null = obj;
           let enemyId: string | null = null;
+          let isCorpse = false;
           while (current) {
+            if (current.userData.isCorpse) {
+              isCorpse = true;
+            }
             if (current.userData.enemyId) {
               enemyId = current.userData.enemyId as string;
               break;
             }
             current = current.parent;
           }
+
+          // Tote Zombies (Leichen) sind nicht treffbar — Schuss soll durchgehen
+          // bzw. den nächsten Lebenden hinter ihnen treffen.
+          if (isCorpse) continue;
 
           if (enemyId) {
             const headshot = isHeadHit(obj);
@@ -171,6 +175,8 @@ function EnemyUpdater({
   onPlayerHit,
   updatePositions,
   isPaused,
+  enemiesRef,
+  cullCorpses,
 }: {
   playerPos: React.MutableRefObject<[number, number, number]>;
   onPlayerHit: (dmg: number) => void;
@@ -180,10 +186,56 @@ function EnemyUpdater({
     onHit: (dmg: number) => void,
   ) => void;
   isPaused: boolean;
+  // ── Ragdoll/Despawn ──
+  enemiesRef: React.MutableRefObject<import("../../types/enemy").Enemy[]>;
+  cullCorpses: (visibleIds: Set<string>) => void;
 }) {
+  const { camera } = useThree();
+  // PERF: stabile Helfer für den Frustum-Check — eine Allokation insgesamt.
+  const frustumRef = useRef(new THREE.Frustum());
+  const projScreenMatrixRef = useRef(new THREE.Matrix4());
+  const sphereRef = useRef(new THREE.Sphere(new THREE.Vector3(), 1.5));
+  const visibleIdsRef = useRef<Set<string>>(new Set());
+  // Cull nur ~4×/Sek, nicht jeden Frame
+  const cullAccumRef = useRef(0);
+
   useFrame((_, delta) => {
     if (isPaused) return;
     updatePositions(playerPos.current, delta, onPlayerHit);
+
+    // ── Corpse Cull (Frustum-Check + Despawn-Trigger) ──────────────────────
+    cullAccumRef.current += delta;
+    if (cullAccumRef.current < 0.25) return;
+    cullAccumRef.current = 0;
+
+    // Frustum aus aktueller Kamera bauen
+    camera.updateMatrixWorld();
+    projScreenMatrixRef.current.multiplyMatrices(
+      camera.projectionMatrix,
+      camera.matrixWorldInverse,
+    );
+    frustumRef.current.setFromProjectionMatrix(projScreenMatrixRef.current);
+
+    // Welche toten Zombies sind im Sichtfeld? Sphere-Test mit konservativem
+    // Radius 1.5m um die Leichen-Position. Standard- und Boss-Leichen liegen
+    // beide in dieser Sphere (Boss ist größer, aber wir testen Position+Radius,
+    // und 1.5m ist großzügig genug für Standard und konservativ für Boss —
+    // false-positives sind OK, der Despawn vermeidet sie ja gerade).
+    const list = enemiesRef.current;
+    const visibleIds = visibleIdsRef.current;
+    visibleIds.clear();
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (!e.isDead) continue;
+      // Boss: konservativer Radius
+      const r = e.type === "boss" ? 2.5 : 1.5;
+      sphereRef.current.center.set(e.position[0], e.position[1], e.position[2]);
+      sphereRef.current.radius = r;
+      if (frustumRef.current.intersectsSphere(sphereRef.current)) {
+        visibleIds.add(e.id);
+      }
+    }
+    cullCorpses(visibleIds);
   });
   return null;
 }
@@ -208,7 +260,8 @@ function CameraFOVController({
     let targetFov = 75;
     if (isAiming) {
       if (weapon === "assault_rifle") targetFov = 52;
-      else if (weapon === "sniper_rifle") targetFov = 75; // unchanged (scope handles zoom)
+      else if (weapon === "sniper_rifle")
+        targetFov = 75; // unchanged (scope handles zoom)
       else targetFov = 60; // pistol, shotgun
     }
     // Smooth lerp — schnell genug zum Folgen, weich genug für visual polish
@@ -230,7 +283,10 @@ export function GameScene({ onGameOver }: GameSceneProps) {
   const [nearJuggernog, setNearJuggernog] = useState(false);
   const [nearNuclearMachine, setNearNuclearMachine] = useState(false);
   const [nearSpeedCola, setNearSpeedCola] = useState(false);
-  const [bloodEffects, setBloodEffects] = useState<BloodEffect[]>([]);
+  // PERF: Blut-Effekte werden NICHT mehr im GameScene-State gehalten — der
+  // BloodEffectsManager macht das intern. Wir behalten nur eine Ref auf seinen
+  // imperativen Handle.
+  const bloodEffectsRef = useRef<BloodEffectsHandle>(null);
 
   // ─── World / Portal state ───────────────────────────────────────────────────
   const [currentWorld, setCurrentWorld] = useState<WorldType>("desert");
@@ -239,6 +295,15 @@ export function GameScene({ onGameOver }: GameSceneProps) {
   const [isTeleporting, setIsTeleporting] = useState(false);
   const currentWorldRef = useRef<WorldType>("desert");
   const isTeleportingRef = useRef(false);
+
+  // ─── Movement-Animation-Refs für Camera ↔ WeaponViewModel ──
+  // Vermeidet Re-Renders bei jedem Frame — Camera füllt Refs, WeaponViewModel
+  // liest sie in useFrame.
+  const movementStateRef = useRef({
+    isMoving: false,
+    isSprinting: false,
+    stepPhase: 0,
+  });
 
   // ─── Nuclear event state ────────────────────────────────────────────────────
   const [nuclearEventActive, setNuclearEventActive] = useState(false);
@@ -284,6 +349,8 @@ export function GameScene({ onGameOver }: GameSceneProps) {
   } = useWeaponSystem(speedColaSystem.reloadMultiplier);
   const {
     enemies,
+    enemiesRef,
+    enemyPositionsRef,
     pickups,
     score,
     points,
@@ -296,6 +363,7 @@ export function GameScene({ onGameOver }: GameSceneProps) {
     updateEnemyPositions,
     collectPickup,
     clearDeadEnemies,
+    cullCorpses,
   } = useEnemySystem();
 
   const {
@@ -704,15 +772,15 @@ export function GameScene({ onGameOver }: GameSceneProps) {
     ) => {
       const result = damageEnemy(id, damage, isHeadshot, hitPoint);
 
-      const shotDir = new THREE.Vector3(0, 0, -1);
       const intensity = result.isDismemberment ? 2.5 : 1.0;
-      const newEffect: BloodEffect = {
-        id: bloodEffectIdCounter++,
-        position: [hitPoint.x, hitPoint.y, hitPoint.z],
-        direction: [shotDir.x, shotDir.y, shotDir.z],
+      // PERF: kein setState mehr — imperativer Call löst keinen GameScene-
+      // Re-Render aus. Direction-Tupel als Literal, da BloodParticles es nur
+      // einmal beim Mount auswertet (intern memo'd) und nicht mutiert.
+      bloodEffectsRef.current?.add(
+        [hitPoint.x, hitPoint.y, hitPoint.z],
+        [0, 0, -1],
         intensity,
-      };
-      setBloodEffects((prev) => [...prev, newEffect]);
+      );
 
       bloodDecalsRef.current?.addBloodSplatter([
         hitPoint.x,
@@ -739,10 +807,6 @@ export function GameScene({ onGameOver }: GameSceneProps) {
     },
     [damageEnemy],
   );
-
-  const removeBloodEffect = useCallback((id: number) => {
-    setBloodEffects((prev) => prev.filter((e) => e.id !== id));
-  }, []);
 
   const handleHealthPickup = useCallback(
     (amount: number) => {
@@ -774,6 +838,31 @@ export function GameScene({ onGameOver }: GameSceneProps) {
     (count: number | null, show: boolean) => {
       setNuclearCountdownNum(count);
       setShowNuclearCountdownHUD(show);
+    },
+    [],
+  );
+
+  // ── PERF: stabile Callback-Identitäten für memo'te Children ──────────────
+  // Inline Arrow-Funktionen würden bei jedem GameScene-Render eine neue
+  // Referenz bekommen und WarzoneEnvironment / NuclearEvent / SpeedColaMachine
+  // trotz React.memo zum Re-Render zwingen. useCallback hält die Referenz
+  // stabil; die Setter (setNuclearEventActive etc.) sind ohnehin stabil.
+  const handleActivateNuclear = useCallback(() => {
+    setNuclearEventActive(true);
+  }, []);
+  const handleNuclearComplete = useCallback(() => {
+    setNuclearEventActive(false);
+  }, []);
+  const handleSpeedColaPurchaseStub = useCallback(() => {}, []);
+  const handlePlayerPositionUpdate = useCallback(
+    (pos: [number, number, number]) => {
+      playerPosRef.current = pos;
+    },
+    [],
+  );
+  const handleMovementStateChange = useCallback(
+    (s: { isMoving: boolean; isSprinting: boolean; stepPhase: number }) => {
+      movementStateRef.current = s;
     },
     [],
   );
@@ -841,7 +930,7 @@ export function GameScene({ onGameOver }: GameSceneProps) {
         ) : (
           <>
             <WarzoneEnvironment
-              onActivateNuclear={() => setNuclearEventActive(true)}
+              onActivateNuclear={handleActivateNuclear}
               playerPosRef={playerPosRef}
               nuclearEventActive={nuclearEventActive}
             />
@@ -853,7 +942,7 @@ export function GameScene({ onGameOver }: GameSceneProps) {
             />
             <SpeedColaMachine
               isPurchased={speedColaSystem.isPurchased}
-              onPurchase={() => {}}
+              onPurchase={handleSpeedColaPurchaseStub}
             />
           </>
         )}
@@ -862,7 +951,7 @@ export function GameScene({ onGameOver }: GameSceneProps) {
         {currentWorld === "warzone" && (
           <NuclearEvent
             active={nuclearEventActive}
-            onComplete={() => setNuclearEventActive(false)}
+            onComplete={handleNuclearComplete}
             playerPosRef={playerPosRef}
             destroyedBuildingIds={destroyedBuildingIds}
             flashRef={nuclearFlashRef}
@@ -872,9 +961,7 @@ export function GameScene({ onGameOver }: GameSceneProps) {
 
         <FirstPersonCamera
           isLocked={isLocked}
-          onPlayerPositionUpdate={(pos) => {
-            playerPosRef.current = pos;
-          }}
+          onPlayerPositionUpdate={handlePlayerPositionUpdate}
           onFire={handleFire}
           isGameActive={isGameActive}
           isPaused={isPaused}
@@ -882,6 +969,8 @@ export function GameScene({ onGameOver }: GameSceneProps) {
             currentWorld === "warzone" ? WARZONE_EXTRA_AABBS : EMPTY_AABBS
           }
           world={currentWorld}
+          isAiming={isAiming}
+          onMovementStateChange={handleMovementStateChange}
         />
 
         {/* FOV-Animation: Zoom beim Aim-Down-Sights für alle Waffen */}
@@ -899,6 +988,7 @@ export function GameScene({ onGameOver }: GameSceneProps) {
             lastFireTime={weaponState.lastFireTime}
             reloadProgress={weaponState.reloadProgress}
             isAiming={isAiming}
+            movementStateRef={movementStateRef}
           />
         )}
 
@@ -909,35 +999,35 @@ export function GameScene({ onGameOver }: GameSceneProps) {
           onPlayerHit={handlePlayerHit}
           updatePositions={updateEnemyPositions}
           isPaused={isPaused}
+          enemiesRef={enemiesRef}
+          cullCorpses={cullCorpses}
         />
 
         <BloodDecals ref={bloodDecalsRef} />
 
+        {/* PERF: Blut-Partikel jetzt in einem self-contained Manager —
+           GameScene re-rendert nicht mehr pro Schuss. */}
+        <BloodEffectsManager ref={bloodEffectsRef} />
+
         {enemies.map((enemy) => (
-          <group key={enemy.id} userData={{ enemyId: enemy.id }}>
+          <group
+            key={enemy.id}
+            userData={{ enemyId: enemy.id, isCorpse: enemy.isDead }}
+          >
             <EnemyMesh
               enemy={enemy}
               onHitFlashDone={clearHitFlash}
               playerPositionRef={playerPosRef}
+              enemyPositionsRef={enemyPositionsRef}
             />
           </group>
-        ))}
-
-        {bloodEffects.map((effect) => (
-          <BloodParticles
-            key={effect.id}
-            position={effect.position}
-            direction={effect.direction}
-            intensity={effect.intensity}
-            onComplete={() => removeBloodEffect(effect.id)}
-          />
         ))}
 
         {pickups.map((pickup) => (
           <PickupMesh
             key={pickup.id}
             pickup={pickup}
-            playerPos={playerPosRef.current}
+            playerPosRef={playerPosRef}
             onCollect={collectPickup}
             onPickupSound={playPickup}
             onHealthPickup={handleHealthPickup}

@@ -1,14 +1,23 @@
 import { useFrame } from "@react-three/fiber";
 import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { Enemy } from "../../types/enemy";
+import { computeRagdollPose } from "../../utils/ragdollPose";
 import { useStandardMaterial } from "./ToonMaterial";
 
 interface EnemyMeshProps {
   enemy: Enemy;
   onHitFlashDone: (id: string) => void;
   playerPositionRef: React.MutableRefObject<[number, number, number]>;
+  /**
+   * PERF: Map mit der aktuellen (per-Frame mutierten) Position jedes Enemies.
+   * Wird in useFrame gelesen statt `enemy.position` aus dem React-State, damit
+   * setEnemies(...) nicht jeden Frame neu feuern muss. Siehe useEnemySystem.
+   */
+  enemyPositionsRef: React.MutableRefObject<
+    Map<string, [number, number, number]>
+  >;
 }
 
 // ─── Shared subassemblies ─────────────────────────────────────────────────────
@@ -48,7 +57,9 @@ const Stump: React.FC<{
       {/* Knochen-Querschnitt sichtbar */}
       {showBoneCore && (
         <mesh material={boneMat} position={[0, radius * 0.05, 0]}>
-          <cylinderGeometry args={[radius * 0.35, radius * 0.35, radius * 0.12, 8]} />
+          <cylinderGeometry
+            args={[radius * 0.35, radius * 0.35, radius * 0.12, 8]}
+          />
         </mesh>
       )}
       {/* Tropfender Blut-Strang nach unten */}
@@ -251,6 +262,7 @@ function StandardZombie({
   enemy,
   onHitFlashDone,
   playerPositionRef,
+  enemyPositionsRef,
 }: EnemyMeshProps) {
   const groupRef = useRef<THREE.Group>(null);
   const torsoRef = useRef<THREE.Group>(null);
@@ -260,20 +272,26 @@ function StandardZombie({
   const rightLegRef = useRef<THREE.Group>(null);
   const headRef = useRef<THREE.Group>(null);
   const hitFlashRef = useRef(0);
+  // PERF: stabiler Vector3 für lerp-Target — keine neue Allokation pro Frame
+  const lerpTargetRef = useRef(new THREE.Vector3());
+  // PERF: einmal-gebaute Liste der UNIKE Materials für das Death-Fade-Out,
+  // statt jeden Frame die gesamte Mesh-Hierarchie zu traversen. Wird beim
+  // ersten Death-Frame befüllt.
+  const deadMaterialsRef = useRef<THREE.Material[] | null>(null);
 
   // Material-Palette — leicht differenzierter
-  const skinMat = useStandardMaterial("#7a9470", hitFlashRef.current);
-  const skinPaleMat = useStandardMaterial("#92a888", hitFlashRef.current);
-  const necroMat = useStandardMaterial("#3d5238", hitFlashRef.current);
-  const necroDeepMat = useStandardMaterial("#26321f", hitFlashRef.current);
-  const clothMat = useStandardMaterial("#2e2318", hitFlashRef.current);
-  const clothTornMat = useStandardMaterial("#1e1510", hitFlashRef.current);
-  const bloodMat = useStandardMaterial("#6a0000", hitFlashRef.current);
-  const bloodFreshMat = useStandardMaterial("#8a0a0a", hitFlashRef.current);
-  const fleshMat = useStandardMaterial("#5a1010", hitFlashRef.current);
-  const eyeMat = useStandardMaterial("#0d0d0d", hitFlashRef.current);
-  const boneMat = useStandardMaterial("#d4c89a", hitFlashRef.current);
-  const teethMat = useStandardMaterial("#a89a70", hitFlashRef.current);
+  const skinMat = useStandardMaterial("#7a9470");
+  const skinPaleMat = useStandardMaterial("#92a888");
+  const necroMat = useStandardMaterial("#3d5238");
+  const necroDeepMat = useStandardMaterial("#26321f");
+  const clothMat = useStandardMaterial("#2e2318");
+  const clothTornMat = useStandardMaterial("#1e1510");
+  const bloodMat = useStandardMaterial("#6a0000");
+  const bloodFreshMat = useStandardMaterial("#8a0a0a");
+  const fleshMat = useStandardMaterial("#5a1010");
+  const eyeMat = useStandardMaterial("#0d0d0d");
+  const boneMat = useStandardMaterial("#d4c89a");
+  const teethMat = useStandardMaterial("#a89a70");
 
   // Leuchtende Augen — additives Material
   const eyeGlowMat = useRef<THREE.MeshBasicMaterial | null>(null);
@@ -288,20 +306,6 @@ function StandardZombie({
       color: new THREE.Color("#ffffff"),
     });
   }
-
-  const allMats = [
-    skinMat,
-    skinPaleMat,
-    necroMat,
-    necroDeepMat,
-    clothMat,
-    clothTornMat,
-    bloodMat,
-    bloodFreshMat,
-    fleshMat,
-    boneMat,
-    teethMat,
-  ];
 
   const [fallingLimbs, setFallingLimbs] = useState<
     Array<{
@@ -381,83 +385,168 @@ function StandardZombie({
   useFrame((_, delta) => {
     if (!groupRef.current) return;
 
-    const [tx, ty, tz] = enemy.position;
+    // ── TOTE/DESPAWNENDE ZOMBIES: Ragdoll + Fade ────────────────────────────
+    // Position auf der zuletzt geltenden Welt-Position einfrieren (lebende
+    // Position-Updates greifen nicht mehr), Bewegungslogik überspringen.
+    if (enemy.isDead) {
+      const refPos = enemyPositionsRef.current.get(enemy.id);
+      const baseX = refPos ? refPos[0] : enemy.position[0];
+      const baseZ = refPos ? refPos[2] : enemy.position[2];
+
+      const elapsed = (Date.now() - enemy.deathTime) / 1000;
+
+      // Ragdoll-Pose berechnen (geht für ragdoll- + resting-Phase, weil pose
+      // bei elapsed >= DURATION konstant bleibt — kein Pop, kein Glitch).
+      const hitDirX = enemy.deathHitDirX ?? 0;
+      const hitDirZ = enemy.deathHitDirZ ?? 1;
+      // Yaw rekonstruieren: lebend war rotation.y = atan2(playerDx, playerDz).
+      // deathHitDir zeigt vom Spieler weg → -deathHitDir zeigt zum Spieler.
+      // Also facingYaw = atan2(-hitDirX, -hitDirZ).
+      const yaw = Math.atan2(-hitDirX, -hitDirZ);
+      const seed = enemy.ragdollSeed ?? 0;
+      // STANDARD-Zombie: lebend bei y≈1.2, liegend Wurzel bei y≈0.25
+      const pose = computeRagdollPose(
+        elapsed,
+        hitDirX,
+        hitDirZ,
+        yaw,
+        1.2,
+        0.25,
+        seed,
+        false,
+      );
+
+      groupRef.current.position.x = baseX;
+      groupRef.current.position.y = pose.groupY;
+      groupRef.current.position.z = baseZ;
+      groupRef.current.rotation.set(
+        pose.groupPitch,
+        pose.groupYaw,
+        pose.groupRoll,
+      );
+      groupRef.current.scale.y = 1; // Skalierungs-Hack aus dem alten Tod-Code raus
+
+      if (torsoRef.current) {
+        torsoRef.current.rotation.set(pose.torsoPitch, 0, pose.torsoRoll);
+      }
+      if (headRef.current && !enemy.headDetached) {
+        headRef.current.rotation.set(pose.headPitch, 0, pose.headRoll);
+      }
+      if (leftArmRef.current && !enemy.leftArmDetached) {
+        leftArmRef.current.rotation.set(pose.leftArmPitch, 0, pose.leftArmRoll);
+      }
+      if (rightArmRef.current && !enemy.rightArmDetached) {
+        rightArmRef.current.rotation.set(
+          pose.rightArmPitch,
+          0,
+          pose.rightArmRoll,
+        );
+      }
+      if (leftLegRef.current && !enemy.leftLegDetached) {
+        leftLegRef.current.rotation.set(pose.leftLegPitch, 0, pose.leftLegRoll);
+      }
+      if (rightLegRef.current && !enemy.rightLegDetached) {
+        rightLegRef.current.rotation.set(
+          pose.rightLegPitch,
+          0,
+          pose.rightLegRoll,
+        );
+      }
+
+      // ── Fade-Out wenn die Leiche zum Despawn markiert wurde ──
+      // Material-Cache wird hier befüllt (einmalig), sodass wir nicht jeden
+      // Frame traversieren. Im "resting"-Zustand bleibt Opacity = 1.
+      let mats = deadMaterialsRef.current;
+      if (!mats) {
+        const set = new Set<THREE.Material>();
+        groupRef.current.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            set.add(child.material as THREE.Material);
+          }
+        });
+        mats = Array.from(set);
+        deadMaterialsRef.current = mats;
+        for (const m of mats) m.transparent = true;
+      }
+
+      if (
+        enemy.corpseState === "fadingOut" &&
+        enemy.fadeStartTime !== undefined
+      ) {
+        const fadeElapsed = (Date.now() - enemy.fadeStartTime) / 1000;
+        const opacity = Math.max(0, 1 - fadeElapsed / 0.6); // FADE_DURATION_MS=600
+        for (const m of mats) m.opacity = opacity;
+      } else {
+        // resting / ragdoll: voll sichtbar
+        for (const m of mats) m.opacity = 1;
+      }
+      return; // KEINE Lebend-Logik weiter
+    }
+
+    // ── LEBEND ──
+    // PERF: aktuelle Position aus dem Ref (per-Frame mutiert ohne React-Render).
+    // Fallback auf enemy.position, falls der Eintrag fehlt (z.B. direkt nach Tod
+    // und Cleanup) — dann bleibt der Zombie an Ort und Stelle für die Death-
+    // Animation.
+    const refPos = enemyPositionsRef.current.get(enemy.id);
+    const tx = refPos ? refPos[0] : enemy.position[0];
+    const ty = refPos ? refPos[1] : enemy.position[1];
+    const tz = refPos ? refPos[2] : enemy.position[2];
+    lerpTargetRef.current.set(tx, ty, tz);
     groupRef.current.position.lerp(
-      new THREE.Vector3(tx, ty, tz),
+      lerpTargetRef.current,
       Math.min(delta * 12, 1),
     );
 
-    if (!enemy.isDead) {
-      const [px, , pz] = playerPositionRef.current;
-      const dx = px - tx;
-      const dz = pz - tz;
-      if (Math.abs(dx) > 0.01 || Math.abs(dz) > 0.01) {
-        groupRef.current.rotation.y = Math.atan2(dx, dz);
-      }
+    const [px, , pz] = playerPositionRef.current;
+    const dx = px - tx;
+    const dz = pz - tz;
+    if (Math.abs(dx) > 0.01 || Math.abs(dz) > 0.01) {
+      groupRef.current.rotation.y = Math.atan2(dx, dz);
+    }
 
-      const t = Date.now() * 0.001;
-      const bob = Math.sin(t * 8) * 0.04;
-      groupRef.current.position.y = ty + bob;
+    const t = Date.now() * 0.001;
+    const bob = Math.sin(t * 8) * 0.04;
+    groupRef.current.position.y = ty + bob;
 
-      if (torsoRef.current) {
-        torsoRef.current.rotation.x = 0.32 + Math.sin(t * 4) * 0.04;
-        // leichtes Schwanken
-        torsoRef.current.rotation.z = Math.sin(t * 3.2) * 0.03;
-      }
-      // Kopf wackelt subtil
-      if (headRef.current && !enemy.headDetached) {
-        headRef.current.rotation.z = Math.sin(t * 5) * 0.08;
-        headRef.current.rotation.x = Math.sin(t * 3) * 0.04;
-      }
+    if (torsoRef.current) {
+      torsoRef.current.rotation.x = 0.32 + Math.sin(t * 4) * 0.04;
+      // leichtes Schwanken
+      torsoRef.current.rotation.z = Math.sin(t * 3.2) * 0.03;
+    }
+    // Kopf wackelt subtil
+    if (headRef.current && !enemy.headDetached) {
+      headRef.current.rotation.z = Math.sin(t * 5) * 0.08;
+      headRef.current.rotation.x = Math.sin(t * 3) * 0.04;
+    }
 
-      if (!enemy.leftArmDetached && leftArmRef.current) {
-        leftArmRef.current.rotation.x = -1.1 + Math.sin(t * 8) * 0.18;
-        leftArmRef.current.rotation.z = 0.15 + Math.sin(t * 4) * 0.06;
-      }
-      if (!enemy.rightArmDetached && rightArmRef.current) {
-        rightArmRef.current.rotation.x = -1.1 - Math.sin(t * 8) * 0.18;
-        rightArmRef.current.rotation.z = -0.15 - Math.sin(t * 4) * 0.06;
-      }
+    if (!enemy.leftArmDetached && leftArmRef.current) {
+      leftArmRef.current.rotation.x = -1.1 + Math.sin(t * 8) * 0.18;
+      leftArmRef.current.rotation.z = 0.15 + Math.sin(t * 4) * 0.06;
+    }
+    if (!enemy.rightArmDetached && rightArmRef.current) {
+      rightArmRef.current.rotation.x = -1.1 - Math.sin(t * 8) * 0.18;
+      rightArmRef.current.rotation.z = -0.15 - Math.sin(t * 4) * 0.06;
+    }
 
-      if (!enemy.leftLegDetached && leftLegRef.current) {
-        leftLegRef.current.rotation.x = Math.sin(t * 8) * 0.35;
-      }
-      if (!enemy.rightLegDetached && rightLegRef.current) {
-        rightLegRef.current.rotation.x = -Math.sin(t * 8) * 0.35;
-      }
+    if (!enemy.leftLegDetached && leftLegRef.current) {
+      leftLegRef.current.rotation.x = Math.sin(t * 8) * 0.35;
+    }
+    if (!enemy.rightLegDetached && rightLegRef.current) {
+      rightLegRef.current.rotation.x = -Math.sin(t * 8) * 0.35;
     }
 
     if (enemy.isHit) {
+      // Hit-Flash-Timer läuft weiter, damit onHitFlashDone() korrekt feuert
+      // und useEnemySystem.clearHitFlash() den isHit-State zurücksetzt.
+      // ENTFERNT: Rotes Aufleuchten der Materials (war hier ein emissive.setRGB-
+      // Loop) — vom Spieler so gewünscht. Treffer-Feedback läuft jetzt nur noch
+      // über Blut-Partikel + Blut-Splatter-Decal.
       hitFlashRef.current = Math.min(hitFlashRef.current + delta * 8, 1);
-      for (const mat of allMats) {
-        if (mat)
-          mat.emissive.setRGB(
-            hitFlashRef.current * 0.7,
-            hitFlashRef.current * 0.05,
-            hitFlashRef.current * 0.05,
-          );
-      }
       if (hitFlashRef.current >= 0.9) {
         onHitFlashDone(enemy.id);
         hitFlashRef.current = 0;
       }
-    } else {
-      hitFlashRef.current = Math.max(hitFlashRef.current - delta * 8, 0);
-      for (const mat of allMats) {
-        if (mat) mat.emissive.setRGB(0, 0, 0);
-      }
-    }
-
-    if (enemy.isDead) {
-      const elapsed = (Date.now() - enemy.deathTime) / 1000;
-      const opacity = Math.max(0, 1 - elapsed * 1.5);
-      groupRef.current.scale.y = Math.max(0.01, 1 - elapsed * 1.2);
-      groupRef.current.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          (child.material as THREE.Material).opacity = opacity;
-          (child.material as THREE.Material).transparent = true;
-        }
-      });
     }
   });
 
@@ -476,426 +565,665 @@ function StandardZombie({
       ))}
 
       <group ref={groupRef} position={enemy.position}>
-        {/* ── TORSO GROUP ── */}
-        <group ref={torsoRef} position={[0, 0.1, 0]} rotation={[0.32, 0, 0]}>
-          {/* Hauptrumpf */}
-          <mesh material={skinMat} position={[0, 0, 0]}>
-            <boxGeometry args={[0.62, 0.82, 0.34]} />
+        {/* ══════════════════════════════════════════════════════════════════
+            HIGH-END ZOMBIE BODY — realistic human proportions (1.75m total).
+            Coord system: y=0 at center, body extends -1.20 (boden) to +0.55 (Kopf-Top).
+            All refs preserved for existing walk-cycle animation.
+
+            Vertical anatomy layout (y relative to enemy.position):
+              +0.55  Kopf-Top (Haar)
+              +0.40  Augen
+              +0.22  Kinn
+              +0.15  Hals-Top
+              +0.08  Schulter (Joint)
+               0.00  Brustmitte
+              -0.18  Bauchnabel
+              -0.32  Becken-Mitte
+              -0.45  Schritt / Hüftgelenk (Bein-Anfang)
+              -0.82  Knie
+              -1.15  Knöchel
+              -1.20  Boden (Stiefel-Sohle)
+            ══════════════════════════════════════════════════════════════════ */}
+
+        {/* ══ TORSO GROUP — schlanker schmaler Brustkorb ══ */}
+        <group ref={torsoRef} position={[0, -0.05, 0]} rotation={[0.25, 0, 0]}>
+          {/* Brustkorb — länger schmaler oval (NICHT mehr breit klobig) */}
+          <mesh material={skinMat} position={[0, 0.15, 0]} scale={[1, 1, 0.7]}>
+            <capsuleGeometry args={[0.22, 0.3, 10, 20]} />
           </mesh>
-          {/* Bauchwölbung — etwas heller */}
-          <mesh material={skinPaleMat} position={[0, -0.18, 0.13]}>
-            <boxGeometry args={[0.42, 0.32, 0.12]} />
+          {/* Bauch — verjüngt sich nach unten */}
+          <mesh
+            material={skinPaleMat}
+            position={[0, -0.13, 0.04]}
+            scale={[0.95, 1, 0.62]}
+          >
+            <capsuleGeometry args={[0.2, 0.16, 8, 16]} />
           </mesh>
 
-          {/* Zerrissenes Hemd vorne */}
-          <mesh material={clothMat} position={[0, 0.05, 0.18]}>
-            <boxGeometry args={[0.58, 0.72, 0.02]} />
+          {/* ── HEMD/OVERALL über dem Torso (deutlich erkennbar) ── */}
+          <mesh
+            material={clothMat}
+            position={[0, 0.05, 0]}
+            scale={[1.05, 1.05, 0.72]}
+          >
+            <capsuleGeometry args={[0.23, 0.42, 10, 20]} />
           </mesh>
-          {/* Zerrissene Hemd-Streifen seitlich */}
-          <mesh material={clothTornMat} position={[-0.32, -0.1, 0]}>
-            <boxGeometry args={[0.02, 0.5, 0.36]} />
+
+          {/* Reißverschluss-Öffnung (Brust sichtbar) */}
+          <mesh material={skinMat} position={[0, 0.05, 0.175]}>
+            <boxGeometry args={[0.06, 0.5, 0.005]} />
           </mesh>
-          <mesh material={clothTornMat} position={[0.32, -0.1, 0]}>
-            <boxGeometry args={[0.02, 0.5, 0.36]} />
+          <mesh material={necroDeepMat} position={[0, 0.05, 0.182]}>
+            <boxGeometry args={[0.01, 0.5, 0.005]} />
           </mesh>
-          {/* Zusätzliche Stoff-Fetzen die runterhängen */}
+          {/* V-Kragen */}
+          <mesh
+            material={clothMat}
+            position={[-0.06, 0.28, 0.165]}
+            rotation={[0, 0, 0.35]}
+          >
+            <boxGeometry args={[0.035, 0.14, 0.018]} />
+          </mesh>
+          <mesh
+            material={clothMat}
+            position={[0.06, 0.28, 0.165]}
+            rotation={[0, 0, -0.35]}
+          >
+            <boxGeometry args={[0.035, 0.14, 0.018]} />
+          </mesh>
+          {/* Brusttaschen */}
+          <mesh material={clothTornMat} position={[-0.12, 0.12, 0.18]}>
+            <boxGeometry args={[0.09, 0.11, 0.006]} />
+          </mesh>
+          <mesh material={clothTornMat} position={[0.12, 0.12, 0.18]}>
+            <boxGeometry args={[0.09, 0.11, 0.006]} />
+          </mesh>
+          <mesh material={necroDeepMat} position={[-0.12, 0.17, 0.184]}>
+            <boxGeometry args={[0.09, 0.022, 0.005]} />
+          </mesh>
+          <mesh material={necroDeepMat} position={[0.12, 0.17, 0.184]}>
+            <boxGeometry args={[0.09, 0.022, 0.005]} />
+          </mesh>
+          <mesh material={boneMat} position={[-0.12, 0.17, 0.188]}>
+            <cylinderGeometry args={[0.009, 0.009, 0.003, 8]} />
+          </mesh>
+          <mesh material={boneMat} position={[0.12, 0.17, 0.188]}>
+            <cylinderGeometry args={[0.009, 0.009, 0.003, 8]} />
+          </mesh>
+          {/* Namens-Patch */}
+          <mesh material={skinPaleMat} position={[0.13, -0.02, 0.185]}>
+            <boxGeometry args={[0.09, 0.032, 0.004]} />
+          </mesh>
+
+          {/* Zerlumpte Stoff-Fetzen unten am Hemd */}
           <mesh
             material={clothTornMat}
-            position={[-0.12, -0.4, 0.18]}
-            rotation={[0.2, 0, 0.1]}
+            position={[-0.14, -0.24, 0.13]}
+            rotation={[0.25, 0, 0.18]}
+            scale={[1, 1.5, 1]}
           >
-            <boxGeometry args={[0.08, 0.18, 0.02]} />
+            <boxGeometry args={[0.05, 0.13, 0.012]} />
           </mesh>
           <mesh
             material={clothTornMat}
-            position={[0.16, -0.42, 0.18]}
-            rotation={[0.15, 0, -0.15]}
+            position={[0.16, -0.22, 0.11]}
+            rotation={[0.2, 0, -0.22]}
+            scale={[1, 1.7, 1]}
           >
-            <boxGeometry args={[0.06, 0.22, 0.02]} />
+            <boxGeometry args={[0.045, 0.14, 0.012]} />
+          </mesh>
+          <mesh
+            material={clothTornMat}
+            position={[0.04, -0.26, 0.14]}
+            rotation={[0.3, 0, 0.04]}
+            scale={[1, 1.4, 1]}
+          >
+            <boxGeometry args={[0.05, 0.11, 0.012]} />
           </mesh>
 
-          {/* Freiliegende Rippen — mehr Detail */}
-          {[-0.18, -0.05, 0.08, 0.21].map((yOff, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: static geometry array
-            <group key={i}>
-              <mesh
-                material={boneMat}
-                position={[-0.18, yOff, 0.185]}
-                rotation={[0, 0, 0.28]}
-              >
-                <boxGeometry args={[0.22, 0.045, 0.025]} />
-              </mesh>
-              <mesh
-                material={boneMat}
-                position={[0.18, yOff, 0.185]}
-                rotation={[0, 0, -0.28]}
-              >
-                <boxGeometry args={[0.22, 0.045, 0.025]} />
-              </mesh>
-              {/* Kleine Schatten-Linien zwischen Rippen */}
-              <mesh
-                material={fleshMat}
-                position={[0, yOff + 0.022, 0.183]}
-              >
-                <boxGeometry args={[0.32, 0.012, 0.02]} />
-              </mesh>
-            </group>
-          ))}
-          {/* Brustbein vertikal */}
-          <mesh material={boneMat} position={[0, 0.04, 0.19]}>
-            <boxGeometry args={[0.045, 0.42, 0.025]} />
+          {/* Blut-Spritzer */}
+          <mesh material={bloodMat} position={[-0.06, 0.18, 0.184]}>
+            <sphereGeometry args={[0.038, 8, 6]} />
+          </mesh>
+          <mesh material={bloodFreshMat} position={[0.04, -0.05, 0.184]}>
+            <sphereGeometry args={[0.03, 8, 6]} />
+          </mesh>
+          <mesh
+            material={bloodMat}
+            position={[-0.11, -0.12, 0.178]}
+            scale={[0.6, 2.4, 1]}
+          >
+            <sphereGeometry args={[0.018, 6, 5]} />
+          </mesh>
+          <mesh
+            material={bloodFreshMat}
+            position={[0.14, 0.02, 0.184]}
+            scale={[0.5, 1.8, 1]}
+          >
+            <sphereGeometry args={[0.016, 6, 5]} />
           </mesh>
 
-          {/* Faulendes Fleisch-Patch links */}
-          <mesh material={necroDeepMat} position={[-0.22, 0.18, 0.18]}>
-            <boxGeometry args={[0.14, 0.22, 0.012]} />
-          </mesh>
-          <mesh material={necroMat} position={[-0.22, 0.18, 0.185]}>
-            <boxGeometry args={[0.1, 0.18, 0.008]} />
-          </mesh>
-
-          {/* Blutflecken — mehrlagig (alt + frisch) */}
-          <mesh material={bloodMat} position={[0.1, 0.1, 0.19]}>
-            <boxGeometry args={[0.18, 0.22, 0.01]} />
-          </mesh>
-          <mesh material={bloodFreshMat} position={[0.13, 0.16, 0.193]}>
-            <boxGeometry args={[0.08, 0.1, 0.008]} />
-          </mesh>
-          <mesh material={bloodMat} position={[-0.08, -0.15, 0.19]}>
-            <boxGeometry args={[0.12, 0.14, 0.01]} />
-          </mesh>
-          {/* Tropfender Blutstreifen */}
-          <mesh material={bloodFreshMat} position={[0.15, -0.05, 0.193]}>
-            <boxGeometry args={[0.025, 0.28, 0.008]} />
-          </mesh>
-
-          {/* Wunde mit Loch (Schusswunde) */}
-          <mesh material={eyeMat} position={[0.05, 0.0, 0.192]}>
-            <circleGeometry args={[0.05, 10]} />
-          </mesh>
-          {/* Wundenrand — geschwollen */}
-          <mesh material={fleshMat} position={[0.05, 0.0, 0.191]}>
-            <ringGeometry args={[0.05, 0.07, 12]} />
-          </mesh>
-
-          {/* ── HALS ── */}
-          <mesh material={skinMat} position={[0, 0.5, -0.04]}>
-            <boxGeometry args={[0.2, 0.18, 0.2]} />
-          </mesh>
-          {/* Adern am Hals (dunkel) */}
-          <mesh material={necroDeepMat} position={[-0.06, 0.5, 0.07]}>
-            <boxGeometry args={[0.015, 0.16, 0.005]} />
-          </mesh>
-          <mesh material={necroDeepMat} position={[0.06, 0.5, 0.07]}>
-            <boxGeometry args={[0.015, 0.16, 0.005]} />
-          </mesh>
-
-          {/* Hals-Stumpf wenn Kopf ab */}
+          {/* ══ HALS — lang, schmal (typisch menschlich) ══ */}
+          {!enemy.headDetached && (
+            <mesh material={skinMat} position={[0, 0.36, -0.01]}>
+              <capsuleGeometry args={[0.062, 0.1, 6, 12]} />
+            </mesh>
+          )}
           {enemy.headDetached && (
             <Stump
-              position={[0, 0.62, -0.04]}
-              radius={0.13}
+              position={[0, 0.4, -0.01]}
+              radius={0.08}
               bloodMat={bloodMat}
               boneMat={boneMat}
               fleshMat={fleshMat}
             />
           )}
+          {/* Adamsapfel */}
+          {!enemy.headDetached && (
+            <mesh material={skinMat} position={[0, 0.36, 0.05]}>
+              <sphereGeometry args={[0.025, 8, 6]} />
+            </mesh>
+          )}
 
-          {/* ── KOPF ── */}
+          {/* ══ KOPF ══ menschliche Schädelform, leicht verjüngt zum Kinn */}
           {!enemy.headDetached && (
             <group
               ref={headRef}
-              position={[0, 0.72, -0.06]}
+              position={[0, 0.52, -0.02]}
               userData={{ isHead: true }}
             >
-              {/* Schädel */}
+              {/* Schädel oben — sphere */}
               <mesh
                 material={skinMat}
-                position={[0, 0, 0]}
+                position={[0, 0.02, 0]}
+                scale={[1, 1.1, 1.05]}
                 userData={{ isHead: true }}
               >
-                <boxGeometry args={[0.46, 0.52, 0.44]} />
+                <sphereGeometry args={[0.16, 24, 20]} />
               </mesh>
 
-              {/* Stirn — dunkler nekrotischer Patch */}
-              <mesh material={necroMat} position={[0, 0.18, 0.22]}>
-                <boxGeometry args={[0.38, 0.1, 0.02]} />
-              </mesh>
-              {/* Eingedrückte Wunde an Schläfe */}
-              <mesh material={necroDeepMat} position={[-0.21, 0.08, 0.1]}>
-                <boxGeometry args={[0.04, 0.14, 0.16]} />
-              </mesh>
-              <mesh material={bloodFreshMat} position={[-0.225, 0.06, 0.1]}>
-                <boxGeometry args={[0.015, 0.1, 0.12]} />
+              {/* Unteres Gesicht / Kiefer — schmaler, mehr nach vorn */}
+              <mesh
+                material={skinMat}
+                position={[0, -0.11, 0.025]}
+                scale={[0.88, 0.55, 0.95]}
+              >
+                <sphereGeometry args={[0.15, 18, 14]} />
               </mesh>
 
-              {/* Kiefer */}
-              <mesh material={skinMat} position={[0, -0.2, 0.04]}>
-                <boxGeometry args={[0.38, 0.16, 0.38]} />
+              {/* Stirn-Patch (nekrotisch) */}
+              <mesh
+                material={necroMat}
+                position={[0, 0.1, 0.135]}
+                scale={[1.8, 0.5, 0.1]}
+                rotation={[0.15, 0, 0]}
+              >
+                <sphereGeometry args={[0.085, 12, 8]} />
               </mesh>
 
-              {/* Aufgerissener Mund */}
-              <mesh material={eyeMat} position={[0, -0.16, 0.22]}>
-                <boxGeometry args={[0.22, 0.1, 0.02]} />
+              {/* Schläfe-Wunde links */}
+              <mesh
+                material={necroDeepMat}
+                position={[-0.145, 0.04, 0.05]}
+                scale={[0.35, 1.3, 1.5]}
+              >
+                <sphereGeometry args={[0.045, 8, 6]} />
               </mesh>
-              {/* Inneres Maul (Zunge/Rachen) */}
-              <mesh material={fleshMat} position={[0, -0.16, 0.215]}>
-                <boxGeometry args={[0.18, 0.07, 0.005]} />
+              <mesh
+                material={bloodFreshMat}
+                position={[-0.15, 0.025, 0.05]}
+                scale={[0.3, 1, 1.5]}
+              >
+                <sphereGeometry args={[0.038, 8, 6]} />
               </mesh>
-              {/* Zähne — mehr und unregelmäßiger */}
-              {[-0.085, -0.04, 0.0, 0.04, 0.085].map((tx) => (
+
+              {/* Eingefallene Wangen */}
+              <mesh
+                material={necroMat}
+                position={[-0.13, -0.04, 0.105]}
+                scale={[0.5, 1.1, 0.5]}
+              >
+                <sphereGeometry args={[0.04, 10, 8]} />
+              </mesh>
+              <mesh
+                material={necroMat}
+                position={[0.13, -0.04, 0.105]}
+                scale={[0.5, 1.1, 0.5]}
+              >
+                <sphereGeometry args={[0.04, 10, 8]} />
+              </mesh>
+
+              {/* ── AUGEN — eingesunkene Höhlen ── */}
+              <mesh
+                material={eyeMat}
+                position={[-0.075, 0.03, 0.13]}
+                scale={[1, 0.8, 0.4]}
+              >
+                <sphereGeometry args={[0.042, 10, 8]} />
+              </mesh>
+              <mesh
+                material={eyeMat}
+                position={[0.075, 0.03, 0.13]}
+                scale={[1, 0.8, 0.4]}
+              >
+                <sphereGeometry args={[0.042, 10, 8]} />
+              </mesh>
+              {/* Augäpfel weiß-gelblich */}
+              <mesh material={teethMat} position={[-0.075, 0.03, 0.142]}>
+                <sphereGeometry args={[0.027, 12, 10]} />
+              </mesh>
+              <mesh material={teethMat} position={[0.075, 0.03, 0.142]}>
+                <sphereGeometry args={[0.027, 12, 10]} />
+              </mesh>
+              {/* Glühende Pupillen */}
+              <mesh position={[-0.075, 0.03, 0.16]}>
+                <sphereGeometry args={[0.016, 10, 8]} />
+                <primitive object={eyeGlowMat.current} attach="material" />
+              </mesh>
+              <mesh position={[0.075, 0.03, 0.16]}>
+                <sphereGeometry args={[0.016, 10, 8]} />
+                <primitive object={eyeGlowMat.current} attach="material" />
+              </mesh>
+
+              {/* Brauenwülste */}
+              <mesh
+                material={necroMat}
+                position={[-0.075, 0.085, 0.145]}
+                rotation={[0, 0, -0.2]}
+                scale={[1.7, 0.45, 0.35]}
+              >
+                <sphereGeometry args={[0.04, 10, 8]} />
+              </mesh>
+              <mesh
+                material={necroMat}
+                position={[0.075, 0.085, 0.145]}
+                rotation={[0, 0, 0.2]}
+                scale={[1.7, 0.45, 0.35]}
+              >
+                <sphereGeometry args={[0.04, 10, 8]} />
+              </mesh>
+
+              {/* ── NASE — schmal, knöchern, leicht hervorstehend ── */}
+              <mesh
+                material={skinPaleMat}
+                position={[0, -0.015, 0.16]}
+                rotation={[0.6, 0, 0]}
+                scale={[0.55, 1.5, 0.85]}
+              >
+                <sphereGeometry args={[0.032, 10, 8]} />
+              </mesh>
+              {/* Nasenrücken */}
+              <mesh
+                material={skinPaleMat}
+                position={[0, 0.025, 0.15]}
+                rotation={[0.3, 0, 0]}
+                scale={[0.3, 1.4, 0.6]}
+              >
+                <sphereGeometry args={[0.022, 8, 6]} />
+              </mesh>
+              {/* Nasenlöcher */}
+              <mesh material={eyeMat} position={[-0.018, -0.05, 0.17]}>
+                <sphereGeometry args={[0.009, 6, 5]} />
+              </mesh>
+              <mesh material={eyeMat} position={[0.018, -0.05, 0.17]}>
+                <sphereGeometry args={[0.009, 6, 5]} />
+              </mesh>
+
+              {/* ── MUND — weit aufgerissen, CoD-Zombie typisch ── */}
+              {/* Schwarze Mundöffnung */}
+              <mesh
+                material={eyeMat}
+                position={[0, -0.105, 0.145]}
+                scale={[1.3, 0.7, 0.55]}
+              >
+                <sphereGeometry args={[0.07, 14, 10]} />
+              </mesh>
+              {/* Zunge/Rachen */}
+              <mesh
+                material={fleshMat}
+                position={[0, -0.115, 0.15]}
+                scale={[1, 0.4, 0.5]}
+              >
+                <sphereGeometry args={[0.05, 10, 8]} />
+              </mesh>
+              {/* Obere Zahnreihe */}
+              {[-0.055, -0.028, 0, 0.028, 0.055].map((tx) => (
                 <mesh
                   key={`top-${tx}`}
                   material={teethMat}
-                  position={[tx, -0.118, 0.222]}
+                  position={[tx, -0.075, 0.163]}
                 >
-                  <boxGeometry args={[0.028, 0.045, 0.018]} />
+                  <boxGeometry args={[0.018, 0.03, 0.015]} />
                 </mesh>
               ))}
-              {/* Unterzähne (versetzt) */}
-              {[-0.06, -0.015, 0.03, 0.075].map((tx) => (
+              {/* Untere Zahnreihe versetzt */}
+              {[-0.04, -0.012, 0.02, 0.045].map((tx) => (
                 <mesh
                   key={`bot-${tx}`}
                   material={teethMat}
-                  position={[tx, -0.198, 0.222]}
+                  position={[tx, -0.13, 0.163]}
                 >
-                  <boxGeometry args={[0.024, 0.04, 0.018]} />
+                  <boxGeometry args={[0.016, 0.026, 0.015]} />
                 </mesh>
               ))}
               {/* Eckzahn */}
               <mesh
                 material={teethMat}
-                position={[0.11, -0.12, 0.222]}
+                position={[0.072, -0.092, 0.163]}
                 rotation={[0, 0, -0.1]}
               >
-                <coneGeometry args={[0.018, 0.07, 4]} />
+                <coneGeometry args={[0.011, 0.048, 6]} />
               </mesh>
-              {/* Sabber/Blut aus dem Mund tropfend */}
-              <mesh material={bloodFreshMat} position={[-0.04, -0.24, 0.225]}>
-                <boxGeometry args={[0.02, 0.12, 0.005]} />
-              </mesh>
-
-              {/* Augenhöhlen (eingesunken, dunkel) */}
-              <mesh material={eyeMat} position={[-0.13, 0.06, 0.22]}>
-                <boxGeometry args={[0.13, 0.11, 0.05]} />
-              </mesh>
-              <mesh material={eyeMat} position={[0.13, 0.06, 0.22]}>
-                <boxGeometry args={[0.13, 0.11, 0.05]} />
-              </mesh>
-              {/* Augäpfel weiß-gelb */}
-              <mesh material={teethMat} position={[-0.13, 0.06, 0.235]}>
-                <sphereGeometry args={[0.045, 8, 6]} />
-              </mesh>
-              <mesh material={teethMat} position={[0.13, 0.06, 0.235]}>
-                <sphereGeometry args={[0.045, 8, 6]} />
-              </mesh>
-              {/* Glühende Pupillen */}
-              <mesh position={[-0.13, 0.06, 0.255]}>
-                <sphereGeometry args={[0.025, 6, 6]} />
-                <primitive object={eyeGlowMat.current} attach="material" />
-              </mesh>
-              <mesh position={[0.13, 0.06, 0.255]}>
-                <sphereGeometry args={[0.025, 6, 6]} />
-                <primitive object={eyeGlowMat.current} attach="material" />
-              </mesh>
-              {/* Augen-Tränen aus Blut */}
-              <mesh material={bloodMat} position={[-0.13, -0.02, 0.232]}>
-                <boxGeometry args={[0.014, 0.08, 0.005]} />
+              {/* Lippen — dünne Capsules */}
+              <mesh
+                material={necroDeepMat}
+                position={[0, -0.06, 0.155]}
+                scale={[1.4, 0.3, 0.4]}
+              >
+                <torusGeometry args={[0.05, 0.012, 6, 16]} />
               </mesh>
 
-              {/* Brauenwulst (verstärkt) */}
-              <mesh material={necroMat} position={[0, 0.14, 0.22]}>
-                <boxGeometry args={[0.42, 0.06, 0.04]} />
+              {/* Blut tropfend aus dem Mund */}
+              <mesh
+                material={bloodFreshMat}
+                position={[-0.03, -0.17, 0.16]}
+                scale={[1, 2.8, 1]}
+              >
+                <sphereGeometry args={[0.009, 6, 5]} />
               </mesh>
-              <mesh material={necroDeepMat} position={[-0.13, 0.13, 0.235]}>
-                <boxGeometry args={[0.12, 0.04, 0.012]} />
-              </mesh>
-              <mesh material={necroDeepMat} position={[0.13, 0.13, 0.235]}>
-                <boxGeometry args={[0.12, 0.04, 0.012]} />
-              </mesh>
-
-              {/* Eingefallene Wangenknochen */}
-              <mesh material={necroMat} position={[-0.22, -0.02, 0.18]}>
-                <boxGeometry args={[0.06, 0.1, 0.06]} />
-              </mesh>
-              <mesh material={necroMat} position={[0.22, -0.02, 0.18]}>
-                <boxGeometry args={[0.06, 0.1, 0.06]} />
-              </mesh>
-              {/* Eingefallene Wange-Vertiefung */}
-              <mesh material={necroDeepMat} position={[-0.18, -0.05, 0.205]}>
-                <boxGeometry args={[0.05, 0.08, 0.012]} />
-              </mesh>
-              <mesh material={necroDeepMat} position={[0.18, -0.05, 0.205]}>
-                <boxGeometry args={[0.05, 0.08, 0.012]} />
+              <mesh
+                material={bloodMat}
+                position={[0.04, -0.16, 0.16]}
+                scale={[1, 2, 1]}
+              >
+                <sphereGeometry args={[0.007, 6, 5]} />
               </mesh>
 
-              {/* Riss in der Haut — sichtbares Fleisch */}
-              <mesh material={fleshMat} position={[0.08, 0.0, 0.225]}>
-                <boxGeometry args={[0.025, 0.18, 0.008]} />
+              {/* Wunde Wange rechts */}
+              <mesh
+                material={fleshMat}
+                position={[0.06, -0.01, 0.155]}
+                rotation={[0, 0, 0.4]}
+                scale={[0.3, 1.6, 0.3]}
+              >
+                <sphereGeometry args={[0.03, 8, 6]} />
               </mesh>
 
-              {/* Blut auf Gesicht */}
-              <mesh material={bloodMat} position={[-0.05, -0.1, 0.23]}>
-                <boxGeometry args={[0.1, 0.12, 0.005]} />
+              {/* Blut-Streifen über Gesicht */}
+              <mesh
+                material={bloodMat}
+                position={[0.03, -0.04, 0.16]}
+                scale={[0.3, 3.2, 0.3]}
+              >
+                <sphereGeometry args={[0.02, 6, 5]} />
               </mesh>
-              <mesh material={bloodFreshMat} position={[0.1, 0.15, 0.23]}>
-                <boxGeometry args={[0.06, 0.06, 0.005]} />
+              <mesh
+                material={bloodMat}
+                position={[-0.06, -0.06, 0.16]}
+                scale={[0.5, 2.5, 0.3]}
+              >
+                <sphereGeometry args={[0.016, 6, 5]} />
               </mesh>
-              <mesh material={bloodMat} position={[0.04, -0.05, 0.232]}>
-                <boxGeometry args={[0.025, 0.32, 0.005]} />
+              <mesh
+                material={bloodFreshMat}
+                position={[0.085, 0.105, 0.16]}
+                scale={[1.2, 1, 0.3]}
+              >
+                <sphereGeometry args={[0.022, 8, 6]} />
               </mesh>
 
-              {/* Zerzaustes Haar — mehrere Büschel */}
-              <mesh material={clothMat} position={[0, 0.28, 0]}>
-                <boxGeometry args={[0.48, 0.08, 0.46]} />
+              {/* Ohren */}
+              <mesh
+                material={skinMat}
+                position={[-0.16, 0.01, 0.02]}
+                rotation={[0, -0.3, 0]}
+                scale={[0.25, 1, 0.65]}
+              >
+                <sphereGeometry args={[0.05, 10, 8]} />
+              </mesh>
+              <mesh
+                material={skinMat}
+                position={[0.16, 0.01, 0.02]}
+                rotation={[0, 0.3, 0]}
+                scale={[0.25, 1, 0.65]}
+              >
+                <sphereGeometry args={[0.05, 10, 8]} />
+              </mesh>
+              {/* Zerfetztes Ohr links */}
+              <mesh
+                material={fleshMat}
+                position={[-0.17, -0.02, 0.015]}
+                scale={[0.18, 0.55, 0.35]}
+              >
+                <sphereGeometry args={[0.032, 8, 6]} />
+              </mesh>
+
+              {/* ── HAAR — Sphären-Klumpen, zerzaust ── */}
+              <mesh
+                material={clothMat}
+                position={[0, 0.14, -0.01]}
+                scale={[1.18, 0.75, 1.12]}
+              >
+                <sphereGeometry args={[0.16, 18, 12]} />
               </mesh>
               <mesh
                 material={clothMat}
-                position={[-0.16, 0.34, -0.05]}
+                position={[-0.09, 0.17, -0.04]}
                 rotation={[-0.2, 0, -0.3]}
+                scale={[0.65, 1.3, 0.65]}
               >
-                <boxGeometry args={[0.08, 0.1, 0.06]} />
+                <sphereGeometry args={[0.055, 10, 8]} />
               </mesh>
               <mesh
                 material={clothMat}
-                position={[0.18, 0.32, 0.08]}
+                position={[0.11, 0.16, 0.04]}
                 rotation={[0.1, 0, 0.4]}
+                scale={[0.6, 1.4, 0.6]}
               >
-                <boxGeometry args={[0.06, 0.12, 0.06]} />
+                <sphereGeometry args={[0.05, 10, 8]} />
               </mesh>
-              {/* Glatzen-Patch (Skalp fehlt) */}
-              <mesh material={fleshMat} position={[0.05, 0.32, 0.05]}>
-                <boxGeometry args={[0.18, 0.005, 0.16]} />
+              {/* Skalp-Wunde (Haarausfall + sichtbares Fleisch) */}
+              <mesh
+                material={fleshMat}
+                position={[0.04, 0.18, 0.02]}
+                scale={[1.5, 0.2, 1.3]}
+              >
+                <sphereGeometry args={[0.06, 10, 8]} />
               </mesh>
             </group>
           )}
 
-          {/* ── LINKER ARM ── */}
+          {/* ══ SCHULTERN — WEIT auseinander, deutlich über Brustkorb ══ */}
+          {/* (Schulter-Joints sind innerhalb der Arm-Groups, hier nur Position) */}
+
+          {/* ══ LINKER ARM ══ ausgehend von Schulter bei x=-0.3 (über Brust) */}
           {!enemy.leftArmDetached ? (
             <group
               ref={leftArmRef}
-              position={[-0.38, 0.28, 0]}
+              position={[-0.3, 0.18, 0]}
               rotation={[-1.1, 0, 0.15]}
             >
+              {/* Schulter-Joint — passt zum Hemd */}
+              <mesh material={clothMat} position={[0, 0, 0]}>
+                <sphereGeometry args={[0.085, 14, 10]} />
+              </mesh>
+              {/* Oberarm — schlank */}
               <mesh material={clothMat} position={[0, -0.2, 0]}>
-                <boxGeometry args={[0.2, 0.38, 0.2]} />
+                <capsuleGeometry args={[0.06, 0.36, 8, 14]} />
               </mesh>
-              {/* Unterarm Haut */}
-              <mesh material={skinMat} position={[0, -0.52, 0]}>
-                <boxGeometry args={[0.17, 0.34, 0.17]} />
+              {/* Ellbogen */}
+              <mesh material={skinMat} position={[0, -0.41, 0]}>
+                <sphereGeometry args={[0.06, 12, 10]} />
               </mesh>
-              {/* Adern am Unterarm */}
-              <mesh material={necroDeepMat} position={[0, -0.5, 0.087]}>
-                <boxGeometry args={[0.012, 0.28, 0.005]} />
+              {/* Unterarm — exponiert (Hemdärmel hochgekrempelt/zerrissen) */}
+              <mesh material={skinMat} position={[0, -0.6, 0]}>
+                <capsuleGeometry args={[0.052, 0.34, 8, 14]} />
               </mesh>
-              {/* Klauen-Hand */}
-              <mesh material={necroMat} position={[0, -0.74, 0]}>
-                <boxGeometry args={[0.16, 0.16, 0.1]} />
+              {/* Adern */}
+              <mesh material={necroDeepMat} position={[0, -0.58, 0.048]}>
+                <capsuleGeometry args={[0.005, 0.24, 3, 6]} />
               </mesh>
-              {/* Klauen-Finger — länger, krumm */}
-              {[-0.05, 0, 0.05].map((fx, i) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: static geometry array
-                <group key={i}>
-                  <mesh material={skinPaleMat} position={[fx, -0.85, 0]}>
-                    <boxGeometry args={[0.025, 0.12, 0.025]} />
+              <mesh material={necroDeepMat} position={[-0.025, -0.6, 0.045]}>
+                <capsuleGeometry args={[0.004, 0.2, 3, 6]} />
+              </mesh>
+              {/* Hochgekrempelte Stoff-Manschette */}
+              <mesh material={clothTornMat} position={[0, -0.42, 0]}>
+                <cylinderGeometry args={[0.07, 0.07, 0.04, 14]} />
+              </mesh>
+              {/* Handgelenk */}
+              <mesh material={skinPaleMat} position={[0, -0.79, 0]}>
+                <sphereGeometry args={[0.05, 12, 10]} />
+              </mesh>
+              {/* Handfläche — flach-länglich */}
+              <mesh
+                material={skinPaleMat}
+                position={[0, -0.86, 0.008]}
+                scale={[1, 1.1, 0.55]}
+              >
+                <sphereGeometry args={[0.06, 14, 10]} />
+              </mesh>
+              {/* 4 Klauen-Finger (länger, organischer) */}
+              {[-0.038, -0.012, 0.015, 0.04].map((fx, idx) => (
+                <group key={`l-finger-${fx}`}>
+                  <mesh
+                    material={skinPaleMat}
+                    position={[fx, -0.97, 0.005]}
+                    rotation={[idx * 0.04, 0, 0]}
+                  >
+                    <capsuleGeometry args={[0.011, 0.085, 4, 8]} />
                   </mesh>
-                  {/* Knochen-Klaue an der Spitze */}
+                  {/* Klauen-Nagel */}
                   <mesh
                     material={boneMat}
-                    position={[fx, -0.93, 0.005]}
-                    rotation={[0.2, 0, 0]}
+                    position={[fx, -1.05, 0.012]}
+                    rotation={[0.4, 0, 0]}
                   >
-                    <coneGeometry args={[0.014, 0.05, 4]} />
+                    <coneGeometry args={[0.01, 0.038, 5]} />
                   </mesh>
                 </group>
               ))}
-              {/* Daumen */}
+              {/* Daumen seitlich abgespreizt */}
               <mesh
                 material={skinPaleMat}
-                position={[0.07, -0.82, 0]}
-                rotation={[0, 0, -0.4]}
+                position={[-0.067, -0.93, 0.005]}
+                rotation={[0, 0, 0.7]}
               >
-                <boxGeometry args={[0.022, 0.08, 0.022]} />
+                <capsuleGeometry args={[0.011, 0.07, 4, 8]} />
               </mesh>
-              {/* Zerrissener Ärmel */}
-              <mesh material={clothTornMat} position={[0.1, -0.38, 0.1]}>
-                <boxGeometry args={[0.04, 0.18, 0.04]} />
+              <mesh
+                material={boneMat}
+                position={[-0.092, -0.96, 0.012]}
+                rotation={[0, 0, 1.4]}
+              >
+                <coneGeometry args={[0.009, 0.034, 5]} />
               </mesh>
-              {/* Blut auf Arm */}
-              <mesh material={bloodMat} position={[0.09, -0.45, 0.09]}>
-                <boxGeometry args={[0.04, 0.1, 0.02]} />
+              {/* Bisswunde */}
+              <mesh
+                material={fleshMat}
+                position={[-0.05, -0.5, 0]}
+                scale={[0.4, 1.4, 1.4]}
+              >
+                <sphereGeometry args={[0.032, 8, 6]} />
               </mesh>
-              {/* Frische Wunde am Unterarm */}
-              <mesh material={fleshMat} position={[-0.087, -0.55, 0]}>
-                <boxGeometry args={[0.005, 0.08, 0.04]} />
+              <mesh
+                material={bloodFreshMat}
+                position={[-0.052, -0.56, 0.03]}
+                scale={[0.3, 2.5, 0.5]}
+              >
+                <sphereGeometry args={[0.014, 6, 5]} />
               </mesh>
             </group>
           ) : (
             <Stump
-              position={[-0.38, 0.28, 0]}
-              radius={0.12}
+              position={[-0.3, 0.18, 0]}
+              radius={0.1}
               bloodMat={bloodMat}
               boneMat={boneMat}
               fleshMat={fleshMat}
             />
           )}
 
-          {/* ── RECHTER ARM ── */}
+          {/* ══ RECHTER ARM ══ */}
           {!enemy.rightArmDetached ? (
             <group
               ref={rightArmRef}
-              position={[0.38, 0.28, 0]}
-              rotation={[-1.1, 0, -0.15]}
+              position={[0.3, 0.18, 0]}
+              rotation={[-1.0, 0, -0.15]}
             >
+              <mesh material={clothMat} position={[0, 0, 0]}>
+                <sphereGeometry args={[0.085, 14, 10]} />
+              </mesh>
               <mesh material={clothMat} position={[0, -0.2, 0]}>
-                <boxGeometry args={[0.2, 0.38, 0.2]} />
+                <capsuleGeometry args={[0.06, 0.36, 8, 14]} />
               </mesh>
-              <mesh material={skinMat} position={[0, -0.52, 0]}>
-                <boxGeometry args={[0.17, 0.34, 0.17]} />
+              <mesh material={skinMat} position={[0, -0.41, 0]}>
+                <sphereGeometry args={[0.06, 12, 10]} />
               </mesh>
-              <mesh material={necroDeepMat} position={[0, -0.5, 0.087]}>
-                <boxGeometry args={[0.012, 0.28, 0.005]} />
+              <mesh material={skinMat} position={[0, -0.6, 0]}>
+                <capsuleGeometry args={[0.052, 0.34, 8, 14]} />
               </mesh>
-              <mesh material={necroMat} position={[0, -0.74, 0]}>
-                <boxGeometry args={[0.16, 0.16, 0.1]} />
+              <mesh material={necroDeepMat} position={[0, -0.58, 0.048]}>
+                <capsuleGeometry args={[0.005, 0.24, 3, 6]} />
               </mesh>
-              {[-0.05, 0, 0.05].map((fx, i) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: static geometry array
-                <group key={i}>
-                  <mesh material={skinPaleMat} position={[fx, -0.85, 0]}>
-                    <boxGeometry args={[0.025, 0.12, 0.025]} />
+              <mesh material={clothTornMat} position={[0, -0.42, 0]}>
+                <cylinderGeometry args={[0.07, 0.07, 0.04, 14]} />
+              </mesh>
+              <mesh material={skinPaleMat} position={[0, -0.79, 0]}>
+                <sphereGeometry args={[0.05, 12, 10]} />
+              </mesh>
+              <mesh
+                material={skinPaleMat}
+                position={[0, -0.86, 0.008]}
+                scale={[1, 1.1, 0.55]}
+              >
+                <sphereGeometry args={[0.06, 14, 10]} />
+              </mesh>
+              {[-0.038, -0.012, 0.015, 0.04].map((fx, idx) => (
+                <group key={`r-finger-${fx}`}>
+                  <mesh
+                    material={skinPaleMat}
+                    position={[fx, -0.97, 0.005]}
+                    rotation={[idx * 0.04, 0, 0]}
+                  >
+                    <capsuleGeometry args={[0.011, 0.085, 4, 8]} />
                   </mesh>
                   <mesh
                     material={boneMat}
-                    position={[fx, -0.93, 0.005]}
-                    rotation={[0.2, 0, 0]}
+                    position={[fx, -1.05, 0.012]}
+                    rotation={[0.4, 0, 0]}
                   >
-                    <coneGeometry args={[0.014, 0.05, 4]} />
+                    <coneGeometry args={[0.01, 0.038, 5]} />
                   </mesh>
                 </group>
               ))}
               <mesh
                 material={skinPaleMat}
-                position={[-0.07, -0.82, 0]}
-                rotation={[0, 0, 0.4]}
+                position={[0.067, -0.93, 0.005]}
+                rotation={[0, 0, -0.7]}
               >
-                <boxGeometry args={[0.022, 0.08, 0.022]} />
+                <capsuleGeometry args={[0.011, 0.07, 4, 8]} />
               </mesh>
-              <mesh material={clothTornMat} position={[-0.1, -0.38, 0.1]}>
-                <boxGeometry args={[0.04, 0.18, 0.04]} />
+              <mesh
+                material={boneMat}
+                position={[0.092, -0.96, 0.012]}
+                rotation={[0, 0, -1.4]}
+              >
+                <coneGeometry args={[0.009, 0.034, 5]} />
               </mesh>
-              {/* Frische Bisswunde */}
-              <mesh material={fleshMat} position={[0.087, -0.42, 0]}>
-                <boxGeometry args={[0.005, 0.06, 0.06]} />
-              </mesh>
-              <mesh material={bloodFreshMat} position={[0.088, -0.46, 0.05]}>
-                <boxGeometry args={[0.003, 0.18, 0.012]} />
+              {/* Hängender Hemd-Fetzen */}
+              <mesh
+                material={clothTornMat}
+                position={[0.08, -0.46, 0.06]}
+                rotation={[0.3, 0, 0.25]}
+                scale={[0.3, 2, 0.5]}
+              >
+                <sphereGeometry args={[0.04, 8, 6]} />
               </mesh>
             </group>
           ) : (
             <Stump
-              position={[0.38, 0.28, 0]}
-              radius={0.12}
+              position={[0.3, 0.18, 0]}
+              radius={0.1}
               bloodMat={bloodMat}
               boneMat={boneMat}
               fleshMat={fleshMat}
@@ -903,74 +1231,139 @@ function StandardZombie({
           )}
         </group>
 
-        {/* ── BECKEN ── */}
-        <mesh material={clothMat} position={[0, -0.42, 0]}>
-          <boxGeometry args={[0.58, 0.22, 0.32]} />
+        {/* ══ BECKEN ══ Hose oben, klar abgesetzt vom Torso */}
+        <mesh
+          material={clothTornMat}
+          position={[0, -0.36, 0]}
+          scale={[1, 0.6, 0.6]}
+        >
+          <sphereGeometry args={[0.24, 18, 12]} />
         </mesh>
         {/* Gürtel */}
-        <mesh material={necroDeepMat} position={[0, -0.34, 0.16]}>
-          <boxGeometry args={[0.6, 0.05, 0.025]} />
+        <mesh material={necroDeepMat} position={[0, -0.3, 0.13]}>
+          <torusGeometry args={[0.23, 0.018, 8, 24]} />
+        </mesh>
+        <mesh material={boneMat} position={[0, -0.3, 0.155]}>
+          <boxGeometry args={[0.05, 0.035, 0.012]} />
         </mesh>
 
-        {/* ── LINKES BEIN ── */}
+        {/* ══ LINKES BEIN ══ Oberschenkel ab Hüfte, Knie, Wade, Stiefel */}
         {!enemy.leftLegDetached ? (
-          <group ref={leftLegRef} position={[-0.18, -0.62, 0]}>
+          <group ref={leftLegRef} position={[-0.11, -0.45, 0]}>
+            {/* Oberschenkel — Hose, ca. 36cm lang */}
             <mesh material={clothTornMat} position={[0, -0.2, 0]}>
-              <boxGeometry args={[0.24, 0.38, 0.24]} />
+              <capsuleGeometry args={[0.095, 0.34, 8, 14]} />
             </mesh>
-            <mesh material={clothTornMat} position={[0, -0.52, 0]}>
-              <boxGeometry args={[0.2, 0.34, 0.2]} />
+            {/* Knie-Gelenk */}
+            <mesh material={clothTornMat} position={[0, -0.4, 0]}>
+              <sphereGeometry args={[0.09, 14, 10]} />
             </mesh>
-            {/* Freiliegender Schienbein-Knochen — größerer Bereich */}
-            <mesh material={fleshMat} position={[0.06, -0.5, 0.115]}>
-              <boxGeometry args={[0.05, 0.22, 0.012]} />
+            {/* Wade — schmaler */}
+            <mesh material={clothTornMat} position={[0, -0.58, 0]}>
+              <capsuleGeometry args={[0.085, 0.32, 8, 14]} />
             </mesh>
-            <mesh material={boneMat} position={[0.06, -0.48, 0.118]}>
-              <boxGeometry args={[0.03, 0.18, 0.012]} />
+            {/* Schienbein-Wunde (Knochen sichtbar) */}
+            <mesh
+              material={fleshMat}
+              position={[0.035, -0.58, 0.075]}
+              scale={[0.3, 2, 0.3]}
+            >
+              <sphereGeometry args={[0.045, 8, 6]} />
             </mesh>
-            {/* Stiefel/Fuß */}
-            <mesh material={eyeMat} position={[0, -0.74, 0.04]}>
-              <boxGeometry args={[0.22, 0.14, 0.28]} />
+            <mesh
+              material={boneMat}
+              position={[0.035, -0.56, 0.08]}
+              scale={[0.25, 1.8, 0.25]}
+            >
+              <sphereGeometry args={[0.032, 8, 6]} />
             </mesh>
-            {/* Kaputte Stiefelspitze */}
-            <mesh material={fleshMat} position={[0, -0.74, 0.2]}>
-              <boxGeometry args={[0.16, 0.08, 0.04]} />
+            {/* Knöchel */}
+            <mesh material={skinPaleMat} position={[0, -0.76, 0]}>
+              <sphereGeometry args={[0.058, 10, 8]} />
+            </mesh>
+            {/* Stiefel — LANG nach vorne (Schuhform), Sphere mit z-scale */}
+            <mesh
+              material={eyeMat}
+              position={[0, -0.78, 0.08]}
+              scale={[0.85, 0.5, 1.8]}
+            >
+              <sphereGeometry args={[0.1, 14, 10]} />
+            </mesh>
+            {/* Stiefel-Schaft */}
+            <mesh material={eyeMat} position={[0, -0.72, 0]}>
+              <cylinderGeometry args={[0.088, 0.083, 0.07, 14]} />
+            </mesh>
+            {/* Sohle */}
+            <mesh
+              material={necroDeepMat}
+              position={[0, -0.83, 0.08]}
+              scale={[0.85, 0.2, 1.8]}
+            >
+              <sphereGeometry args={[0.095, 12, 8]} />
+            </mesh>
+            {/* Kaputte Stiefelspitze (Zeh durchbricht) */}
+            <mesh material={fleshMat} position={[0, -0.78, 0.22]}>
+              <sphereGeometry args={[0.035, 8, 6]} />
             </mesh>
           </group>
         ) : (
           <Stump
-            position={[-0.18, -0.62, 0]}
-            radius={0.13}
+            position={[-0.11, -0.45, 0]}
+            radius={0.12}
             bloodMat={bloodMat}
             boneMat={boneMat}
             fleshMat={fleshMat}
           />
         )}
 
-        {/* ── RECHTES BEIN ── */}
+        {/* ══ RECHTES BEIN ══ */}
         {!enemy.rightLegDetached ? (
-          <group ref={rightLegRef} position={[0.18, -0.62, 0]}>
+          <group ref={rightLegRef} position={[0.11, -0.45, 0]}>
             <mesh material={clothTornMat} position={[0, -0.2, 0]}>
-              <boxGeometry args={[0.24, 0.38, 0.24]} />
+              <capsuleGeometry args={[0.095, 0.34, 8, 14]} />
             </mesh>
-            <mesh material={clothTornMat} position={[0, -0.52, 0]}>
-              <boxGeometry args={[0.2, 0.34, 0.2]} />
+            <mesh material={clothTornMat} position={[0, -0.4, 0]}>
+              <sphereGeometry args={[0.09, 14, 10]} />
+            </mesh>
+            <mesh material={clothTornMat} position={[0, -0.58, 0]}>
+              <capsuleGeometry args={[0.085, 0.32, 8, 14]} />
             </mesh>
             {/* Blut-Streifen runterlaufend */}
-            <mesh material={bloodMat} position={[-0.085, -0.45, 0.105]}>
-              <boxGeometry args={[0.012, 0.32, 0.008]} />
+            <mesh
+              material={bloodMat}
+              position={[-0.06, -0.5, 0.075]}
+              scale={[0.25, 3, 0.3]}
+            >
+              <sphereGeometry args={[0.014, 6, 5]} />
             </mesh>
-            <mesh material={eyeMat} position={[0, -0.74, 0.04]}>
-              <boxGeometry args={[0.22, 0.14, 0.28]} />
+            <mesh material={skinPaleMat} position={[0, -0.76, 0]}>
+              <sphereGeometry args={[0.058, 10, 8]} />
             </mesh>
-            <mesh material={fleshMat} position={[0, -0.74, 0.2]}>
-              <boxGeometry args={[0.16, 0.08, 0.04]} />
+            <mesh
+              material={eyeMat}
+              position={[0, -0.78, 0.08]}
+              scale={[0.85, 0.5, 1.8]}
+            >
+              <sphereGeometry args={[0.1, 14, 10]} />
+            </mesh>
+            <mesh material={eyeMat} position={[0, -0.72, 0]}>
+              <cylinderGeometry args={[0.088, 0.083, 0.07, 14]} />
+            </mesh>
+            <mesh
+              material={necroDeepMat}
+              position={[0, -0.83, 0.08]}
+              scale={[0.85, 0.2, 1.8]}
+            >
+              <sphereGeometry args={[0.095, 12, 8]} />
+            </mesh>
+            <mesh material={fleshMat} position={[0, -0.78, 0.22]}>
+              <sphereGeometry args={[0.035, 8, 6]} />
             </mesh>
           </group>
         ) : (
           <Stump
-            position={[0.18, -0.62, 0]}
-            radius={0.13}
+            position={[0.11, -0.45, 0]}
+            radius={0.12}
             bloodMat={bloodMat}
             boneMat={boneMat}
             fleshMat={fleshMat}
@@ -986,6 +1379,7 @@ function BossZombie({
   enemy,
   onHitFlashDone,
   playerPositionRef,
+  enemyPositionsRef,
 }: EnemyMeshProps) {
   const groupRef = useRef<THREE.Group>(null);
   const torsoRef = useRef<THREE.Group>(null);
@@ -997,18 +1391,22 @@ function BossZombie({
   const eyeGlow1Ref = useRef<THREE.Mesh>(null);
   const eyeGlow2Ref = useRef<THREE.Mesh>(null);
   const hitFlashRef = useRef(0);
+  // PERF: stabiler Vector3 für lerp-Target — keine neue Allokation pro Frame
+  const lerpTargetRef = useRef(new THREE.Vector3());
+  // PERF: siehe StandardZombie — Material-Cache für Dead-Fade-Out
+  const deadMaterialsRef = useRef<THREE.Material[] | null>(null);
 
-  const skinMat = useStandardMaterial("#4a5c3a", hitFlashRef.current);
-  const skinPaleMat = useStandardMaterial("#5e7048", hitFlashRef.current);
-  const necroMat = useStandardMaterial("#2e3d22", hitFlashRef.current);
-  const necroDeepMat = useStandardMaterial("#1a2412", hitFlashRef.current);
-  const clothMat = useStandardMaterial("#1a1208", hitFlashRef.current);
-  const clothTornMat = useStandardMaterial("#120e06", hitFlashRef.current);
-  const bloodMat = useStandardMaterial("#6a0000", hitFlashRef.current);
-  const bloodFreshMat = useStandardMaterial("#8a0a0a", hitFlashRef.current);
-  const fleshMat = useStandardMaterial("#5a1010", hitFlashRef.current);
-  const boneMat = useStandardMaterial("#c8c0b0", hitFlashRef.current);
-  const teethMat = useStandardMaterial("#a89a70", hitFlashRef.current);
+  const skinMat = useStandardMaterial("#4a5c3a");
+  const skinPaleMat = useStandardMaterial("#5e7048");
+  const necroMat = useStandardMaterial("#2e3d22");
+  const necroDeepMat = useStandardMaterial("#1a2412");
+  const clothMat = useStandardMaterial("#1a1208");
+  const clothTornMat = useStandardMaterial("#120e06");
+  const bloodMat = useStandardMaterial("#6a0000");
+  const bloodFreshMat = useStandardMaterial("#8a0a0a");
+  const fleshMat = useStandardMaterial("#5a1010");
+  const boneMat = useStandardMaterial("#c8c0b0");
+  const teethMat = useStandardMaterial("#a89a70");
 
   const eyeGlowMat = useRef<THREE.MeshBasicMaterial | null>(null);
   if (!eyeGlowMat.current) {
@@ -1022,20 +1420,6 @@ function BossZombie({
       color: new THREE.Color("#0a0000"),
     });
   }
-
-  const allMats = [
-    skinMat,
-    skinPaleMat,
-    necroMat,
-    necroDeepMat,
-    clothMat,
-    clothTornMat,
-    bloodMat,
-    bloodFreshMat,
-    fleshMat,
-    boneMat,
-    teethMat,
-  ];
 
   const [fallingLimbs, setFallingLimbs] = useState<
     Array<{
@@ -1110,85 +1494,155 @@ function BossZombie({
   useFrame((_, delta) => {
     if (!groupRef.current) return;
 
-    const [tx, ty, tz] = enemy.position;
+    // ── TOTE/DESPAWNENDE BOSS: Ragdoll + Fade (siehe StandardZombie) ────────
+    if (enemy.isDead) {
+      const refPos = enemyPositionsRef.current.get(enemy.id);
+      const baseX = refPos ? refPos[0] : enemy.position[0];
+      const baseZ = refPos ? refPos[2] : enemy.position[2];
+
+      const elapsed = (Date.now() - enemy.deathTime) / 1000;
+      const hitDirX = enemy.deathHitDirX ?? 0;
+      const hitDirZ = enemy.deathHitDirZ ?? 1;
+      // Yaw rekonstruieren (siehe StandardZombie für Begründung)
+      const yaw = Math.atan2(-hitDirX, -hitDirZ);
+      const seed = enemy.ragdollSeed ?? 0;
+      // BOSS: lebend bei y≈1.5, liegend Wurzel bei y≈0.35 (etwas höher wegen
+      // bulligerem Körper)
+      const pose = computeRagdollPose(
+        elapsed,
+        hitDirX,
+        hitDirZ,
+        yaw,
+        1.5,
+        0.35,
+        seed,
+        true,
+      );
+
+      groupRef.current.position.x = baseX;
+      groupRef.current.position.y = pose.groupY;
+      groupRef.current.position.z = baseZ;
+      groupRef.current.rotation.set(
+        pose.groupPitch,
+        pose.groupYaw,
+        pose.groupRoll,
+      );
+      groupRef.current.scale.y = 1;
+
+      if (torsoRef.current) {
+        torsoRef.current.rotation.set(pose.torsoPitch, 0, pose.torsoRoll);
+      }
+      if (headRef.current && !enemy.headDetached) {
+        headRef.current.rotation.set(pose.headPitch, 0, pose.headRoll);
+      }
+      if (leftArmRef.current && !enemy.leftArmDetached) {
+        leftArmRef.current.rotation.set(pose.leftArmPitch, 0, pose.leftArmRoll);
+      }
+      if (rightArmRef.current && !enemy.rightArmDetached) {
+        rightArmRef.current.rotation.set(
+          pose.rightArmPitch,
+          0,
+          pose.rightArmRoll,
+        );
+      }
+      if (leftLegRef.current && !enemy.leftLegDetached) {
+        leftLegRef.current.rotation.set(pose.leftLegPitch, 0, pose.leftLegRoll);
+      }
+      if (rightLegRef.current && !enemy.rightLegDetached) {
+        rightLegRef.current.rotation.set(
+          pose.rightLegPitch,
+          0,
+          pose.rightLegRoll,
+        );
+      }
+
+      let mats = deadMaterialsRef.current;
+      if (!mats) {
+        const set = new Set<THREE.Material>();
+        groupRef.current.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            set.add(child.material as THREE.Material);
+          }
+        });
+        mats = Array.from(set);
+        deadMaterialsRef.current = mats;
+        for (const m of mats) m.transparent = true;
+      }
+
+      if (
+        enemy.corpseState === "fadingOut" &&
+        enemy.fadeStartTime !== undefined
+      ) {
+        const fadeElapsed = (Date.now() - enemy.fadeStartTime) / 1000;
+        const opacity = Math.max(0, 1 - fadeElapsed / 0.6);
+        for (const m of mats) m.opacity = opacity;
+      } else {
+        for (const m of mats) m.opacity = 1;
+      }
+      return;
+    }
+
+    // ── LEBEND ──
+    // PERF: aktuelle Position aus Ref (siehe StandardZombie für Details)
+    const refPos = enemyPositionsRef.current.get(enemy.id);
+    const tx = refPos ? refPos[0] : enemy.position[0];
+    const ty = refPos ? refPos[1] : enemy.position[1];
+    const tz = refPos ? refPos[2] : enemy.position[2];
+    lerpTargetRef.current.set(tx, ty, tz);
     groupRef.current.position.lerp(
-      new THREE.Vector3(tx, ty, tz),
+      lerpTargetRef.current,
       Math.min(delta * 8, 1),
     );
 
-    if (!enemy.isDead) {
-      const [px, , pz] = playerPositionRef.current;
-      const dx = px - tx;
-      const dz = pz - tz;
-      if (Math.abs(dx) > 0.01 || Math.abs(dz) > 0.01) {
-        groupRef.current.rotation.y = Math.atan2(dx, dz);
-      }
+    const [px, , pz] = playerPositionRef.current;
+    const dx = px - tx;
+    const dz = pz - tz;
+    if (Math.abs(dx) > 0.01 || Math.abs(dz) > 0.01) {
+      groupRef.current.rotation.y = Math.atan2(dx, dz);
+    }
 
-      const t = Date.now() * 0.001;
-      const bob = Math.sin(t * 4) * 0.1;
-      groupRef.current.position.y = ty + bob;
+    const t = Date.now() * 0.001;
+    const bob = Math.sin(t * 4) * 0.1;
+    groupRef.current.position.y = ty + bob;
 
-      if (torsoRef.current) {
-        torsoRef.current.rotation.x = 0.28 + Math.sin(t * 2) * 0.05;
-        torsoRef.current.rotation.z = Math.sin(t * 1.6) * 0.04;
-      }
-      if (headRef.current && !enemy.headDetached) {
-        headRef.current.rotation.z = Math.sin(t * 2.5) * 0.06;
-      }
-      // Augen-Pulsing für mehr Drohgebärde
-      if (eyeGlowMat.current) {
-        const pulse = 0.7 + Math.sin(t * 6) * 0.3;
-        eyeGlowMat.current.color.setRGB(pulse, pulse * 0.15, 0);
-      }
-      if (!enemy.leftArmDetached && leftArmRef.current) {
-        leftArmRef.current.rotation.x = -0.9 + Math.sin(t * 4) * 0.15;
-        leftArmRef.current.rotation.z = 0.2 + Math.sin(t * 2) * 0.05;
-      }
-      if (!enemy.rightArmDetached && rightArmRef.current) {
-        rightArmRef.current.rotation.x = -0.9 - Math.sin(t * 4) * 0.15;
-        rightArmRef.current.rotation.z = -0.2 - Math.sin(t * 2) * 0.05;
-      }
-      if (!enemy.leftLegDetached && leftLegRef.current) {
-        leftLegRef.current.rotation.x = Math.sin(t * 4) * 0.3;
-      }
-      if (!enemy.rightLegDetached && rightLegRef.current) {
-        rightLegRef.current.rotation.x = -Math.sin(t * 4) * 0.3;
-      }
+    if (torsoRef.current) {
+      torsoRef.current.rotation.x = 0.28 + Math.sin(t * 2) * 0.05;
+      torsoRef.current.rotation.z = Math.sin(t * 1.6) * 0.04;
+    }
+    if (headRef.current && !enemy.headDetached) {
+      headRef.current.rotation.z = Math.sin(t * 2.5) * 0.06;
+    }
+    // Augen-Pulsing für mehr Drohgebärde
+    if (eyeGlowMat.current) {
+      const pulse = 0.7 + Math.sin(t * 6) * 0.3;
+      eyeGlowMat.current.color.setRGB(pulse, pulse * 0.15, 0);
+    }
+    if (!enemy.leftArmDetached && leftArmRef.current) {
+      leftArmRef.current.rotation.x = -0.9 + Math.sin(t * 4) * 0.15;
+      leftArmRef.current.rotation.z = 0.2 + Math.sin(t * 2) * 0.05;
+    }
+    if (!enemy.rightArmDetached && rightArmRef.current) {
+      rightArmRef.current.rotation.x = -0.9 - Math.sin(t * 4) * 0.15;
+      rightArmRef.current.rotation.z = -0.2 - Math.sin(t * 2) * 0.05;
+    }
+    if (!enemy.leftLegDetached && leftLegRef.current) {
+      leftLegRef.current.rotation.x = Math.sin(t * 4) * 0.3;
+    }
+    if (!enemy.rightLegDetached && rightLegRef.current) {
+      rightLegRef.current.rotation.x = -Math.sin(t * 4) * 0.3;
     }
 
     if (enemy.isHit) {
+      // Hit-Flash-Timer läuft weiter, damit onHitFlashDone() korrekt feuert
+      // und useEnemySystem.clearHitFlash() den isHit-State zurücksetzt.
+      // ENTFERNT: Rotes Aufleuchten der Materials (war hier ein emissive.setRGB-
+      // Loop) — vom Spieler so gewünscht. Treffer-Feedback läuft jetzt nur noch
+      // über Blut-Partikel + Blut-Splatter-Decal.
       hitFlashRef.current = Math.min(hitFlashRef.current + delta * 8, 1);
-      for (const mat of allMats) {
-        if (mat)
-          mat.emissive.setRGB(
-            hitFlashRef.current * 0.7,
-            hitFlashRef.current * 0.05,
-            hitFlashRef.current * 0.05,
-          );
-      }
       if (hitFlashRef.current >= 0.9) {
         onHitFlashDone(enemy.id);
         hitFlashRef.current = 0;
       }
-    } else {
-      hitFlashRef.current = Math.max(hitFlashRef.current - delta * 8, 0);
-      for (const mat of allMats) {
-        if (mat) mat.emissive.setRGB(0, 0, 0);
-      }
-    }
-
-    if (enemy.isDead) {
-      const elapsed = (Date.now() - enemy.deathTime) / 1000;
-      groupRef.current.scale.y = Math.max(0.01, 1 - elapsed * 0.8);
-      groupRef.current.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          (child.material as THREE.Material).opacity = Math.max(
-            0,
-            1 - elapsed * 1.0,
-          );
-          (child.material as THREE.Material).transparent = true;
-        }
-      });
     }
   });
 
@@ -1695,10 +2149,16 @@ function BossZombie({
 }
 
 // ─── Dispatcher ───────────────────────────────────────────────────────────────
-export function EnemyMesh({
+// PERF: `memo` verhindert ein Re-Render aller Enemy-Meshes wenn nur der Parent
+// (GameScene) re-rendert ohne dass das jeweilige Enemy-Objekt sich geändert hat.
+// Da updateEnemyPositions nicht mehr durch React-State läuft, ändert sich das
+// Enemy-Objekt nur bei echten Events (Damage, Tod, Dismemberment, HitFlash).
+// shallow compare reicht: alle anderen Props (Refs, Callbacks) sind stabil.
+function EnemyMeshInner({
   enemy,
   onHitFlashDone,
   playerPositionRef,
+  enemyPositionsRef,
 }: EnemyMeshProps) {
   if (enemy.type === "boss") {
     return (
@@ -1706,6 +2166,7 @@ export function EnemyMesh({
         enemy={enemy}
         onHitFlashDone={onHitFlashDone}
         playerPositionRef={playerPositionRef}
+        enemyPositionsRef={enemyPositionsRef}
       />
     );
   }
@@ -1714,6 +2175,9 @@ export function EnemyMesh({
       enemy={enemy}
       onHitFlashDone={onHitFlashDone}
       playerPositionRef={playerPositionRef}
+      enemyPositionsRef={enemyPositionsRef}
     />
   );
 }
+
+export const EnemyMesh = memo(EnemyMeshInner);

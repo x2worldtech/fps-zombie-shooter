@@ -156,8 +156,7 @@ export function MuzzleFlash({
     if (t < FLASH_DURATION) {
       const ft = t / FLASH_DURATION;
       // Schneller Anstieg dann Abfall (peak bei 30%)
-      const intensity =
-        ft < 0.3 ? ft / 0.3 : Math.max(0, 1 - (ft - 0.3) / 0.7);
+      const intensity = ft < 0.3 ? ft / 0.3 : Math.max(0, 1 - (ft - 0.3) / 0.7);
 
       // Heller Kern
       if (coreRef.current) {

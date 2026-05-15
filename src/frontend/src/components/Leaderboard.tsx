@@ -68,7 +68,11 @@ const IconTrophy = () => (
 );
 
 // ─── Animated Counter ────────────────────────────────────────────────────────
-function useAnimatedCount(target: number, durationMs = 1200, delay = 0): number {
+function useAnimatedCount(
+  target: number,
+  durationMs = 1200,
+  delay = 0,
+): number {
   const [val, setVal] = useState(0);
   useEffect(() => {
     if (target === 0) {
@@ -315,10 +319,7 @@ export function Leaderboard({ onBack }: LeaderboardProps) {
         )}
 
         {!isLoading && !isError && leaderboard.length > 0 && (
-          <div
-            className="mx-auto px-8 py-6"
-            style={{ maxWidth: "1400px" }}
-          >
+          <div className="mx-auto px-8 py-6" style={{ maxWidth: "1400px" }}>
             {/* ── TOP 3 PODIUM ── */}
             {top3.length > 0 && <Top3Podium entries={top3} />}
 
@@ -440,7 +441,8 @@ function PodiumCard({
     3: { main: "#cd7f32", glow: "#cd7f32", accent: "#a06020" },
   };
   const c = colors[rank];
-  const Icon = rank === 1 ? IconCrown : rank === 2 ? IconMedalSilver : IconMedalBronze;
+  const Icon =
+    rank === 1 ? IconCrown : rank === 2 ? IconMedalSilver : IconMedalBronze;
 
   const aScore = useAnimatedCount(score, 1500, rank * 150);
 
@@ -504,7 +506,11 @@ function PodiumCard({
             textShadow: `0 0 8px ${c.glow}66`,
           }}
         >
-          {rank === 1 ? "★ CHAMPION ★" : rank === 2 ? "RUNNER-UP" : "THIRD PLACE"}
+          {rank === 1
+            ? "★ CHAMPION ★"
+            : rank === 2
+              ? "RUNNER-UP"
+              : "THIRD PLACE"}
         </div>
 
         {/* Player name */}
@@ -725,10 +731,42 @@ function PanelCorners({ color = "rgba(255,122,0,0.5)" }: { color?: string }) {
   };
   return (
     <>
-      <div style={{ ...cs, top: 0, left: 0, borderTop: "2px solid", borderLeft: "2px solid" }} />
-      <div style={{ ...cs, top: 0, right: 0, borderTop: "2px solid", borderRight: "2px solid" }} />
-      <div style={{ ...cs, bottom: 0, left: 0, borderBottom: "2px solid", borderLeft: "2px solid" }} />
-      <div style={{ ...cs, bottom: 0, right: 0, borderBottom: "2px solid", borderRight: "2px solid" }} />
+      <div
+        style={{
+          ...cs,
+          top: 0,
+          left: 0,
+          borderTop: "2px solid",
+          borderLeft: "2px solid",
+        }}
+      />
+      <div
+        style={{
+          ...cs,
+          top: 0,
+          right: 0,
+          borderTop: "2px solid",
+          borderRight: "2px solid",
+        }}
+      />
+      <div
+        style={{
+          ...cs,
+          bottom: 0,
+          left: 0,
+          borderBottom: "2px solid",
+          borderLeft: "2px solid",
+        }}
+      />
+      <div
+        style={{
+          ...cs,
+          bottom: 0,
+          right: 0,
+          borderBottom: "2px solid",
+          borderRight: "2px solid",
+        }}
+      />
     </>
   );
 }
@@ -757,7 +795,7 @@ function HexBackground() {
       style={{
         opacity: 0.08,
         backgroundImage:
-          'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'60\' height=\'52\' viewBox=\'0 0 60 52\'%3E%3Cpath fill=\'none\' stroke=\'%23ff7a00\' stroke-width=\'1\' d=\'M30 0 L60 17 L60 35 L30 52 L0 35 L0 17 Z\'/%3E%3C/svg%3E")',
+          "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='52' viewBox='0 0 60 52'%3E%3Cpath fill='none' stroke='%23ff7a00' stroke-width='1' d='M30 0 L60 17 L60 35 L30 52 L0 35 L0 17 Z'/%3E%3C/svg%3E\")",
         backgroundSize: "60px 52px",
         zIndex: 0,
       }}
