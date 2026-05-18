@@ -34,65 +34,144 @@ const SUN_POSITION: [number, number, number] = [
 ];
 
 /**
- * Sichtbare 3D-Sonne am Himmel: leuchtender Disk + Halo.
+ * Sichtbare 3D-Sonne am Himmel — realistischer "glare" Look ohne erkennbare
+ * Kreis-Kante. Statt fester Sphären mit harten Rändern verwenden wir mehrere
+ * kameraausgerichtete Sprites mit prozeduralen radialen Gradient-Texturen
+ * (Zentrum voll opak → Rand alpha=0) und ADDITIVES Blending. Dadurch:
+ *   - kein sichtbarer "Disc"-Rand mehr (Verlauf statt harte Kante)
+ *   - Hot Spot im Zentrum strahlt über (Bloom-artig auch ohne Post-Processing)
+ *   - die einzelnen Layer addieren sich zu einem weichen Glanz statt sich
+ *     hart zu überlagern
+ *
  * Liegt am Skydome-Rand (220m vom Zentrum) — kein Sammelpunkt von Licht
- * mehr, sondern eine klar sichtbare Lichtquelle.
+ * mehr, sondern eine glaubhafte Lichtquelle.
  */
-function Sun() {
-  const sunDiskMat = useMemo(
-    () =>
-      new THREE.MeshBasicMaterial({
-        color: "#fff5d0",
-        transparent: true,
-        opacity: 1.0,
-        depthWrite: false,
-        toneMapped: false, // bleibt strahlend hell auch bei ACES-Tone-Mapping
-      }),
-    [],
-  );
-  const sunHaloMat = useMemo(
-    () =>
-      new THREE.MeshBasicMaterial({
-        color: "#ffd084",
-        transparent: true,
-        opacity: 0.35,
-        depthWrite: false,
-        toneMapped: false,
-      }),
-    [],
-  );
-  const sunHalo2Mat = useMemo(
-    () =>
-      new THREE.MeshBasicMaterial({
-        color: "#ff8030",
-        transparent: true,
-        opacity: 0.15,
-        depthWrite: false,
-        toneMapped: false,
-      }),
-    [],
-  );
 
-  // Sonne soll der Kamera entgegen orientiert sein — wir rotieren die Mesh-
-  // Quad-Plane so dass sie zum Zentrum (Spieler-Spawn) zeigt. Da der Spieler
-  // sich bewegt, lassen wir die Plane einfach in Welt-Z stehen und
-  // hoffen dass die Sonne weit genug entfernt ist (220m) damit Parallax
-  // unsichtbar ist.
-  // Stattdessen: wir nutzen 3 konzentrische Sphären — kameraunabhängig.
+/**
+ * Erzeugt eine prozedurale radiale Gradient-Textur (256×256). `corePct` und
+ * `falloff` steuern, wie früh der Verlauf von voll-opak nach transparent geht
+ * — kleines corePct + langsamer falloff = soft glow; großes corePct + harter
+ * falloff = scharferes Highlight.
+ */
+function buildSunGradientTexture(
+  centerR: number,
+  centerG: number,
+  centerB: number,
+  corePct: number,
+  falloffPower: number,
+): THREE.CanvasTexture {
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return new THREE.CanvasTexture(canvas);
+
+  const imageData = ctx.createImageData(size, size);
+  const data = imageData.data;
+  const half = size / 2;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = (x - half) / half; // -1..1
+      const dy = (y - half) / half;
+      const d = Math.min(1, Math.sqrt(dx * dx + dy * dy));
+      // Innerhalb des Cores voller alpha, danach exponentiell ausblendend
+      let a: number;
+      if (d <= corePct) {
+        a = 1;
+      } else {
+        const t = (d - corePct) / (1 - corePct); // 0..1
+        a = Math.max(0, 1 - t ** falloffPower);
+      }
+      const idx = (y * size + x) * 4;
+      data[idx + 0] = centerR;
+      data[idx + 1] = centerG;
+      data[idx + 2] = centerB;
+      data[idx + 3] = Math.round(a * 255);
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.generateMipmaps = false;
+  return tex;
+}
+
+// Module-Level-Cache: Sonnen-Materials werden nur einmal gebaut (auch über
+// Portal-Wechsel hinweg konstant) — die Sun-Component selbst rendert mehrfach
+// in einem Spiel.
+let __sunMatsCache: THREE.SpriteMaterial[] | null = null;
+
+function getSunMaterials(): THREE.SpriteMaterial[] {
+  if (__sunMatsCache) return __sunMatsCache;
+  // Vier Layer mit jeweils anderem Falloff und Farbton, additiv geblendet.
+  // Reihenfolge: außen nach innen (damit der hellste Core "obendrauf" landet).
+  const mats = [
+    // Layer 1 — großer warm-oranger Halo, sehr weich
+    new THREE.SpriteMaterial({
+      map: buildSunGradientTexture(255, 145, 70, 0.0, 1.4),
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: true,
+      opacity: 0.45,
+      toneMapped: false,
+      sizeAttenuation: true,
+    }),
+    // Layer 2 — mittlerer goldener Glow
+    new THREE.SpriteMaterial({
+      map: buildSunGradientTexture(255, 200, 110, 0.0, 2.2),
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: true,
+      opacity: 0.7,
+      toneMapped: false,
+      sizeAttenuation: true,
+    }),
+    // Layer 3 — heller gelblicher Mid-Glow
+    new THREE.SpriteMaterial({
+      map: buildSunGradientTexture(255, 230, 160, 0.0, 3.5),
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: true,
+      opacity: 0.85,
+      toneMapped: false,
+      sizeAttenuation: true,
+    }),
+    // Layer 4 — überstrahlender weißer Hot Spot in der Mitte
+    new THREE.SpriteMaterial({
+      map: buildSunGradientTexture(255, 252, 240, 0.05, 5),
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: true,
+      opacity: 1.0,
+      toneMapped: false,
+      sizeAttenuation: true,
+    }),
+  ];
+  __sunMatsCache = mats;
+  return mats;
+}
+
+function Sun() {
+  const mats = useMemo(() => getSunMaterials(), []);
+  // Layer-Größen — von außen (sehr groß, weich) nach innen (klein, hart)
+  // in Welt-Einheiten. Bei SUN_POSITION ~220m Distanz wirken diese Größen
+  // sinnvoll proportioniert zur sichtbaren Himmelsfläche.
+  const sizes = [55, 32, 18, 9];
+
   return (
     <group position={SUN_POSITION}>
-      {/* Innerer heller Sonnen-Disc (Core) */}
-      <mesh material={sunDiskMat}>
-        <sphereGeometry args={[4.5, 24, 16]} />
-      </mesh>
-      {/* Mittlerer Halo */}
-      <mesh material={sunHaloMat}>
-        <sphereGeometry args={[8, 24, 16]} />
-      </mesh>
-      {/* Äußerer großer Glow */}
-      <mesh material={sunHalo2Mat}>
-        <sphereGeometry args={[16, 20, 14]} />
-      </mesh>
+      {mats.map((m, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: static layers
+        <sprite key={i} material={m} scale={[sizes[i], sizes[i], 1]} />
+      ))}
     </group>
   );
 }

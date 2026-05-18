@@ -83126,43 +83126,102 @@ const SUN_POSITION = [
   SUN_DIR.y * SUN_DISTANCE,
   SUN_DIR.z * SUN_DISTANCE
 ];
-function Sun() {
-  const sunDiskMat = reactExports.useMemo(
-    () => new MeshBasicMaterial({
-      color: "#fff5d0",
+function buildSunGradientTexture(centerR, centerG, centerB, corePct, falloffPower) {
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return new CanvasTexture(canvas);
+  const imageData = ctx.createImageData(size, size);
+  const data = imageData.data;
+  const half = size / 2;
+  for (let y2 = 0; y2 < size; y2++) {
+    for (let x3 = 0; x3 < size; x3++) {
+      const dx = (x3 - half) / half;
+      const dy = (y2 - half) / half;
+      const d2 = Math.min(1, Math.sqrt(dx * dx + dy * dy));
+      let a2;
+      if (d2 <= corePct) {
+        a2 = 1;
+      } else {
+        const t = (d2 - corePct) / (1 - corePct);
+        a2 = Math.max(0, 1 - t ** falloffPower);
+      }
+      const idx = (y2 * size + x3) * 4;
+      data[idx + 0] = centerR;
+      data[idx + 1] = centerG;
+      data[idx + 2] = centerB;
+      data[idx + 3] = Math.round(a2 * 255);
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+  const tex = new CanvasTexture(canvas);
+  tex.colorSpace = SRGBColorSpace;
+  tex.minFilter = LinearFilter;
+  tex.magFilter = LinearFilter;
+  tex.generateMipmaps = false;
+  return tex;
+}
+let __sunMatsCache = null;
+function getSunMaterials() {
+  if (__sunMatsCache) return __sunMatsCache;
+  const mats = [
+    // Layer 1 — großer warm-oranger Halo, sehr weich
+    new SpriteMaterial({
+      map: buildSunGradientTexture(255, 145, 70, 0, 1.4),
       transparent: true,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      depthTest: true,
+      opacity: 0.45,
+      toneMapped: false,
+      sizeAttenuation: true
+    }),
+    // Layer 2 — mittlerer goldener Glow
+    new SpriteMaterial({
+      map: buildSunGradientTexture(255, 200, 110, 0, 2.2),
+      transparent: true,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      depthTest: true,
+      opacity: 0.7,
+      toneMapped: false,
+      sizeAttenuation: true
+    }),
+    // Layer 3 — heller gelblicher Mid-Glow
+    new SpriteMaterial({
+      map: buildSunGradientTexture(255, 230, 160, 0, 3.5),
+      transparent: true,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      depthTest: true,
+      opacity: 0.85,
+      toneMapped: false,
+      sizeAttenuation: true
+    }),
+    // Layer 4 — überstrahlender weißer Hot Spot in der Mitte
+    new SpriteMaterial({
+      map: buildSunGradientTexture(255, 252, 240, 0.05, 5),
+      transparent: true,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      depthTest: true,
       opacity: 1,
-      depthWrite: false,
-      toneMapped: false
-      // bleibt strahlend hell auch bei ACES-Tone-Mapping
-    }),
-    []
-  );
-  const sunHaloMat = reactExports.useMemo(
-    () => new MeshBasicMaterial({
-      color: "#ffd084",
-      transparent: true,
-      opacity: 0.35,
-      depthWrite: false,
-      toneMapped: false
-    }),
-    []
-  );
-  const sunHalo2Mat = reactExports.useMemo(
-    () => new MeshBasicMaterial({
-      color: "#ff8030",
-      transparent: true,
-      opacity: 0.15,
-      depthWrite: false,
-      toneMapped: false
-    }),
-    []
-  );
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("group", { position: SUN_POSITION, children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: sunDiskMat, children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [4.5, 24, 16] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: sunHaloMat, children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [8, 24, 16] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("mesh", { material: sunHalo2Mat, children: /* @__PURE__ */ jsxRuntimeExports.jsx("sphereGeometry", { args: [16, 20, 14] }) })
-  ] });
+      toneMapped: false,
+      sizeAttenuation: true
+    })
+  ];
+  __sunMatsCache = mats;
+  return mats;
+}
+function Sun() {
+  const mats = reactExports.useMemo(() => getSunMaterials(), []);
+  const sizes = [55, 32, 18, 9];
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("group", { position: SUN_POSITION, children: mats.map((m2, i2) => (
+    // biome-ignore lint/suspicious/noArrayIndexKey: static layers
+    /* @__PURE__ */ jsxRuntimeExports.jsx("sprite", { material: m2, scale: [sizes[i2], sizes[i2], 1] }, i2)
+  )) });
 }
 const __pbrMatCache = /* @__PURE__ */ new Map();
 function usePBRMat(color, roughness = 0.82, metalness = 0, emissive, emissiveIntensity = 0) {
